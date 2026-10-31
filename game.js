@@ -462,9 +462,9 @@ class Fighter {
       this.poseTo = target; return;
     }
     if (this.poseKey === key) { this.poseTo = target; return; }
-    const punchPhase = /^(pw|pwd|ps|ps2|pr)$/.test(key);
-    // Keep 15°/frame soft-step across punch→idle so recovery cannot snap (R2-2)
-    if (punchPhase || this.punchSoft) this.punchSoft = 1;
+    // R3-1: 15°/frame soft-step ONLY in punch recovery (+ trailing idle). Windup/strike snap freely.
+    if (key === 'pr') this.punchSoft = 1;
+    else if (/^(pw|pwd|ps|ps2)$/.test(key)) this.punchSoft = 0;
     this.poseFrom = Pose.copy(this.pose); this.poseTo = target;
     this.blendT = 0; this.blendDur = Math.max(.04, dur); this.poseKey = key;
   }
@@ -473,7 +473,7 @@ class Fighter {
     const u = Pose.easeOut(this.blendDur <= 0 ? 1 : this.blendT / this.blendDur);
     const lerped = Pose.lerp(this.poseFrom, this.poseTo, u);
     let next = lerped;
-    // R2-2: shortest-path lerp + ≤15°/frame through punch windup/strike/recovery (and trailing idle)
+    // R3-1/R2-2: shortest-path lerp; ≤15°/frame only while punchSoft (recovery + trailing idle)
     if (this.punchSoft) {
       next = Pose.stepAngles(this.pose, lerped, Pose.deg(15));
       next.hipBob = lerped.hipBob;
@@ -485,7 +485,7 @@ class Fighter {
       for (const k of Pose.ANGLE_KEYS) {
         if (Math.abs(Pose.angleDelta(this.pose[k], this.poseTo[k])) > Pose.deg(0.5)) { settled = false; break; }
       }
-      if (settled && !/^(pw|pwd|ps|ps2|pr)$/.test(this.poseKey)) this.punchSoft = 0;
+      if (settled && this.poseKey !== 'pr') this.punchSoft = 0;
     }
     if (this.landSquash > 0) {
       this.landSquash = Math.max(0, this.landSquash - dt);
@@ -642,13 +642,18 @@ class Fighter {
         this.atkPhase = 'pwd';
       }
     } else if (t <= a.su + a.ac) {
+      // R3-1: first active frame at full extension incl. 10° overshoot (1–2 frame snap is intended)
       if (this.atkPhase !== 'ps') {
-        this.aim('ps', Pose.punchStrike(true), .03); this.atkPhase = 'ps';
-      } else if (this.blendT >= this.blendDur * .55 && this.poseKey === 'ps') {
-        this.aim('ps2', Pose.punchStrike(false), .04); this.atkPhase = 'ps2';
+        const strike = Pose.punchStrike(true);
+        this.aim('ps', strike, .03); this.atkPhase = 'ps';
+        this.pose = Pose.copy(strike);
+        this.poseFrom = Pose.copy(strike);
+        this.poseTo = Pose.copy(strike);
+        this.blendT = this.blendDur;
+        this.punchSoft = 0;
       }
     } else if (this.atkPhase !== 'pr') {
-      // AC7: ease back to idle over full recovery (~180ms); no snap
+      // AC7 / R2-2: ease back to idle over full recovery; ≤15°/frame soft-step
       this.aim('pr', Pose.punchRec(), a.re * Game.STEP); this.atkPhase = 'pr';
     }
   }
