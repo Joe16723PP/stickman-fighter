@@ -139,27 +139,29 @@ class Pose {
   /** Fight stance, hands near face. */
   static idle() {
     const d = Pose.deg;
-    return {chest:d(4), neck:d(-2), head:0,
-      la:d(-70), le:d(-95), ra:d(55), re:d(-100),
-      ll:d(12), lk:d(18), rl:d(-14), rk:d(16), hipBob:0};
+    // Guard tucked so visual AABB stays inside CombatPose idle padding
+    return {chest:d(3), neck:d(-2), head:0,
+      la:d(-58), le:d(-88), ra:d(46), re:d(-92),
+      ll:d(8), lk:d(12), rl:d(-8), rk:d(12), hipBob:0};
   }
   /** Legs ±28°, opposite arms ±18°, hip dip applied by caller via step phase. */
   static walk(t) {
     const d = Pose.deg, phase = t * Math.PI * 2 / .45;
-    const leg = Math.sin(phase) * d(28), arm = Math.sin(phase) * d(18);
+    const leg = Math.sin(phase) * d(20), arm = Math.sin(phase) * d(12);
     const dip = (1 - Math.cos(phase * 2)) * 1; // 0..2px hip dip per step
     const id = Pose.idle();
     return {chest:id.chest, neck:id.neck, head:0,
-      la:id.la - arm, le:id.le + d(10), ra:id.ra - arm, re:id.re - d(8),
-      ll:leg, lk:Math.max(0, Math.sin(phase)) * d(40) + d(8),
-      rl:-leg, rk:Math.max(0, -Math.sin(phase)) * d(40) + d(8),
+      la:id.la - arm, le:id.le + d(8), ra:id.ra - arm, re:id.re - d(6),
+      ll:leg, lk:Math.max(0, Math.sin(phase)) * d(32) + d(6),
+      rl:-leg, rk:Math.max(0, -Math.sin(phase)) * d(32) + d(6),
       hipBob:dip};
   }
   static jump(apex) {
     const d = Pose.deg, tuck = apex ? 1 : .55;
-    return {chest:d(-6), neck:d(4), head:d(-4),
-      la:d(-110), le:d(-40), ra:d(110), re:d(-40),
-      ll:d(25)*tuck, lk:d(110)*tuck, rl:d(-25)*tuck, rk:d(110)*tuck, hipBob:0};
+    // Arms/legs tucked so jump AABB fits CombatPose.jump padding at the walls
+    return {chest:d(-4), neck:d(2), head:d(-2),
+      la:d(-62), le:d(-30), ra:d(62), re:d(-30),
+      ll:d(14)*tuck, lk:d(85)*tuck, rl:d(-14)*tuck, rk:d(85)*tuck, hipBob:0};
   }
   static land() {
     const d = Pose.deg;
@@ -174,10 +176,10 @@ class Pose {
       ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0};
   }
   static punchStrike(over) {
-    const d = Pose.deg, o = over ? d(10) : 0;
-    return {chest:d(12), neck:d(2), head:d(4),
-      la:d(-60), le:d(-90), ra:d(95) + o, re:d(-10) - o * .3,
-      ll:d(18), lk:d(16), rl:d(-22), rk:d(20), hipBob:0};
+    const d = Pose.deg, o = over ? d(6) : 0;
+    return {chest:d(8), neck:d(2), head:d(2),
+      la:d(-52), le:d(-82), ra:d(78) + o, re:d(-8) - o * .3,
+      ll:d(12), lk:d(12), rl:d(-14), rk:d(14), hipBob:0};
   }
   static punchRec() { return Pose.idle(); }
   /** Cocked, leaning-back windup — distinct from kickStrike. */
@@ -189,10 +191,11 @@ class Pose {
       ll:d(-55), lk:d(125), rl:d(8), rk:d(18), hipBob:-2};
   }
   static kickStrike(over) {
-    const d = Pose.deg, o = over ? d(10) : 0;
-    return {chest:d(-12), neck:d(4), head:d(2),
-      la:d(-70), le:d(-60), ra:d(50), re:d(-80),
-      ll:d(95) + o, lk:d(8), rl:d(-20), rk:d(25), hipBob:0};
+    const d = Pose.deg, o = over ? d(5) : 0;
+    // Reach tucked to CombatPose.kick tip pad; still reads as an extended poke
+    return {chest:d(-8), neck:d(2), head:d(2),
+      la:d(-50), le:d(-45), ra:d(36), re:d(-70),
+      ll:d(70) + o, lk:d(10), rl:d(-12), rk:d(18), hipBob:0};
   }
   static kickRec() { return Pose.idle(); }
   static specialWind() {
@@ -203,28 +206,28 @@ class Pose {
   }
   static specialDash() {
     const d = Pose.deg;
-    return {chest:d(-18), neck:d(6), head:d(4),
-      la:d(-100), le:d(-35), ra:d(70), re:d(-40),
-      ll:d(110), lk:d(5), rl:d(-35), rk:d(40), hipBob:0};
+    return {chest:d(-10), neck:d(4), head:d(2),
+      la:d(-70), le:d(-30), ra:d(50), re:d(-35),
+      ll:d(78), lk:d(8), rl:d(-20), rk:d(28), hipBob:0};
   }
   static block() {
     const d = Pose.deg;
-    return {chest:d(-4), neck:0, head:d(-2),
-      la:d(55), le:d(-120), ra:d(45), re:d(-115),
-      ll:d(14), lk:d(22), rl:d(-16), rk:d(20), hipBob:0};
+    return {chest:d(-3), neck:0, head:d(-2),
+      la:d(42), le:d(-105), ra:d(36), re:d(-100),
+      ll:d(10), lk:d(16), rl:d(-10), rk:d(14), hipBob:0};
   }
   static hit() {
     const d = Pose.deg;
-    // head snaps back ~15°, chest bends away
-    return {chest:d(-18), neck:d(-8), head:d(-15),
-      la:d(-100), le:d(-40), ra:d(-90), re:d(-35),
-      ll:d(22), lk:d(28), rl:d(-30), rk:d(35), hipBob:0};
+    // head snaps back ~15°, chest bends away — arms tucked for wall pad
+    return {chest:d(-12), neck:d(-6), head:d(-15),
+      la:d(-62), le:d(-32), ra:d(-55), re:d(-28),
+      ll:d(12), lk:d(18), rl:d(-14), rk:d(20), hipBob:0};
   }
   static koSprawl() {
     const d = Pose.deg;
-    return {chest:d(-55), neck:d(-20), head:d(-25),
-      la:d(-140), le:d(-20), ra:d(150), re:d(-25),
-      ll:d(70), lk:d(20), rl:d(-80), rk:d(30), hipBob:8};
+    return {chest:d(-40), neck:d(-14), head:d(-18),
+      la:d(-95), le:d(-18), ra:d(100), re:d(-20),
+      ll:d(45), lk:d(16), rl:d(-50), rk:d(22), hipBob:6};
   }
 }
 
@@ -444,46 +447,73 @@ class Fighter {
     }
   }
   bones() {
-    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.pose;
+    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face;
     const hr = Game.hr, hw = Game.lw / 2;
     const arm = Fighter.ARM, leg = Fighter.LEG, torso = Fighter.TORSO, neckL = Fighter.NECK;
-    const hip = {x: this.x, y: g - 40 * s + (p.hipBob || 0)};
-    // chest from hips along torso with chest lean
-    const chest = {
-      x: hip.x + Math.sin(p.chest * f) * torso,
-      y: hip.y - Math.cos(p.chest) * torso
+    const cBox = this.combatBones();
+    const build = (p) => {
+      const hip = {x: this.x, y: g - 40 * s + (p.hipBob || 0)};
+      const chest = {
+        x: hip.x + Math.sin(p.chest * f) * torso,
+        y: hip.y - Math.cos(p.chest) * torso
+      };
+      const neck = {
+        x: chest.x + Math.sin((p.chest + p.neck) * f) * neckL,
+        y: chest.y - Math.cos(p.chest + p.neck) * neckL
+      };
+      const head = {
+        x: neck.x + Math.sin((p.chest + p.neck + p.head) * f) * (hr * .15),
+        y: neck.y - hr * .85
+      };
+      const sh = chest;
+      const pts = [hip, chest, neck, head];
+      const seg = (o, len, a1, a2) => {
+        const j = {x: o.x + Math.sin(a1) * len, y: o.y + Math.cos(a1) * len};
+        const e = {x: j.x + Math.sin(a1 + a2) * len, y: j.y + Math.cos(a1 + a2) * len};
+        pts.push(j, e); return {j, e};
+      };
+      const Larm = seg(sh, arm, p.la * f, p.le * f);
+      const Rarm = seg(sh, arm, p.ra * f, p.re * f);
+      const Lleg = seg(hip, leg, p.ll * f, p.lk * f);
+      const Rleg = seg(hip, leg, p.rl * f, p.rk * f);
+      let x0 = Infinity, x1 = -Infinity, y0 = head.y - hr, y1 = -Infinity;
+      for (const q of pts) {
+        x0 = Math.min(x0, q.x - hw); x1 = Math.max(x1, q.x + hw);
+        y0 = Math.min(y0, q.y - hw); y1 = Math.max(y1, q.y + hw);
+      }
+      return {
+        hip, chest, neck, sh, head, hr,
+        la: Larm.e, ra: Rarm.e, ll: Lleg.e, rl: Rleg.e,
+        laJ: Larm.j, raJ: Rarm.j, llJ: Lleg.j, rlJ: Rleg.j,
+        x0, x1, y0, y1,
+        lens: {arm, leg, torso, neck: neckL}
+      };
     };
-    const neck = {
-      x: chest.x + Math.sin((p.chest + p.neck) * f) * neckL,
-      y: chest.y - Math.cos(p.chest + p.neck) * neckL
-    };
-    const head = {
-      x: neck.x + Math.sin((p.chest + p.neck + p.head) * f) * (hr * .15),
-      y: neck.y - hr * .85
-    };
-    const sh = chest; // shoulder root
-    const pts = [hip, chest, neck, head];
-    const seg = (o, len, a1, a2) => {
-      const j = {x: o.x + Math.sin(a1) * len, y: o.y + Math.cos(a1) * len};
-      const e = {x: j.x + Math.sin(a1 + a2) * len, y: j.y + Math.cos(a1 + a2) * len};
-      pts.push(j, e); return {j, e};
-    };
-    const Larm = seg(sh, arm, p.la * f, p.le * f);
-    const Rarm = seg(sh, arm, p.ra * f, p.re * f);
-    const Lleg = seg(hip, leg, p.ll * f, p.lk * f);
-    const Rleg = seg(hip, leg, p.rl * f, p.rk * f);
-    let x0 = Infinity, x1 = -Infinity, y0 = head.y - hr, y1 = -Infinity;
-    for (const q of pts) {
-      x0 = Math.min(x0, q.x - hw); x1 = Math.max(x1, q.x + hw);
-      y0 = Math.min(y0, q.y - hw); y1 = Math.max(y1, q.y + hw);
+    let p = this.pose;
+    let b = build(p);
+    // Keep visual AABB inside combatBones AABB (clamp pads to buttons with combat only).
+    // Inset so float error cannot eat the 8px screen floor after scaling.
+    const fits = (bb) => (
+      bb.x0 >= cBox.x0 + 0.35 && bb.x1 <= cBox.x1 - 0.35 &&
+      bb.y0 >= cBox.y0 - 0.5 && bb.y1 <= cBox.y1 + 0.5
+    );
+    if (!fits(b)) {
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 14; i++) {
+        const mid = (lo + hi) / 2;
+        const q = Pose.copy(p);
+        for (const k of ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk']) q[k] = (p[k] || 0) * mid;
+        // hipBob also shrinks toward 0 so feet/head stay in combat pad
+        q.hipBob = (p.hipBob || 0) * mid;
+        b = build(q);
+        if (fits(b)) lo = mid; else hi = mid;
+      }
+      const q = Pose.copy(p);
+      for (const k of ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk']) q[k] = (p[k] || 0) * lo;
+      q.hipBob = (p.hipBob || 0) * lo;
+      b = build(q);
     }
-    return {
-      hip, chest, neck, sh, head, hr,
-      la: Larm.e, ra: Rarm.e, ll: Lleg.e, rl: Rleg.e,
-      laJ: Larm.j, raJ: Rarm.j, llJ: Lleg.j, rlJ: Rleg.j,
-      x0, x1, y0, y1,
-      lens: {arm, leg, torso, neck: neckL}
-    };
+    return b;
   }
   /** Main 87f3bab pose for the current combat state (no blend). */
   combatPose() {
