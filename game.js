@@ -157,8 +157,9 @@ class Pose {
   }
   static jump(apex) {
     const d = Pose.deg, tuck = apex ? 1 : .55;
+    // Both arms forward under fv=-face (was ±110 spread → rear hand ~47px away)
     return {chest:d(-6), neck:d(4), head:d(-4),
-      la:d(-110), le:d(-40), ra:d(110), re:d(-40),
+      la:d(-110), le:d(-40), ra:d(-110), re:d(-40),
       ll:d(25)*tuck, lk:d(110)*tuck, rl:d(-25)*tuck, rk:d(110)*tuck, hipBob:0};
   }
   static land() {
@@ -169,14 +170,15 @@ class Pose {
   }
   static punchWind() {
     const d = Pose.deg, id = Pose.idle();
-    return {chest:d(8), neck:d(-2), head:d(-4),
-      la:id.la, le:id.le, ra:d(20), re:d(-130),
+    // Signs match fv=-face so the cocked fist stays toward the foe
+    return {chest:d(-8), neck:d(2), head:d(4),
+      la:id.la, le:id.le, ra:d(-20), re:d(130),
       ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0};
   }
   static punchStrike(over) {
     const d = Pose.deg, o = over ? d(10) : 0;
-    return {chest:d(12), neck:d(2), head:d(4),
-      la:d(-60), le:d(-90), ra:d(95) + o, re:d(-10) - o * .3,
+    return {chest:d(-12), neck:d(-2), head:d(-4),
+      la:d(60), le:d(90), ra:d(-95) - o, re:d(10) + o * .3,
       ll:d(18), lk:d(16), rl:d(-22), rk:d(20), hipBob:0};
   }
   static punchRec() { return Pose.idle(); }
@@ -190,8 +192,8 @@ class Pose {
   }
   static kickStrike(over) {
     const d = Pose.deg, o = over ? d(10) : 0;
-    return {chest:d(-12), neck:d(4), head:d(2),
-      la:d(-70), le:d(-60), ra:d(50), re:d(-80),
+    return {chest:d(12), neck:d(-4), head:d(-2),
+      la:d(70), le:d(60), ra:d(-50), re:d(80),
       ll:d(95) + o, lk:d(8), rl:d(-20), rk:d(25), hipBob:0};
   }
   static kickRec() { return Pose.idle(); }
@@ -203,27 +205,29 @@ class Pose {
   }
   static specialDash() {
     const d = Pose.deg;
-    return {chest:d(-18), neck:d(6), head:d(4),
-      la:d(-100), le:d(-35), ra:d(70), re:d(-40),
+    return {chest:d(18), neck:d(-6), head:d(-4),
+      la:d(100), le:d(35), ra:d(-70), re:d(40),
       ll:d(110), lk:d(5), rl:d(-35), rk:d(40), hipBob:0};
   }
   static block() {
     const d = Pose.deg;
-    return {chest:d(-4), neck:0, head:d(-2),
-      la:d(55), le:d(-120), ra:d(45), re:d(-115),
+    // Guard toward foe under fv=-face (elbows stay folded, not flipped)
+    return {chest:d(4), neck:0, head:d(2),
+      la:d(-55), le:d(-120), ra:d(-45), re:d(-115),
       ll:d(14), lk:d(22), rl:d(-16), rk:d(20), hipBob:0};
   }
   static hit() {
     const d = Pose.deg;
-    // head snaps back ~15°, chest bends away
-    return {chest:d(-18), neck:d(-8), head:d(-15),
+    // Chest/neck/head signs flipped for fv so torso recoils AWAY (~15°); arms stay toward foe
+    return {chest:d(15), neck:d(8), head:d(15),
       la:d(-100), le:d(-40), ra:d(-90), re:d(-35),
       ll:d(22), lk:d(28), rl:d(-30), rk:d(35), hipBob:0};
   }
   static koSprawl() {
     const d = Pose.deg;
-    return {chest:d(-55), neck:d(-20), head:d(-25),
-      la:d(-140), le:d(-20), ra:d(150), re:d(-25),
+    // Fall away from attacker under fv; arms ~horizontal toward foe (compensate lean)
+    return {chest:d(55), neck:d(20), head:d(25),
+      la:d(-95), le:d(-20), ra:d(-95), re:d(-20),
       ll:d(70), lk:d(20), rl:d(-80), rk:d(30), hipBob:8};
   }
 }
@@ -444,20 +448,22 @@ class Fighter {
     }
   }
   bones() {
-    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.pose;
+    // Pose lead/guard sits on la; under +face that pointed away (back-to-back).
+    // fv mirrors torso+arms toward the foe; legs keep +face for stance/kicks.
+    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, fv = -this.face, p = this.pose;
     const hr = Game.hr, hw = Game.lw / 2;
     const arm = Fighter.ARM, leg = Fighter.LEG, torso = Fighter.TORSO, neckL = Fighter.NECK;
     const hip = {x: this.x, y: g - 40 * s + (p.hipBob || 0)};
     const chest = {
-      x: hip.x + Math.sin(p.chest * f) * torso,
+      x: hip.x + Math.sin(p.chest * fv) * torso,
       y: hip.y - Math.cos(p.chest) * torso
     };
     const neck = {
-      x: chest.x + Math.sin((p.chest + p.neck) * f) * neckL,
+      x: chest.x + Math.sin((p.chest + p.neck) * fv) * neckL,
       y: chest.y - Math.cos(p.chest + p.neck) * neckL
     };
     const head = {
-      x: neck.x + Math.sin((p.chest + p.neck + p.head) * f) * (hr * .15),
+      x: neck.x + Math.sin((p.chest + p.neck + p.head) * fv) * (hr * .15),
       y: neck.y - hr * .85
     };
     const sh = chest;
@@ -467,8 +473,8 @@ class Fighter {
       const e = {x: j.x + Math.sin(a1 + a2) * len, y: j.y + Math.cos(a1 + a2) * len};
       pts.push(j, e); return {j, e};
     };
-    const Larm = seg(sh, arm, p.la * f, p.le * f);
-    const Rarm = seg(sh, arm, p.ra * f, p.re * f);
+    const Larm = seg(sh, arm, p.la * fv, p.le * fv);
+    const Rarm = seg(sh, arm, p.ra * fv, p.re * fv);
     const Lleg = seg(hip, leg, p.ll * f, p.lk * f);
     const Rleg = seg(hip, leg, p.rl * f, p.rk * f);
     // Head is a filled circle radius hr; limbs use stroke half-width hw
