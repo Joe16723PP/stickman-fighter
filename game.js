@@ -222,8 +222,10 @@ class Fighter {
       ctx.beginPath(); ctx.arc(cx, cy, 26, -1.2 + (this.face > 0 ? 0 : Math.PI), 1.2 + (this.face > 0 ? 0 : Math.PI)); ctx.stroke();
       ctx.globalAlpha = 1; ctx.lineWidth = Game.lw;
     }
-    ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(this.tag, b.head.x, b.y0 - 12 / Game.scale);
+    if (!Game.banner) {
+      ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(this.tag, b.head.x, b.y0 - 12 / Game.scale);
+    }
   }
   static limb(ctx, o, len, a1, a2) {
     const j = {x:o.x + Math.sin(a1) * len, y:o.y + Math.cos(a1) * len};
@@ -363,7 +365,7 @@ class Game {
   }
   static bars(ctx) {
     const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t'))||0,
-      top = (12 + safe) / sc, h = 12 / sc, gap = 16 / sc, w = Game.W * .4, mh = 5 / sc, mGap = 4 / sc;
+      top = (12 + safe) / sc, h = 12 / sc, gap = 44 / sc, w = Game.W * .4 - 14 / sc, mh = 5 / sc, mGap = 4 / sc;
     const x0 = (Game.W - 2 * w - gap) / 2, x1 = x0 + w + gap;
     const drawBar = (x, fill, chip, fromLeft, label, meter) => {
       ctx.fillStyle = '#2A2D35'; ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc;
