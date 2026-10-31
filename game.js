@@ -980,12 +980,22 @@ class BeatEmUp {
     if (el) return el.getBoundingClientRect().left;
     return innerWidth - 16 - (64 + 10 + 64);
   }
+  /** Hard right limit for drawn bones in CSS px: 8px left of the P/K/B/S cluster (682 @ 844). */
+  static bonesRightLimitCss() {
+    return BeatEmUp.clusterLeftCss() - 8;
+  }
+  /** Pull fighter left so bones().x1 (current drawn pose, incl. kick/punch) stays ≤ cluster−8. */
   static clampFighterRight(entry) {
     BeatEmUp.withDepth(entry, () => {
       const b = entry.f.bones();
-      const worldMax = BeatEmUp.cameraX + (BeatEmUp.clusterLeftCss() - 8) / Game.scale;
-      if (b.x1 > worldMax) entry.f.x -= (b.x1 - worldMax);
+      const screenX1 = (b.x1 - BeatEmUp.cameraX) * Game.scale;
+      const limit = BeatEmUp.bonesRightLimitCss();
+      if (screenX1 > limit) entry.f.x -= (screenX1 - limit) / Game.scale;
     });
+  }
+  /** Soft lane max for body centre (same formula locked or free; cameraX differs). Hard limb rule is clampFighterRight. */
+  static softMaxX() {
+    return BeatEmUp.cameraX + BeatEmUp.bonesRightLimitCss() / Game.scale;
   }
   static withDepth(entry, fn) {
     const savedGround = Game.GROUND;
@@ -1190,13 +1200,8 @@ class BeatEmUp {
 
     // Update player with temporary ground + against dummy other for facing
     BeatEmUp.withDepth(player, () => {
-      // Lane clamps in world while locked
-      const minX = BeatEmUp.locked ? BeatEmUp.lockL + 40 : BeatEmUp.cameraX + 40;
-      const maxX = BeatEmUp.locked
-        ? BeatEmUp.cameraX + (BeatEmUp.clusterLeftCss() - 8) / Game.scale - 20
-        : BeatEmUp.cameraX + (BeatEmUp.clusterLeftCss() - 8) / Game.scale - 20;
-      Game.minX = minX;
-      Game.maxX = maxX;
+      Game.minX = BeatEmUp.locked ? BeatEmUp.lockL + 40 : BeatEmUp.cameraX + 40;
+      Game.maxX = BeatEmUp.softMaxX();
       player.f.update(dt, faceOther, 0);
       BeatEmUp.clampFighterRight(player);
     });
@@ -1209,7 +1214,7 @@ class BeatEmUp {
       Input.acts.forEach(a => { Input.pad[1][a] = pad[a] || 0; Input.was[1][a] = 0; });
       BeatEmUp.withDepth(e, () => {
         Game.minX = BeatEmUp.lockL + 20;
-        Game.maxX = BeatEmUp.cameraX + (BeatEmUp.clusterLeftCss() - 8) / Game.scale - 10;
+        Game.maxX = BeatEmUp.softMaxX();
         e.f.update(dt, player.f, 1);
         BeatEmUp.clampFighterRight(e);
       });
@@ -1463,7 +1468,7 @@ class BeatEmUp {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText(label, waveX, top + h / 2);
 
-    // Boss HP under timer
+    // Boss HP under timer (label stays on the timer row above — not over the bar)
     if (BeatEmUp.boss && BeatEmUp.boss.f.hp > 0) {
       const bw = Game.W * 0.36, bh = 8 / sc;
       const bx = (Game.W - bw) / 2, by = top + h + 14 / sc;
@@ -1475,12 +1480,6 @@ class BeatEmUp {
       const pct = BeatEmUp.boss.f.hp / 220;
       ctx.fillStyle = '#EF4444';
       ctx.fillRect(bx, by, bw * pct, bh);
-      ctx.font = 'bold ' + 11 / sc + 'px system-ui,sans-serif';
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#0E0F12';
-      ctx.lineWidth = 3 / sc;
-      ctx.strokeText('BOSS', Game.W / 2, by + bh / 2);
-      ctx.fillText('BOSS', Game.W / 2, by + bh / 2);
     }
     ctx.textBaseline = 'alphabetic';
   }
