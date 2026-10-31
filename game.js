@@ -984,14 +984,14 @@ class BeatEmUp {
   static bonesRightLimitCss() {
     return BeatEmUp.clusterLeftCss() - 8;
   }
-  /** Pull fighter left so bones().x1 (current drawn pose, incl. kick/punch) stays ≤ cluster−8. */
+  /** Pull fighter left so bones().x1 stays ≤ cluster−8.
+   *  Caller must already be inside withDepth (update/draw). Do not nest —
+   *  a second depth scale under-measures bones at depth < 1 and leaves a sub-8px gap. */
   static clampFighterRight(entry) {
-    BeatEmUp.withDepth(entry, () => {
-      const b = entry.f.bones();
-      const screenX1 = (b.x1 - BeatEmUp.cameraX) * Game.scale;
-      const limit = BeatEmUp.bonesRightLimitCss();
-      if (screenX1 > limit) entry.f.x -= (screenX1 - limit) / Game.scale;
-    });
+    const b = entry.f.bones();
+    const screenX1 = (b.x1 - BeatEmUp.cameraX) * Game.scale;
+    const limit = BeatEmUp.bonesRightLimitCss();
+    if (screenX1 > limit) entry.f.x -= (screenX1 - limit) / Game.scale;
   }
   /** Soft lane max for body centre (same formula locked or free; cameraX differs). Hard limb rule is clampFighterRight. */
   static softMaxX() {
