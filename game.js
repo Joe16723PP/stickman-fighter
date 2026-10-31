@@ -157,8 +157,9 @@ class Pose {
   }
   static jump(apex) {
     const d = Pose.deg, tuck = apex ? 1 : .55;
+    // Both arms forward under fv=-face (was ±110 spread → rear hand ~47px away)
     return {chest:d(-6), neck:d(4), head:d(-4),
-      la:d(-110), le:d(-40), ra:d(110), re:d(-40),
+      la:d(-110), le:d(-40), ra:d(-110), re:d(-40),
       ll:d(25)*tuck, lk:d(110)*tuck, rl:d(-25)*tuck, rk:d(110)*tuck, hipBob:0};
   }
   static land() {
@@ -217,15 +218,16 @@ class Pose {
   }
   static hit() {
     const d = Pose.deg;
-    // head snaps back ~15°, chest bends away
-    return {chest:d(-18), neck:d(-8), head:d(-15),
+    // Chest/neck/head signs flipped for fv so torso recoils AWAY (~15°); arms stay toward foe
+    return {chest:d(15), neck:d(8), head:d(15),
       la:d(-100), le:d(-40), ra:d(-90), re:d(-35),
       ll:d(22), lk:d(28), rl:d(-30), rk:d(35), hipBob:0};
   }
   static koSprawl() {
     const d = Pose.deg;
-    return {chest:d(-55), neck:d(-20), head:d(-25),
-      la:d(-140), le:d(-20), ra:d(150), re:d(-25),
+    // Fall away from attacker under fv; arms ~horizontal toward foe (compensate lean)
+    return {chest:d(55), neck:d(20), head:d(25),
+      la:d(-95), le:d(-20), ra:d(-95), re:d(-20),
       ll:d(70), lk:d(20), rl:d(-80), rk:d(30), hipBob:8};
   }
 }
