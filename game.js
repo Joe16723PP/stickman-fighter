@@ -79,22 +79,21 @@ class Fighter {
     this.x += this.vx * dt; this.y += this.vy * dt;
     if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; if (this.state === 'jump') this.state = 'idle'; }
     else this.state = 'jump';
-    const m = Game.margin;
-    this.x = Math.max(Game.W * m, Math.min(Game.W * (1 - m), this.x));
+    this.x = Math.max(Game.minX, Math.min(Game.maxX, this.x));
     this.face = other.x >= this.x ? 1 : -1;
     this.pose = this.state === 'jump' ? Pose.jump() : this.state === 'walk' ? Pose.walk(this.walkT) : Pose.idle();
     this.hitbox.x = this.x - 21; this.hitbox.y = Game.GROUND + this.y - 135; this.hitbox.w = 42; this.hitbox.h = 135;
   }
   draw(ctx) {
-    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.pose;
+    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.pose, hr = 16.5;
     const hip = {x:this.x, y:g - 40 * s}, sh = {x:this.x + p.torso * 6 * s * f, y:hip.y - 36 * s};
-    const head = {x:sh.x, y:sh.y - 24 * s}, hr = 16.5;
+    const head = {x:sh.x, y:sh.y - hr};
     ctx.strokeStyle = this.color; ctx.fillStyle = this.color; ctx.lineWidth = 6; ctx.lineCap = 'round';
     Fighter.limb(ctx, sh, 18 * s, p.la * f, p.le * f);
     Fighter.limb(ctx, sh, 18 * s, p.ra * f, p.re * f);
     Fighter.limb(ctx, hip, 20 * s, p.ll * f, p.lk * f);
     Fighter.limb(ctx, hip, 20 * s, p.rl * f, p.rk * f);
-    ctx.beginPath(); ctx.moveTo(hip.x, hip.y); ctx.lineTo(sh.x, sh.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hip.x, hip.y); ctx.lineTo(sh.x, sh.y); ctx.lineTo(head.x, head.y + hr); ctx.stroke();
     ctx.beginPath(); ctx.arc(head.x, head.y, hr, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(this.tag, head.x, head.y - hr - 6);
@@ -112,8 +111,9 @@ var fighters = [
 ];
 
 class Game {
-  static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60; static margin = .15;
-  static canvas; static ctx; static acc = 0; static last = 0; static scale = 1;
+  static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60;
+  static minX = 192; static maxX = 768; static PAD_L = 138; static PAD_R = 212; static INSET = 16; static HALF = 21;
+  static canvas; static ctx; static acc = 0; static last = 0;
   static init() {
     Game.canvas = document.getElementById('game');
     Game.ctx = Game.canvas.getContext('2d');
@@ -127,15 +127,19 @@ class Game {
     const dpr = Math.max(1, devicePixelRatio || 1);
     const scale = Math.min(innerWidth / Game.W, innerHeight / Game.H);
     const cssW = Game.W * scale, cssH = Game.H * scale;
-    Game.scale = scale;
-    Game.margin = innerWidth < 740 ? .2 : .15;
+    const ox = (innerWidth - cssW) / 2;
     Game.canvas.style.width = cssW + 'px';
     Game.canvas.style.height = cssH + 'px';
     Game.canvas.width = Math.round(cssW * dpr);
     Game.canvas.height = Math.round(cssH * dpr);
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
-    const floor = cssH * (1 - Game.GROUND / Game.H);
-    document.documentElement.style.setProperty('--pad-scale', String(Math.min(1, Math.max(.2, (floor - 18) / (4 * 64 + 3 * 10)))));
+    const lane = innerWidth < 740 ? .2 : .15;
+    const gap = 6;
+    const left = (Game.INSET + Game.PAD_L + gap - ox) / scale + Game.HALF;
+    const right = (innerWidth - Game.INSET - Game.PAD_R - gap - ox) / scale - Game.HALF;
+    Game.minX = Math.max(Game.W * lane, left);
+    Game.maxX = Math.min(Game.W * (1 - lane), right);
+    if (Game.minX > Game.maxX - 80) { const mid = (Game.minX + Game.maxX) / 2; Game.minX = mid - 40; Game.maxX = mid + 40; }
   }
   static frame(now) {
     let dt = (now - Game.last) / 1000; Game.last = now;
