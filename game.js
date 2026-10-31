@@ -240,7 +240,7 @@ class Fighter {
     this.grounded = true; this.state = 'idle'; this.pose = Pose.idle(); this.walkT = 0;
     this.hp = 100; this.chip = 100; this.stun = 0; this.flash = 0; this.blocking = 0;
     this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0;
-    this.hitbox = {x:0,y:0,w:42,h:135};
+    this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
   }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n); }
   bones() {
@@ -269,13 +269,20 @@ class Fighter {
     if (this.state === 'special') return this.atkT <= this.atk.su ? Pose.windup() : Pose.special();
     return this.state === 'kick' ? Pose.kick() : Pose.punch();
   }
+  landCheck(wasAir) {
+    if (wasAir && this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; Fx.land(this.x); return true; }
+    if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; }
+    return false;
+  }
   update(dt, other, slot) {
     if (this.flash > 0) this.flash -= dt;
+    if (this.blockFlash > 0) this.blockFlash -= dt;
     if (this.chip > this.hp) this.chip = Math.max(this.hp, this.chip - (100 * dt / .3));
     if (this.hp <= 0) { this.state = 'ko'; this.pose = Pose.hit(); this.vx *= .9; this.x += this.vx * dt; return; }
     if (this.stun > 0) {
+      const wasAir = this.y < 0 || !this.grounded;
       this.stun--; this.vx *= .92; this.x += this.vx * dt; this.vy += 1600 * dt; this.y += this.vy * dt;
-      if (this.y >= 0) { this.y = 0; this.vy = 0; }
+      this.landCheck(wasAir);
       this.pose = Pose.hit(); this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
@@ -288,8 +295,9 @@ class Fighter {
         const move = Math.min(step, this.dashLeft);
         this.x += this.face * move; this.dashLeft -= move; this.vx = 0;
       } else this.vx = 0;
+      const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
-      if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; }
+      this.landCheck(wasAir);
       if (this.atkT >= tot) { this.atk = null; this.state = 'idle'; this.dashLeft = 0; }
       if (this.state !== 'special' || this.atkT <= a.su) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
@@ -314,9 +322,10 @@ class Fighter {
     else if (this.grounded && Input.edge(slot, 'punch')) this.startAtk('punch');
     else if (this.grounded && Input.edge(slot, 'kick')) this.startAtk('kick');
     if (this.atk) { this.pose = this.atkPose(); this.clamp(other); return; }
+    const wasAir = this.y < 0 || !this.grounded;
     this.vy += 1600 * dt; this.x += this.vx * dt; this.y += this.vy * dt;
-    if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; if (this.state === 'jump') this.state = 'idle'; }
-    else this.state = 'jump';
+    if (this.landCheck(wasAir)) { if (this.state === 'jump') this.state = 'idle'; }
+    else if (this.y < 0) this.state = 'jump';
     this.face = other.x >= this.x ? 1 : -1;
     this.pose = this.state === 'jump' ? Pose.jump() : this.state === 'walk' ? Pose.walk(this.walkT) : Pose.idle();
     this.clamp(other);
@@ -345,7 +354,7 @@ class Fighter {
     const frontal = (from.x - this.x) * this.face > 0;
     if (this.blocking && frontal) {
       const dmg = atk.special ? atk.chip : atk.dmg * .2;
-      this.hp = Math.max(0, this.hp - dmg); this.flash = .08;
+      this.hp = Math.max(0, this.hp - dmg); this.flash = .08; this.blockFlash = .12;
       this.vx = Math.sign(this.x - from.x) * atk.kb * .25; return 'block';
     }
     this.hp = Math.max(0, this.hp - atk.dmg); this.stun = atk.stun; this.flash = .08;
@@ -361,10 +370,17 @@ class Fighter {
     Fighter.limb(ctx, b.hip, 20 * s, p.ll * f, p.lk * f); Fighter.limb(ctx, b.hip, 20 * s, p.rl * f, p.rk * f);
     ctx.beginPath(); ctx.moveTo(b.hip.x, b.hip.y); ctx.lineTo(b.sh.x, b.sh.y); ctx.lineTo(b.head.x, b.head.y + b.hr); ctx.stroke();
     ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.hr, 0, Math.PI * 2); ctx.fill();
-    if (this.blocking) {
-      ctx.strokeStyle = this.color; ctx.globalAlpha = .6; ctx.lineWidth = 2;
+    if (this.blocking || this.blockFlash > 0) {
       const cx = this.x + this.face * 28, cy = b.sh.y + 10;
-      ctx.beginPath(); ctx.arc(cx, cy, 26, -1.2 + (this.face > 0 ? 0 : Math.PI), 1.2 + (this.face > 0 ? 0 : Math.PI)); ctx.stroke();
+      const a0 = -1.2 + (this.face > 0 ? 0 : Math.PI), a1 = 1.2 + (this.face > 0 ? 0 : Math.PI);
+      if (this.blocking) {
+        ctx.strokeStyle = this.color; ctx.globalAlpha = .6; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, 26, a0, a1); ctx.stroke();
+      }
+      if (this.blockFlash > 0) {
+        ctx.strokeStyle = '#FFFFFF'; ctx.globalAlpha = Math.min(1, this.blockFlash / .12); ctx.lineWidth = 1 / Game.scale;
+        ctx.beginPath(); ctx.arc(cx, cy, 26, a0, a1); ctx.stroke();
+      }
       ctx.globalAlpha = 1; ctx.lineWidth = Game.lw;
     }
     if (!Game.banner && Game.phase !== 'title') {
@@ -376,6 +392,71 @@ class Fighter {
     const j = {x:o.x + Math.sin(a1) * len, y:o.y + Math.cos(a1) * len};
     const e = {x:j.x + Math.sin(a1 + a2) * len, y:j.y + Math.cos(a1 + a2) * len};
     ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(j.x, j.y); ctx.lineTo(e.x, e.y); ctx.stroke();
+  }
+}
+
+
+class Fx {
+  static list = [];
+  static clear() { Fx.list = []; }
+  static hudBottom() {
+    const sc = Game.scale;
+    const safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
+    return (12 + safe) / sc + 12 / sc + 4 / sc + 5 / sc + 8 / sc;
+  }
+  static allowed(wx, wy) {
+    const sc = Game.scale, sx = (Game.ox || 0) + wx * sc, sy = (Game.oy || 0) + wy * sc, pad = 8;
+    if (wy < Fx.hudBottom()) return false;
+    for (const btn of Game.btns) {
+      if (sx >= btn.x - pad && sx <= btn.x + btn.w + pad && sy >= btn.y - pad && sy <= btn.y + btn.h + pad) return false;
+    }
+    return true;
+  }
+  static sparks(x, y, n, color, alpha, life) {
+    if (!Fx.allowed(x, y)) return;
+    const sc = Game.scale || 1, len = 10 / sc;
+    for (let i = 0; i < n; i++) {
+      const a = (Math.PI * 2 * i) / n + Math.random() * .35;
+      Fx.list.push({kind: 'spark', x, y, a, len, life, max: life, color, alpha: alpha == null ? 1 : alpha});
+    }
+  }
+  static hit(x, y) { Fx.sparks(x, y, 6, '#FFFFFF', 1, .12); }
+  static blocked(x, y) { Fx.sparks(x, y, 4, '#F5F5F5', .5, .12); }
+  static special(x, y) { Fx.sparks(x, y, 10, '#FBBF24', 1, .12); }
+  static land(x) {
+    const y = Game.GROUND, sc = Game.scale || 1;
+    for (let i = 0; i < 3; i++) {
+      const ox = x + (i - 1) * (6 / sc);
+      if (!Fx.allowed(ox, y - 2 / sc)) continue;
+      Fx.list.push({kind: 'dust', x: ox, y, life: .2, max: .2, r0: 4 / sc, r1: 10 / sc});
+    }
+  }
+  static update(dt) {
+    for (const e of Fx.list) e.life -= dt;
+    Fx.list = Fx.list.filter(e => e.life > 0);
+  }
+  static draw(ctx) {
+    const sc = Game.scale;
+    for (const e of Fx.list) {
+      const t = 1 - e.life / e.max;
+      if (e.kind === 'spark') {
+        const fade = e.life / e.max;
+        const x2 = e.x + Math.cos(e.a) * e.len * (1 - t * .35);
+        const y2 = e.y + Math.sin(e.a) * e.len * (1 - t * .35);
+        if (!Fx.allowed(e.x, e.y) && !Fx.allowed(x2, y2)) continue;
+        ctx.globalAlpha = e.alpha * fade;
+        ctx.strokeStyle = e.color; ctx.lineWidth = 2 / sc; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(x2, y2); ctx.stroke();
+      } else if (e.kind === 'dust') {
+        if (!Fx.allowed(e.x, e.y)) continue;
+        const fade = e.life / e.max;
+        const r = e.r0 + (e.r1 - e.r0) * t;
+        ctx.globalAlpha = .6 * fade;
+        ctx.fillStyle = '#3A3F52';
+        ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -408,7 +489,7 @@ class Game {
     Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
     fighters[0].meter = 0; fighters[1].meter = 0;
     Game.placeTitleFighters();
-    Bot.reset();
+    Fx.clear(); Bot.reset();
     Game.syncControls();
   }
   /** Title-only: idle fighters at ~15% / 85% width, facing in. Match spawn unchanged. */
@@ -434,7 +515,7 @@ class Game {
   static startRound() {
     Game.stop = 0; Game.shake = 0; Game.timer = 60; Game.fighting = 0; Game.matchOver = 0;
     fighters[0].reset(Game.W * .35, 1); fighters[1].reset(Game.W * .65, -1);
-    Bot.reset();
+    Fx.clear(); Bot.reset();
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
     Game.phase = 'intro'; Game.banner = 'Round ' + Game.round; Game.bannerT = 1.2;
     Game.syncSpecialBtn(); Game.syncControls();
@@ -479,7 +560,7 @@ class Game {
     Game.GROUND = Math.round(Game.H * .72);
     const scale = innerHeight / Game.H;
     Game.scale = scale; Game.ox = 0; Game.oy = 0;
-    Game.hr = Math.max(16.5, 13.2 / scale); Game.lw = Math.max(6, 4.1 / scale);
+    Game.hr = Math.max(16.5, 13.2 / scale); Game.lw = Math.max(6, 4.5 / scale);
     Game.canvas.style.width = innerWidth + 'px'; Game.canvas.style.height = innerHeight + 'px';
     Game.canvas.width = Math.round(innerWidth * dpr); Game.canvas.height = Math.round(innerHeight * dpr);
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
@@ -506,7 +587,11 @@ class Game {
       const kind = foe.takeHit(box, me);
       me.gainMeter(box.special ? 0 : box.dmg * 2.5);
       foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
-      Game.stop = .06; Game.shake = .12; Game.shMag = box.special ? 7 : 4;
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      if (box.special) Fx.special(cx, cy);
+      else if (kind === 'block') Fx.blocked(cx, cy);
+      else Fx.hit(cx, cy);
+      Game.stop = .06; Game.shake = .12; Game.shMag = 4;
       if (kind === 'hit') foe.vy = -120;
       if (kind === 'block' && box.special) Bot.lastBlockKind = 'special';
       if (foe.hp <= 0) Game.endRound(i);
@@ -541,6 +626,7 @@ class Game {
   static frame(now) {
     let dt = (now - Game.last) / 1000; Game.last = now; if (dt > .05) dt = .05;
     if (Game.shake > 0) Game.shake -= dt;
+    Fx.update(dt);
     if (Game.stop > 0) { Game.stop -= dt; Game.draw(); requestAnimationFrame(Game.frame); return; }
     Game.acc += dt;
     while (Game.acc >= Game.STEP) {
@@ -628,6 +714,25 @@ class Game {
     ctx.fillStyle = '#FFFFFF'; ctx.fillText(tStr, Game.W / 2, top + h / 2);
     ctx.textBaseline = 'alphabetic';
   }
+  static drawArena(ctx) {
+    const sc = Game.scale, gY = Game.GROUND;
+    const sky = ctx.createLinearGradient(0, 0, 0, gY);
+    sky.addColorStop(0, '#14151C'); sky.addColorStop(1, '#1F2230');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, Game.W, gY);
+    const yTop = Game.H * .55;
+    ctx.fillStyle = '#262A38';
+    const blocks = [
+      [0, 70, 55], [70, 50, 40], [120, 90, 70], [210, 40, 35], [250, 80, 60],
+      [330, 55, 45], [385, 100, 75], [485, 45, 38], [530, 75, 58], [605, 60, 48],
+      [665, 95, 72], [760, 50, 42], [810, 85, 65], [895, 55, 50]
+    ];
+    for (const [bx, bw, bh] of blocks) {
+      const x = bx / 960 * Game.W, w = bw / 960 * Game.W, h = Math.min(bh, gY - yTop);
+      ctx.fillRect(x, gY - h, w, h);
+    }
+    ctx.fillStyle = '#181A22'; ctx.fillRect(0, gY, Game.W, Game.H - gY);
+    ctx.fillStyle = '#3A3F52'; ctx.fillRect(0, gY, Game.W, 2 / sc);
+  }
   static drawTitle(ctx) {
     const sc = Game.scale;
     // Title
@@ -655,7 +760,7 @@ class Game {
     }
     ctx.globalAlpha = .8; ctx.fillStyle = '#FFFFFF';
     ctx.font = 16 / sc + 'px system-ui,sans-serif';
-    ctx.fillText('Tap to fight', Game.W / 2, Game.H * .78);
+    ctx.fillText('Tap to fight', Game.W / 2, Game.H * .82);
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
@@ -665,11 +770,9 @@ class Game {
     if (Game.shake > 0) { const m = Game.shMag * (Game.shake / .12); sx = (Math.random() - .5) * 2 * m; sy = (Math.random() - .5) * 2 * m; }
     ctx.clearRect(-10, -10, Game.W + 20, Game.H + 20);
     ctx.save(); ctx.translate(sx, sy);
-    ctx.fillStyle = '#1a1a22'; ctx.fillRect(0, 0, Game.W, Game.H);
-    ctx.fillStyle = '#2a2a35'; ctx.fillRect(0, Game.GROUND, Game.W, Game.H - Game.GROUND);
-    ctx.strokeStyle = '#444'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, Game.GROUND); ctx.lineTo(Game.W, Game.GROUND); ctx.stroke();
+    Game.drawArena(ctx);
     fighters.forEach(f => f.draw(ctx));
+    Fx.draw(ctx);
     ctx.restore();
     if (Game.phase === 'title') { Game.drawTitle(ctx); return; }
     Game.bars(ctx);
