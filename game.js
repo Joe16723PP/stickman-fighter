@@ -287,10 +287,11 @@ class Game {
       if (fromLeft) ctx.fillRect(x, top, cw, h); else ctx.fillRect(x + w - cw, top, cw, h);
       ctx.fillStyle = fromLeft ? '#3B82F6' : '#EF4444';
       if (fromLeft) ctx.fillRect(x, top, fw, h); else ctx.fillRect(x + w - fw, top, fw, h);
-      // Label inside the track so bars stay 12px from top (+ safe); 12px screen font
-      ctx.fillStyle = '#fff'; ctx.font = 12 / sc + 'px system-ui,sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, x + w / 2, top + h / 2);
+      ctx.font = 'bold ' + 12 / sc + 'px system-ui,sans-serif';
+      ctx.textAlign = fromLeft ? 'left' : 'right'; ctx.textBaseline = 'middle';
+      const lx = fromLeft ? x + 6 / sc : x + w - 6 / sc, ly = top + h / 2;
+      ctx.lineJoin = 'round'; ctx.lineWidth = 3 / sc; ctx.strokeStyle = '#0E0F12';
+      ctx.strokeText(label, lx, ly); ctx.fillStyle = '#FFFFFF'; ctx.fillText(label, lx, ly);
       ctx.textBaseline = 'alphabetic';
     };
     drawBar(x0, fighters[0].hp, fighters[0].chip, 1, 'YOU');
