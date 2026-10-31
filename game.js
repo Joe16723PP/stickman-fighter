@@ -1,3 +1,10 @@
+/* Difficulty tuning table — single source of truth */
+const Diff = {
+  easy:   { react: 0.40, block: 0.15, punish: 0.20, special: 0.08, mistake: 0.38, aggro: 0.28, cool: 1.05 },
+  normal: { react: 0.25, block: 0.35, punish: 0.50, special: 0.40, mistake: 0.12, aggro: 0.62, cool: 0.55 },
+  hard:   { react: 0.15, block: 0.55, punish: 1.00, special: 0.75, mistake: 0.03, aggro: 0.92, cool: 0.32 },
+};
+
 class Input {
   static keys = new Set();
   static pad = [{}, {}];
@@ -13,12 +20,16 @@ class Input {
     const on = (e, down) => {
       if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
       down ? Input.keys.add(e.key) : Input.keys.delete(e.key);
-      if (Game.matchOver && down) Game.restart();
+      if (down && Game.phase === 'title') { Game.tryTitleKey(e.key); return; }
+      if (Game.matchOver && down) Game.goTitle();
     };
     addEventListener('keydown', e => on(e, 1));
     addEventListener('keyup', e => on(e, 0));
     addEventListener('blur', () => { Input.keys.clear(); Input.pad.forEach(p => Input.acts.forEach(a => p[a] = 0)); });
-    addEventListener('pointerdown', () => { if (Game.matchOver) Game.restart(); });
+    addEventListener('pointerdown', e => {
+      if (Game.phase === 'title') { Game.titlePointer(e); return; }
+      if (Game.matchOver) Game.goTitle();
+    });
     document.querySelectorAll('#controls button[data-k]').forEach(btn => {
       const set = v => {
         const k = btn.dataset.k;
@@ -59,29 +70,163 @@ class Pose {
 }
 
 class Bot {
-  static wait = 0; static mode = 'in'; static cool = 0; static react = 0; static plan = ''; static blockT = 0;
+  /* Modes: approach | poke | pressure | retreat | punish */
+  static mode = 'approach';
+  static wait = 0; static cool = 0; static react = 0; static plan = ''; static blockT = 0;
+  static stringLeft = 0; static modeT = 0;
+  static seenAtk = 0; static atkStreak = 0; static lastFoeAtk = '';
+  static spamMove = ''; static spamCount = 0; static foeStill = 0;
+  static lastFoeX = 0; static pending = null; static pendingT = 0;
+  static lastBlockKind = '';
+  static cfg() { return Diff[Game.level] || Diff.normal; }
+  static reset() {
+    Bot.mode = 'approach'; Bot.wait = 0; Bot.cool = .4; Bot.react = 0; Bot.plan = '';
+    Bot.blockT = 0; Bot.stringLeft = 0; Bot.modeT = 0;
+    Bot.seenAtk = 0; Bot.atkStreak = 0; Bot.lastFoeAtk = '';
+    Bot.spamMove = ''; Bot.spamCount = 0; Bot.foeStill = 0;
+    Bot.lastFoeX = 0; Bot.pending = null; Bot.pendingT = 0; Bot.lastBlockKind = '';
+  }
+  static queue(act, delay) {
+    const cfg = Bot.cfg();
+    Bot.pending = act;
+    Bot.pendingT = (delay == null ? cfg.react : delay) * (0.85 + Math.random() * .3);
+  }
+  static inStartup(foe) {
+    return !!(foe.atk && foe.atkT > 0 && foe.atkT <= foe.atk.su);
+  }
+  static inRecovery(foe) {
+    if (!foe.atk) return false;
+    const a = foe.atk;
+    return foe.atkT > a.su + a.ac;
+  }
+  static whiffedKick(foe, dist) {
+    return foe.state === 'kick' && foe.atk && Bot.inRecovery(foe) && dist > 100;
+  }
+  static observe(dt, me, foe) {
+    const dist = Math.abs(foe.x - me.x);
+    const moved = Math.abs(foe.x - Bot.lastFoeX) > 1;
+    Bot.lastFoeX = foe.x;
+    if (moved || foe.atk) Bot.foeStill = 0; else Bot.foeStill += dt;
+    if (foe.atk && !Bot.seenAtk) {
+      Bot.seenAtk = 1;
+      const kind = foe.state;
+      if (kind === Bot.lastFoeAtk) Bot.atkStreak++; else Bot.atkStreak = 1;
+      Bot.lastFoeAtk = kind;
+      if (kind === Bot.spamMove) Bot.spamCount++;
+      else { Bot.spamMove = kind; Bot.spamCount = 1; }
+    }
+    if (!foe.atk) Bot.seenAtk = 0;
+    return dist;
+  }
+  static pickMode(dist, me, foe) {
+    const cfg = Bot.cfg();
+    const kickR = 150, punchR = 90;
+    if (Bot.whiffedKick(foe, dist) || (Bot.lastBlockKind === 'special' && Bot.inRecovery(foe))) {
+      if (Math.random() < cfg.punish) { Bot.mode = 'punish'; Bot.modeT = .6; return; }
+    }
+    if (Bot.inRecovery(foe) && dist < kickR && Math.random() < cfg.punish) {
+      Bot.mode = 'punish'; Bot.modeT = .5; return;
+    }
+    if (Bot.foeStill > 1.4 && Bot.spamCount >= 3 && dist < 180) {
+      Bot.mode = 'punish'; Bot.modeT = .5; Bot.plan = 'jump'; return;
+    }
+    if (Bot.modeT > 0) return;
+    if (dist > kickR + 30) Bot.mode = 'approach';
+    else if (dist > punchR + 10) Bot.mode = 'poke';
+    else if (Bot.stringLeft > 0) Bot.mode = 'pressure';
+    else if (dist < punchR - 15) Bot.mode = 'retreat';
+    else Bot.mode = Math.random() < .55 ? 'poke' : 'pressure';
+    Bot.modeT = .35 + Math.random() * .45;
+  }
   static update(dt, me, foe) {
     const p = Input.pad[1];
     Input.acts.forEach(a => p[a] = 0);
-    Bot.wait -= dt; Bot.cool -= dt; Bot.react -= dt; Bot.blockT -= dt;
+    const cfg = Bot.cfg();
+    Bot.wait -= dt; Bot.cool -= dt; Bot.react -= dt; Bot.blockT -= dt; Bot.modeT -= dt;
+    if (Bot.pendingT > 0) Bot.pendingT -= dt;
     if (!Game.fighting || me.stun > 0 || me.atk) return;
+    const dist = Bot.observe(dt, me, foe);
+    const dx = foe.x - me.x, dir = Math.sign(dx) || 1;
+
     if (Bot.blockT > 0) { p.block = 1; return; }
-    if (Bot.react > 0) return;
-    if (Bot.plan === 'block') { Bot.blockT = .35 + Math.random() * .35; Bot.plan = ''; return; }
-    if (Bot.plan) { p[Bot.plan] = 1; Bot.plan = ''; Bot.cool = .4 + Math.random() * .8; return; }
-    if (Bot.wait > 0) return;
-    const dx = foe.x - me.x, dist = Math.abs(dx), dir = Math.sign(dx) || 1;
-    if (me.meter >= 100 && dist < Game.W * .42 && Bot.cool <= 0) {
-      Bot.plan = 'special'; Bot.react = .12 + Math.random() * .18; return;
+
+    // Deliberate mistake: freeze briefly
+    if (Math.random() < cfg.mistake * dt * 0.35) { Bot.wait = .12 + Math.random() * .2; }
+
+    // Reaction queue flush
+    if (Bot.pending && Bot.pendingT <= 0) {
+      const act = Bot.pending; Bot.pending = null;
+      if (act === 'block') { Bot.blockT = .3 + Math.random() * .35; p.block = 1; return; }
+      if (act !== 'block' && act !== 'jump' && Math.random() > cfg.aggro) {
+        Bot.cool = cfg.cool * (.5 + Math.random() * .5); return;
+      }
+      p[act] = 1; Bot.cool = cfg.cool * (.7 + Math.random() * .8);
+      if (act === 'punch' || act === 'kick') Bot.stringLeft = Math.max(0, Bot.stringLeft - 1);
+      if (act === 'punch' || act === 'kick') { Bot.mode = 'retreat'; Bot.modeT = .25 + Math.random() * .2; }
+      return;
     }
-    if (foe.atk && dist < 130 && Math.random() < .5) { Bot.plan = 'block'; Bot.react = .1 + Math.random() * .2; return; }
-    if (Bot.cool <= 0 && dist < 95) { Bot.plan = 'punch'; Bot.react = .15 + Math.random() * .25; return; }
-    if (Bot.cool <= 0 && dist < 160) { Bot.plan = 'kick'; Bot.react = .18 + Math.random() * .28; return; }
-    if (Bot.mode === 'in' && dist <= 150) { Bot.mode = 'out'; Bot.wait = .15 + Math.random() * .2; return; }
-    if (Bot.mode === 'out' && dist >= 210) { Bot.mode = 'in'; Bot.wait = .12 + Math.random() * .2; return; }
-    if (Bot.mode === 'in') { if (dir < 0) p.left = 1; else p.right = 1; }
-    else { if (dir < 0) p.right = 1; else p.left = 1; }
-    if (Bot.cool <= 0 && Math.random() < .01) { p.jump = 1; Bot.cool = .9 + Math.random() * .8; }
+    if (Bot.react > 0 || Bot.pending) return;
+    if (Bot.plan === 'block') { Bot.blockT = .3 + Math.random() * .35; Bot.plan = ''; return; }
+    if (Bot.plan) { p[Bot.plan] = 1; Bot.plan = ''; Bot.cool = cfg.cool * (.7 + Math.random() * .8); return; }
+    if (Bot.wait > 0) return;
+
+    // Visible-state block read (startup only), boosted after 2-in-a-row
+    if (Bot.inStartup(foe) && dist < 150) {
+      let chance = cfg.block;
+      if (Bot.atkStreak >= 2) chance = Math.min(1, chance + .25);
+      if (foe.state === 'special') chance = Math.min(1, chance + .15);
+      if (Math.random() < chance) {
+        Bot.queue('block');
+        if (foe.state === 'special') Bot.lastBlockKind = 'special';
+        else Bot.lastBlockKind = foe.state;
+        return;
+      }
+    }
+
+    // Special: meter full AND (in range OR foe in recovery)
+    if (me.meter >= 100 && Bot.cool <= 0) {
+      const inRange = dist < Game.W * .4;
+      const can = (inRange || Bot.inRecovery(foe)) && Math.random() < cfg.special;
+      if (can) { Bot.queue('special', cfg.react * .8); return; }
+    }
+
+    Bot.pickMode(dist, me, foe);
+
+    // Habit breaker jump
+    if (Bot.foeStill > 1.4 && Bot.spamCount >= 3 && dist < 170 && Bot.cool <= 0) {
+      Bot.queue('jump', cfg.react); Bot.spamCount = 0; return;
+    }
+
+    if (Bot.mode === 'punish' && Bot.cool <= 0) {
+      Bot.queue(dist < 100 ? 'punch' : 'kick', cfg.react * .7);
+      Bot.mode = 'retreat'; Bot.modeT = .3; return;
+    }
+
+    if (Bot.mode === 'approach') {
+      if (dir < 0) p.left = 1; else p.right = 1;
+      if (dist < 155 && Bot.cool <= 0 && Math.random() < .4) Bot.queue('kick');
+      return;
+    }
+    if (Bot.mode === 'poke') {
+      if (dist > 160) { if (dir < 0) p.left = 1; else p.right = 1; }
+      else if (dist < 130) { if (dir < 0) p.right = 1; else p.left = 1; }
+      if (Bot.cool <= 0 && dist < 165 && dist > 100 && Math.random() < cfg.aggro) {
+        Bot.queue('kick'); Bot.stringLeft = 1 + (Math.random() < .4 ? 1 : 0);
+      } else if (Bot.cool <= 0 && Math.random() < (1 - cfg.aggro) * .02) Bot.wait = .2 + Math.random() * .4;
+      return;
+    }
+    if (Bot.mode === 'pressure') {
+      if (dir < 0) p.left = 1; else p.right = 1;
+      if (Bot.cool <= 0 && dist < 100 && Math.random() < cfg.aggro) {
+        Bot.queue('punch'); Bot.stringLeft = Math.max(Bot.stringLeft, 1);
+      } else if (Bot.cool <= 0 && dist < 150 && Math.random() < cfg.aggro) Bot.queue('kick');
+      return;
+    }
+    if (Bot.mode === 'retreat') {
+      if (dir < 0) p.right = 1; else p.left = 1;
+      if (dist > 150) { Bot.mode = 'poke'; Bot.modeT = .4; }
+      return;
+    }
   }
 }
 
@@ -222,7 +367,7 @@ class Fighter {
       ctx.beginPath(); ctx.arc(cx, cy, 26, -1.2 + (this.face > 0 ? 0 : Math.PI), 1.2 + (this.face > 0 ? 0 : Math.PI)); ctx.stroke();
       ctx.globalAlpha = 1; ctx.lineWidth = Game.lw;
     }
-    if (!Game.banner) {
+    if (!Game.banner && Game.phase !== 'title') {
       ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(this.tag, b.head.x, b.y0 - 12 / Game.scale);
     }
@@ -243,25 +388,77 @@ class Game {
   static stop = 0; static shake = 0; static shMag = 0;
   static canvas; static ctx; static acc = 0; static last = 0;
   static round = 1; static wins = [0, 0]; static timer = 60;
-  static phase = 'intro'; static banner = ''; static bannerT = 0;
+  static phase = 'title'; static banner = ''; static bannerT = 0;
   static fighting = 0; static matchOver = 0; static winner = '';
+  static level = 'normal';
+  static levels = ['easy', 'normal', 'hard'];
+  static levelLabels = {easy:'Easy', normal:'Normal', hard:'Hard'};
+  static titleBtns = [];
   static init() {
     Game.canvas = document.getElementById('game'); Game.ctx = Game.canvas.getContext('2d');
-    Input.bind(); Game.restart(); Game.fit(); addEventListener('resize', () => Game.fit());
+    try {
+      const saved = localStorage.getItem('stickman-level');
+      if (saved && Diff[saved]) Game.level = saved;
+    } catch (e) {}
+    Input.bind(); Game.goTitle(); Game.fit(); addEventListener('resize', () => Game.fit());
     Game.last = performance.now(); requestAnimationFrame(Game.frame);
   }
-  static restart() {
+  static goTitle() {
+    Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
+    Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
+    fighters[0].meter = 0; fighters[1].meter = 0;
+    fighters[0].reset(Game.W * .35, 1); fighters[1].reset(Game.W * .65, -1);
+    Bot.reset();
+    Game.syncControls();
+  }
+  static startMatch() {
+    try { localStorage.setItem('stickman-level', Game.level); } catch (e) {}
     Game.round = 1; Game.wins = [0, 0]; Game.matchOver = 0; Game.winner = '';
     fighters[0].meter = 0; fighters[1].meter = 0;
+    Game.syncControls();
     Game.startRound();
   }
   static startRound() {
     Game.stop = 0; Game.shake = 0; Game.timer = 60; Game.fighting = 0; Game.matchOver = 0;
     fighters[0].reset(Game.W * .35, 1); fighters[1].reset(Game.W * .65, -1);
-    Bot.wait = 0; Bot.mode = 'in'; Bot.cool = .5; Bot.react = 0; Bot.plan = ''; Bot.blockT = 0;
+    Bot.reset();
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
     Game.phase = 'intro'; Game.banner = 'Round ' + Game.round; Game.bannerT = 1.2;
-    Game.syncSpecialBtn();
+    Game.syncSpecialBtn(); Game.syncControls();
+  }
+  static syncControls() {
+    const el = document.getElementById('controls');
+    if (el) el.style.display = Game.phase === 'title' ? 'none' : '';
+  }
+  static titleLayout() {
+    const sc = Game.scale;
+    const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
+    const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
+    const inset = 16 / sc + Math.max(safeL, safeR) / sc;
+    const bw = 120 / sc, bh = 57 / sc, gap = 12 / sc;
+    const total = 3 * bw + 2 * gap;
+    let x0 = (Game.W - total) / 2;
+    x0 = Math.max(inset, Math.min(Game.W - inset - total, x0));
+    const y = Game.H * .55 - bh / 2;
+    return Game.levels.map((id, i) => ({id, x: x0 + i * (bw + gap), y, w: bw, h: bh}));
+  }
+  static titlePointer(e) {
+    const sc = Game.scale;
+    const gx = e.clientX / sc, gy = e.clientY / sc;
+    const hit = Game.titleLayout().find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
+    if (hit) { Game.level = hit.id; return; }
+    Game.startMatch();
+  }
+  static tryTitleKey(key) {
+    if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+      const i = Game.levels.indexOf(Game.level);
+      Game.level = Game.levels[Math.max(0, i - 1)]; return;
+    }
+    if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+      const i = Game.levels.indexOf(Game.level);
+      Game.level = Game.levels[Math.min(Game.levels.length - 1, i + 1)]; return;
+    }
+    if (key === 'Enter' || key === ' ' || key === 'j' || key === 'J') Game.startMatch();
   }
   static fit() {
     const dpr = Math.max(1, devicePixelRatio || 1);
@@ -275,13 +472,14 @@ class Game {
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     const lane = innerWidth < 740 ? .2 : .15;
     Game.minX = Game.W * lane; Game.maxX = Game.W * (1 - lane);
-    if (Game.fighting || Game.phase === 'intro' || Game.phase === 'fight') {
+    if (Game.phase !== 'matchEnd') {
       fighters[0].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[0].x || Game.W * .35));
       fighters[1].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[1].x || Game.W * .65));
     }
-    Game.btns = [...document.querySelectorAll('#controls button')].map(el => {
+    Game.btns = Game.phase === 'title' ? [] : [...document.querySelectorAll('#controls button')].map(el => {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     });
+    Game.titleBtns = Game.titleLayout();
   }
   static hitTest(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
   static resolve() {
@@ -295,6 +493,7 @@ class Game {
       foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       Game.stop = .06; Game.shake = .12; Game.shMag = box.special ? 7 : 4;
       if (kind === 'hit') foe.vy = -120;
+      if (kind === 'block' && box.special) Bot.lastBlockKind = 'special';
       if (foe.hp <= 0) Game.endRound(i);
     }
   }
@@ -313,7 +512,6 @@ class Game {
   }
   static checkTimeout() {
     if (fighters[0].hp === fighters[1].hp) {
-      // slight edge to higher chip leftover already equal — give to neither via damage, prefer who has more... equal → player 0? Spec: higher health. Tie: still pick by hp then meter then player.
       if (fighters[0].meter !== fighters[1].meter) Game.endRound(fighters[0].meter > fighters[1].meter ? 0 : 1);
       else Game.endRound(0);
     } else Game.endRound(fighters[0].hp > fighters[1].hp ? 0 : 1);
@@ -332,7 +530,10 @@ class Game {
     Game.acc += dt;
     while (Game.acc >= Game.STEP) {
       const step = Game.STEP;
-      if (Game.phase === 'intro' || Game.phase === 'roundEnd') {
+      if (Game.phase === 'title') {
+        fighters[0].face = 1; fighters[1].face = -1;
+        fighters[0].pose = Pose.idle(); fighters[1].pose = Pose.idle();
+      } else if (Game.phase === 'intro' || Game.phase === 'roundEnd') {
         Game.bannerT -= step;
         if (Game.bannerT <= 0) {
           if (Game.phase === 'intro') {
@@ -351,6 +552,7 @@ class Game {
           if (Input.pad[1].punch) Input.was[1].punch = 0;
           if (Input.pad[1].kick) Input.was[1].kick = 0;
           if (Input.pad[1].special) Input.was[1].special = 0;
+          if (Input.pad[1].jump) Input.was[1].jump = 0;
           fighters[0].update(step, fighters[1], 0);
           fighters[1].update(step, fighters[0], 1);
           Game.resolve();
@@ -360,7 +562,7 @@ class Game {
       }
       Game.acc -= step;
     }
-    Game.syncSpecialBtn();
+    if (Game.phase !== 'title') Game.syncSpecialBtn();
     Game.draw(); requestAnimationFrame(Game.frame);
   }
   static bars(ctx) {
@@ -390,7 +592,6 @@ class Game {
     };
     drawBar(x0, fighters[0].hp, fighters[0].chip, 1, 'YOU', fighters[0].meter);
     drawBar(x1, fighters[1].hp, fighters[1].chip, 0, 'CPU', fighters[1].meter);
-    // Round-win dots next to each bar (outer sides)
     const dy = top + h / 2, r = 4 / sc, gapD = 12 / sc;
     for (let i = 0; i < 2; i++) {
       const won = Game.wins[i];
@@ -403,7 +604,6 @@ class Game {
         ctx.fill(); ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc; ctx.stroke();
       }
     }
-    // Timer top centre
     const tStr = String(Math.ceil(Math.max(0, Game.timer))).padStart(2, '0');
     ctx.font = 'bold ' + 22 / sc + 'px system-ui,sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -411,6 +611,36 @@ class Game {
     ctx.strokeText(tStr, Game.W / 2, top + h / 2);
     ctx.fillStyle = '#FFFFFF'; ctx.fillText(tStr, Game.W / 2, top + h / 2);
     ctx.textBaseline = 'alphabetic';
+  }
+  static drawTitle(ctx) {
+    const sc = Game.scale;
+    // Title
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold ' + 40 / sc + 'px system-ui,sans-serif';
+    ctx.lineJoin = 'round'; ctx.lineWidth = 3 / sc; ctx.strokeStyle = '#0E0F12';
+    ctx.strokeText('STICKMAN FIGHTER', Game.W / 2, Game.H * .22);
+    ctx.fillStyle = '#FFFFFF'; ctx.fillText('STICKMAN FIGHTER', Game.W / 2, Game.H * .22);
+    // Level buttons
+    const btns = Game.titleLayout();
+    Game.titleBtns = btns;
+    ctx.font = 'bold ' + 18 / sc + 'px system-ui,sans-serif';
+    for (const b of btns) {
+      const sel = b.id === Game.level;
+      ctx.fillStyle = sel ? '#FBBF24' : '#2A2D35';
+      ctx.fillRect(b.x, b.y, b.w, b.h);
+      if (sel) {
+        ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc; ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = '#0E0F12';
+      } else {
+        ctx.strokeStyle = 'rgba(245,245,245,.4)'; ctx.lineWidth = 2 / sc; ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.fillStyle = '#FFFFFF';
+      }
+      ctx.fillText(Game.levelLabels[b.id], b.x + b.w / 2, b.y + b.h / 2);
+    }
+    ctx.globalAlpha = .8; ctx.fillStyle = '#FFFFFF';
+    ctx.font = 16 / sc + 'px system-ui,sans-serif';
+    ctx.fillText('Tap to fight', Game.W / 2, Game.H * .78);
+    ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
     const ctx = Game.ctx;
@@ -425,6 +655,7 @@ class Game {
     ctx.beginPath(); ctx.moveTo(0, Game.GROUND); ctx.lineTo(Game.W, Game.GROUND); ctx.stroke();
     fighters.forEach(f => f.draw(ctx));
     ctx.restore();
+    if (Game.phase === 'title') { Game.drawTitle(ctx); return; }
     Game.bars(ctx);
     if (Game.banner) {
       ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
@@ -435,8 +666,8 @@ class Game {
       if (Game.matchOver) {
         ctx.font = 16 / Game.scale + 'px system-ui,sans-serif';
         ctx.lineWidth = 3 / Game.scale;
-        ctx.strokeText('Tap to restart', Game.W / 2, Game.H * .42 + 40 / Game.scale);
-        ctx.fillText('Tap to restart', Game.W / 2, Game.H * .42 + 40 / Game.scale);
+        ctx.strokeText('Tap for title', Game.W / 2, Game.H * .42 + 40 / Game.scale);
+        ctx.fillText('Tap for title', Game.W / 2, Game.H * .42 + 40 / Game.scale);
       }
     }
   }
