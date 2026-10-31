@@ -126,7 +126,15 @@ class CombatPose {
 
 class Pose {
   static KEYS = ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk','hipBob','shPull'];
+  static ANGLE_KEYS = ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk'];
   static deg(d) { return d * Math.PI / 180; }
+  /** Shortest signed delta from a→b in radians, in (-π, π]. */
+  static angleDelta(a, b) {
+    let d = (b || 0) - (a || 0);
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d <= -Math.PI) d += Math.PI * 2;
+    return d;
+  }
   static base() {
     return {chest:0, neck:0, head:0, la:0, le:0, ra:0, re:0, ll:0, lk:0, rl:0, rk:0, hipBob:0, shPull:0};
   }
@@ -134,7 +142,24 @@ class Pose {
     const o = {}; for (const k of Pose.KEYS) o[k] = p[k] || 0; return o;
   }
   static lerp(a, b, t) {
-    const o = {}; for (const k of Pose.KEYS) o[k] = (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * t; return o;
+    const o = {};
+    for (const k of Pose.KEYS) {
+      if (Pose.ANGLE_KEYS.indexOf(k) >= 0)
+        o[k] = (a[k] || 0) + Pose.angleDelta(a[k], b[k]) * t;
+      else
+        o[k] = (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * t;
+    }
+    return o;
+  }
+  /** Step each angle toward target by at most maxStep radians (shortest path). */
+  static stepAngles(from, to, maxStep) {
+    const o = Pose.copy(to);
+    for (const k of Pose.ANGLE_KEYS) {
+      const d = Pose.angleDelta(from[k], to[k]);
+      if (Math.abs(d) <= maxStep) o[k] = to[k];
+      else o[k] = (from[k] || 0) + Math.sign(d) * maxStep;
+    }
+    return o;
   }
   static easeOut(t) { t = Math.max(0, Math.min(1, t)); return 1 - Math.pow(1 - t, 3); }
   /** Fight stance, hands near face. */
@@ -171,10 +196,10 @@ class Pose {
   }
   static punchWind() {
     const d = Pose.deg, id = Pose.idle();
-    // Chamber / pull-back (AC6): chest +8° away, lead elbow ~40°, lead shoulder 6px back (shPull → bones only)
-    // ra positive under fv=-face chambers the lead arm rearward (away from foe)
+    // Cocked fist (R2-1): chest +8° away, shPull 6px; re≈140° bend ⇒ ~40° inside elbow;
+    // ra≈75° places wrist 6–14px behind shoulder, near chin height (bones only)
     return {chest:d(8), neck:d(-2), head:d(-2),
-      la:id.la, le:id.le, ra:d(28), re:d(40),
+      la:id.la, le:id.le, ra:d(75), re:d(140),
       ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0, shPull:6};
   }
   static punchStrike(over) {
@@ -429,6 +454,7 @@ class Fighter {
     this.chain = 0; this.chainArmed = 0;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
     this.landSquash = 0; this.koT = 0; this.atkPhase = '';
+    this.punchSoft = 0;
   }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n); }
   aim(key, target, dur) {
@@ -436,13 +462,31 @@ class Fighter {
       this.poseTo = target; return;
     }
     if (this.poseKey === key) { this.poseTo = target; return; }
+    const punchPhase = /^(pw|pwd|ps|ps2|pr)$/.test(key);
+    // Keep 15°/frame soft-step across punch→idle so recovery cannot snap (R2-2)
+    if (punchPhase || this.punchSoft) this.punchSoft = 1;
     this.poseFrom = Pose.copy(this.pose); this.poseTo = target;
     this.blendT = 0; this.blendDur = Math.max(.04, dur); this.poseKey = key;
   }
   tickPose(dt) {
     this.blendT = Math.min(this.blendDur, this.blendT + dt);
     const u = Pose.easeOut(this.blendDur <= 0 ? 1 : this.blendT / this.blendDur);
-    this.pose = Pose.lerp(this.poseFrom, this.poseTo, u);
+    const lerped = Pose.lerp(this.poseFrom, this.poseTo, u);
+    let next = lerped;
+    // R2-2: shortest-path lerp + ≤15°/frame through punch windup/strike/recovery (and trailing idle)
+    if (this.punchSoft) {
+      next = Pose.stepAngles(this.pose, lerped, Pose.deg(15));
+      next.hipBob = lerped.hipBob;
+      next.shPull = lerped.shPull;
+    }
+    this.pose = next;
+    if (this.punchSoft && this.blendT >= this.blendDur) {
+      let settled = true;
+      for (const k of Pose.ANGLE_KEYS) {
+        if (Math.abs(Pose.angleDelta(this.pose[k], this.poseTo[k])) > Pose.deg(0.5)) { settled = false; break; }
+      }
+      if (settled && !/^(pw|pwd|ps|ps2|pr)$/.test(this.poseKey)) this.punchSoft = 0;
+    }
     if (this.landSquash > 0) {
       this.landSquash = Math.max(0, this.landSquash - dt);
       const k = this.landSquash / .08;
