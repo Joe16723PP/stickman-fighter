@@ -980,9 +980,19 @@ class BeatEmUp {
     if (el) return el.getBoundingClientRect().left;
     return innerWidth - 16 - (64 + 10 + 64);
   }
-  /** Hard right limit for drawn bones in CSS px: 8px left of the P/K/B/S cluster (682 @ 844). */
+  /** Right edge of the L/R move pad in CSS px. */
+  static movePadRightCss() {
+    const el = document.querySelector('#controls .pad.left .move') || document.querySelector('#controls .pad.left');
+    if (el) return el.getBoundingClientRect().right;
+    return 16 + (64 + 10 + 64);
+  }
+  /** Hard right limit for drawn bones in CSS px: 8px left of the P/K/B/S cluster. */
   static bonesRightLimitCss() {
     return BeatEmUp.clusterLeftCss() - 8;
+  }
+  /** Hard left limit for drawn bones in CSS px: 8px right of the move pad. */
+  static bonesLeftLimitCss() {
+    return BeatEmUp.movePadRightCss() + 8;
   }
   /** Pull fighter left so bones().x1 stays ≤ cluster−8.
    *  Caller must already be inside withDepth (update/draw). Do not nest —
@@ -993,9 +1003,25 @@ class BeatEmUp {
     const limit = BeatEmUp.bonesRightLimitCss();
     if (screenX1 > limit) entry.f.x -= (screenX1 - limit) / Game.scale;
   }
-  /** Soft lane max for body centre (same formula locked or free; cameraX differs). Hard limb rule is clampFighterRight. */
+  /** Pull fighter right so bones().x0 stays ≥ movePad+8. Same depth-once rule as clampFighterRight. */
+  static clampFighterLeft(entry) {
+    const b = entry.f.bones();
+    const screenX0 = (b.x0 - BeatEmUp.cameraX) * Game.scale;
+    const limit = BeatEmUp.bonesLeftLimitCss();
+    if (screenX0 < limit) entry.f.x += (limit - screenX0) / Game.scale;
+  }
+  /** Soft + hard limb clamps for current pose (left then right). */
+  static clampFighterBones(entry) {
+    BeatEmUp.clampFighterLeft(entry);
+    BeatEmUp.clampFighterRight(entry);
+  }
+  /** Soft lane max for body centre. Hard limb rule is clampFighterBones. */
   static softMaxX() {
     return BeatEmUp.cameraX + BeatEmUp.bonesRightLimitCss() / Game.scale;
+  }
+  /** Soft lane min for body centre (mirrors softMaxX). */
+  static softMinX() {
+    return BeatEmUp.cameraX + BeatEmUp.bonesLeftLimitCss() / Game.scale;
   }
   static withDepth(entry, fn) {
     const savedGround = Game.GROUND;
@@ -1200,10 +1226,10 @@ class BeatEmUp {
 
     // Update player with temporary ground + against dummy other for facing
     BeatEmUp.withDepth(player, () => {
-      Game.minX = BeatEmUp.locked ? BeatEmUp.lockL + 40 : BeatEmUp.cameraX + 40;
+      Game.minX = BeatEmUp.softMinX();
       Game.maxX = BeatEmUp.softMaxX();
       player.f.update(dt, faceOther, 0);
-      BeatEmUp.clampFighterRight(player);
+      BeatEmUp.clampFighterBones(player);
     });
 
     // AI plans pads, then each enemy updates with its own pad on slot 1
@@ -1213,10 +1239,10 @@ class BeatEmUp {
       const pad = e._pad || {};
       Input.acts.forEach(a => { Input.pad[1][a] = pad[a] || 0; Input.was[1][a] = 0; });
       BeatEmUp.withDepth(e, () => {
-        Game.minX = BeatEmUp.lockL + 20;
+        Game.minX = BeatEmUp.softMinX();
         Game.maxX = BeatEmUp.softMaxX();
         e.f.update(dt, player.f, 1);
-        BeatEmUp.clampFighterRight(e);
+        BeatEmUp.clampFighterBones(e);
       });
       Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
     }
