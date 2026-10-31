@@ -108,7 +108,7 @@ class Atk {
   static get special() { return Atk.of('special'); }
 }
 
-class Pose {
+class CombatPose {
   static idle() { return {torso:0,la:-.4,le:-.2,ra:.4,re:.2,ll:.15,lk:.1,rl:-.15,rk:-.1}; }
   static walk(t) {
     const s = Math.sin(t * 10) * .55, c = Math.cos(t * 10) * .35;
@@ -121,6 +121,111 @@ class Pose {
   static windup() { return {torso:.1,la:-.8,le:-.3,ra:.6,re:.2,ll:-.6,lk:.9,rl:.3,rk:.2}; }
   static block() { return {torso:-.05,la:.9,le:1.2,ra:.7,re:1.1,ll:.2,lk:.15,rl:-.2,rk:.15}; }
   static hit() { return {torso:-.2,la:-1.2,le:-.4,ra:-1,re:-.3,ll:.3,lk:.2,rl:-.4,rk:.3}; }
+}
+
+class Pose {
+  static KEYS = ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk','hipBob'];
+  static deg(d) { return d * Math.PI / 180; }
+  static base() {
+    return {chest:0, neck:0, head:0, la:0, le:0, ra:0, re:0, ll:0, lk:0, rl:0, rk:0, hipBob:0};
+  }
+  static copy(p) {
+    const o = {}; for (const k of Pose.KEYS) o[k] = p[k] || 0; return o;
+  }
+  static lerp(a, b, t) {
+    const o = {}; for (const k of Pose.KEYS) o[k] = (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * t; return o;
+  }
+  static easeOut(t) { t = Math.max(0, Math.min(1, t)); return 1 - Math.pow(1 - t, 3); }
+  /** Fight stance, hands near face. */
+  static idle() {
+    const d = Pose.deg;
+    return {chest:d(4), neck:d(-2), head:0,
+      la:d(-70), le:d(-95), ra:d(55), re:d(-100),
+      ll:d(12), lk:d(18), rl:d(-14), rk:d(16), hipBob:0};
+  }
+  /** Legs ±28°, opposite arms ±18°, hip dip applied by caller via step phase. */
+  static walk(t) {
+    const d = Pose.deg, phase = t * Math.PI * 2 / .45;
+    const leg = Math.sin(phase) * d(28), arm = Math.sin(phase) * d(18);
+    const dip = (1 - Math.cos(phase * 2)) * 1; // 0..2px hip dip per step
+    const id = Pose.idle();
+    return {chest:id.chest, neck:id.neck, head:0,
+      la:id.la - arm, le:id.le + d(10), ra:id.ra - arm, re:id.re - d(8),
+      ll:leg, lk:Math.max(0, Math.sin(phase)) * d(40) + d(8),
+      rl:-leg, rk:Math.max(0, -Math.sin(phase)) * d(40) + d(8),
+      hipBob:dip};
+  }
+  static jump(apex) {
+    const d = Pose.deg, tuck = apex ? 1 : .55;
+    return {chest:d(-6), neck:d(4), head:d(-4),
+      la:d(-110), le:d(-40), ra:d(110), re:d(-40),
+      ll:d(25)*tuck, lk:d(110)*tuck, rl:d(-25)*tuck, rk:d(110)*tuck, hipBob:0};
+  }
+  static land() {
+    const d = Pose.deg;
+    return {chest:d(8), neck:d(-4), head:0,
+      la:d(-50), le:d(-80), ra:d(45), re:d(-85),
+      ll:d(20), lk:d(55), rl:d(-18), rk:d(50), hipBob:4};
+  }
+  static punchWind() {
+    const d = Pose.deg, id = Pose.idle();
+    return {chest:d(8), neck:d(-2), head:d(-4),
+      la:id.la, le:id.le, ra:d(20), re:d(-130),
+      ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0};
+  }
+  static punchStrike(over) {
+    const d = Pose.deg, o = over ? d(10) : 0;
+    return {chest:d(12), neck:d(2), head:d(4),
+      la:d(-60), le:d(-90), ra:d(95) + o, re:d(-10) - o * .3,
+      ll:d(18), lk:d(16), rl:d(-22), rk:d(20), hipBob:0};
+  }
+  static punchRec() { return Pose.idle(); }
+  /** Cocked, leaning-back windup — distinct from kickStrike. */
+  static kickWind() {
+    const d = Pose.deg;
+    // lean back, chamber kick knee high, arms counterbalance; not the extended strike
+    return {chest:d(14), neck:d(-6), head:d(-8),
+      la:d(-95), le:d(-55), ra:d(55), re:d(-110),
+      ll:d(-55), lk:d(125), rl:d(8), rk:d(18), hipBob:-2};
+  }
+  static kickStrike(over) {
+    const d = Pose.deg, o = over ? d(10) : 0;
+    return {chest:d(-12), neck:d(4), head:d(2),
+      la:d(-70), le:d(-60), ra:d(50), re:d(-80),
+      ll:d(95) + o, lk:d(8), rl:d(-20), rk:d(25), hipBob:0};
+  }
+  static kickRec() { return Pose.idle(); }
+  static specialWind() {
+    const d = Pose.deg;
+    return {chest:d(10), neck:d(-4), head:d(-6),
+      la:d(-90), le:d(-50), ra:d(30), re:d(-100),
+      ll:d(-40), lk:d(95), rl:d(20), rk:d(25), hipBob:0};
+  }
+  static specialDash() {
+    const d = Pose.deg;
+    return {chest:d(-18), neck:d(6), head:d(4),
+      la:d(-100), le:d(-35), ra:d(70), re:d(-40),
+      ll:d(110), lk:d(5), rl:d(-35), rk:d(40), hipBob:0};
+  }
+  static block() {
+    const d = Pose.deg;
+    return {chest:d(-4), neck:0, head:d(-2),
+      la:d(55), le:d(-120), ra:d(45), re:d(-115),
+      ll:d(14), lk:d(22), rl:d(-16), rk:d(20), hipBob:0};
+  }
+  static hit() {
+    const d = Pose.deg;
+    // head snaps back ~15°, chest bends away
+    return {chest:d(-18), neck:d(-8), head:d(-15),
+      la:d(-100), le:d(-40), ra:d(-90), re:d(-35),
+      ll:d(22), lk:d(28), rl:d(-30), rk:d(35), hipBob:0};
+  }
+  static koSprawl() {
+    const d = Pose.deg;
+    return {chest:d(-55), neck:d(-20), head:d(-25),
+      la:d(-140), le:d(-20), ra:d(150), re:d(-25),
+      ll:d(70), lk:d(20), rl:d(-80), rk:d(30), hipBob:8};
+  }
 }
 
 class Bot {
@@ -301,20 +406,101 @@ class Bot {
 
 class Fighter {
   static S = 1.5;
+  static ARM = 18 * 1.5;
+  static LEG = 20 * 1.5;
+  static TORSO = 22 * 1.5;
+  static NECK = 8 * 1.5;
   constructor(x, color, side, tag) {
     this.color = color; this.tag = tag; this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
     this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side;
-    this.grounded = true; this.state = 'idle'; this.pose = Pose.idle(); this.walkT = 0;
+    this.grounded = true; this.state = 'idle'; this.walkT = 0; this.animT = 0;
+    this.pose = Pose.idle(); this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose);
+    this.blendT = 1; this.blendDur = .08; this.poseKey = 'idle';
     this.hp = 100; this.chip = 100; this.stun = 0; this.flash = 0; this.blocking = 0;
     this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0;
     this.chain = 0; this.chainArmed = 0;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
+    this.landSquash = 0; this.koT = 0; this.atkPhase = '';
   }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n); }
+  aim(key, target, dur) {
+    if (this.poseKey === key && this.blendT >= this.blendDur) {
+      this.poseTo = target; return;
+    }
+    if (this.poseKey === key) { this.poseTo = target; return; }
+    this.poseFrom = Pose.copy(this.pose); this.poseTo = target;
+    this.blendT = 0; this.blendDur = Math.max(.04, dur); this.poseKey = key;
+  }
+  tickPose(dt) {
+    this.blendT = Math.min(this.blendDur, this.blendT + dt);
+    const u = Pose.easeOut(this.blendDur <= 0 ? 1 : this.blendT / this.blendDur);
+    this.pose = Pose.lerp(this.poseFrom, this.poseTo, u);
+    if (this.landSquash > 0) {
+      this.landSquash = Math.max(0, this.landSquash - dt);
+      const k = this.landSquash / .08;
+      this.pose.hipBob = (this.pose.hipBob || 0) + 4 * k;
+    }
+  }
   bones() {
-    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.pose, hr = Game.hr, hw = Game.lw / 2;
+    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.pose;
+    const hr = Game.hr, hw = Game.lw / 2;
+    const arm = Fighter.ARM, leg = Fighter.LEG, torso = Fighter.TORSO, neckL = Fighter.NECK;
+    const hip = {x: this.x, y: g - 40 * s + (p.hipBob || 0)};
+    const chest = {
+      x: hip.x + Math.sin(p.chest * f) * torso,
+      y: hip.y - Math.cos(p.chest) * torso
+    };
+    const neck = {
+      x: chest.x + Math.sin((p.chest + p.neck) * f) * neckL,
+      y: chest.y - Math.cos(p.chest + p.neck) * neckL
+    };
+    const head = {
+      x: neck.x + Math.sin((p.chest + p.neck + p.head) * f) * (hr * .15),
+      y: neck.y - hr * .85
+    };
+    const sh = chest;
+    const pts = [hip, chest, neck, head];
+    const seg = (o, len, a1, a2) => {
+      const j = {x: o.x + Math.sin(a1) * len, y: o.y + Math.cos(a1) * len};
+      const e = {x: j.x + Math.sin(a1 + a2) * len, y: j.y + Math.cos(a1 + a2) * len};
+      pts.push(j, e); return {j, e};
+    };
+    const Larm = seg(sh, arm, p.la * f, p.le * f);
+    const Rarm = seg(sh, arm, p.ra * f, p.re * f);
+    const Lleg = seg(hip, leg, p.ll * f, p.lk * f);
+    const Rleg = seg(hip, leg, p.rl * f, p.rk * f);
+    // Head is a filled circle radius hr; limbs use stroke half-width hw
+    let x0 = head.x - hr, x1 = head.x + hr, y0 = head.y - hr, y1 = head.y + hr;
+    for (const q of pts) {
+      if (q === head) continue;
+      x0 = Math.min(x0, q.x - hw); x1 = Math.max(x1, q.x + hw);
+      y0 = Math.min(y0, q.y - hw); y1 = Math.max(y1, q.y + hw);
+    }
+    return {
+      hip, chest, neck, sh, head, hr,
+      la: Larm.e, ra: Rarm.e, ll: Lleg.e, rl: Rleg.e,
+      laJ: Larm.j, raJ: Rarm.j, llJ: Lleg.j, rlJ: Rleg.j,
+      x0, x1, y0, y1,
+      lens: {arm, leg, torso, neck: neckL}
+    };
+  }
+  /** Main 87f3bab pose for the current combat state (no blend). */
+  combatPose() {
+    if (this.hp <= 0 || this.state === 'ko' || this.state === 'hit' || this.stun > 0) return CombatPose.hit();
+    if (this.atk) {
+      if (this.state === 'special') return this.atkT <= this.atk.su ? CombatPose.windup() : CombatPose.special();
+      return this.state === 'kick' ? CombatPose.kick() : CombatPose.punch();
+    }
+    if (this.blocking) return CombatPose.block();
+    if (!this.grounded) return CombatPose.jump();
+    if (this.state === 'walk') return CombatPose.walk(this.walkT);
+    return CombatPose.idle();
+  }
+  /** Exact main limb tip geometry — strike + clamp only; draw uses bones(). */
+  combatBones() {
+    const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.combatPose(), hr = Game.hr, hw = Game.lw / 2;
     const hip = {x:this.x, y:g - 40 * s}, sh = {x:this.x + p.torso * 6 * s * f, y:hip.y - 36 * s};
     const head = {x:sh.x, y:sh.y - hr}, pts = [hip, sh, head];
     const end = (o, len, a1, a2) => {
@@ -345,13 +531,13 @@ class Fighter {
     }
     this.atk = Atk.of(kind, kind === 'punch' ? this.chain : 0);
     this.atkT = 0; this.hitDone = 0; this.state = kind; this.blocking = 0;
+    this.atkPhase = '';
   }
   canChainPunch() {
     const m = Moves.punch;
     if (!this.atk || this.state !== 'punch') return false;
     if (this.chain + 1 >= m.chainMax) return false;
     const a = this.atk;
-    // During recovery, within chainWindow frames after active ends (or any recovery if hit confirmed)
     if (!this.hitDone) return false;
     if (this.atkT <= a.su + a.ac) return false;
     const intoRe = this.atkT - (a.su + a.ac);
@@ -363,12 +549,46 @@ class Fighter {
     if (!m.cancelInto || m.cancelInto.indexOf('punch') < 0) return false;
     return this.atkT > 0 && this.atkT <= this.atk.su;
   }
-  atkPose() {
-    if (this.state === 'special') return this.atkT <= this.atk.su ? Pose.windup() : Pose.special();
-    return this.state === 'kick' ? Pose.kick() : Pose.punch();
+  driveAtkPose(dt) {
+    const a = this.atk, t = this.atkT;
+    // Visual phases read su/ac/re from this.atk (Moves via Atk.of) — chain hits use chainSu/Ac/Re
+    if (this.state === 'special') {
+      if (t <= a.su) {
+        if (this.atkPhase !== 'sw') { this.aim('sw', Pose.specialWind(), a.su * Game.STEP); this.atkPhase = 'sw'; }
+      } else if (t <= a.su + a.ac) {
+        if (this.atkPhase !== 'ss') { this.aim('ss', Pose.specialDash(), .05); this.atkPhase = 'ss'; }
+      } else if (this.atkPhase !== 'sr') { this.aim('sr', Pose.idle(), a.re * Game.STEP); this.atkPhase = 'sr'; }
+      return;
+    }
+    if (this.state === 'kick') {
+      if (t <= a.su) {
+        if (this.atkPhase !== 'kw') { this.aim('kw', Pose.kickWind(), a.su * Game.STEP); this.atkPhase = 'kw'; }
+      } else if (t <= a.su + a.ac) {
+        if (this.atkPhase !== 'ks') {
+          this.aim('ks', Pose.kickStrike(true), .03); this.atkPhase = 'ks';
+        } else if (this.blendT >= this.blendDur * .55 && this.poseKey === 'ks') {
+          this.aim('ks2', Pose.kickStrike(false), .04); this.atkPhase = 'ks2';
+        }
+      } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.kickRec(), a.re * Game.STEP); this.atkPhase = 'kr'; }
+      return;
+    }
+    // punch
+    if (t <= a.su) {
+      if (this.atkPhase !== 'pw') { this.aim('pw', Pose.punchWind(), a.su * Game.STEP); this.atkPhase = 'pw'; }
+    } else if (t <= a.su + a.ac) {
+      if (this.atkPhase !== 'ps') {
+        this.aim('ps', Pose.punchStrike(true), .03); this.atkPhase = 'ps';
+      } else if (this.blendT >= this.blendDur * .55 && this.poseKey === 'ps') {
+        this.aim('ps2', Pose.punchStrike(false), .04); this.atkPhase = 'ps2';
+      }
+    } else if (this.atkPhase !== 'pr') { this.aim('pr', Pose.punchRec(), a.re * Game.STEP); this.atkPhase = 'pr'; }
   }
   landCheck(wasAir) {
-    if (wasAir && this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; Fx.land(this.x); return true; }
+    if (wasAir && this.y >= 0) {
+      this.y = 0; this.vy = 0; this.grounded = true; Fx.land(this.x);
+      this.landSquash = .08; this.aim('land', Pose.land(), .05);
+      return true;
+    }
     if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; }
     return false;
   }
@@ -376,26 +596,37 @@ class Fighter {
     if (this.flash > 0) this.flash -= dt;
     if (this.blockFlash > 0) this.blockFlash -= dt;
     if (this.chip > this.hp) this.chip = Math.max(this.hp, this.chip - (100 * dt / .3));
-    if (this.hp <= 0) { this.state = 'ko'; this.pose = Pose.hit(); this.vx *= .9; this.x += this.vx * dt; return; }
+    this.animT += dt;
+    if (this.hp <= 0) {
+      this.state = 'ko'; this.vx *= .9; this.x += this.vx * dt;
+      this.koT += dt;
+      const u = Pose.easeOut(Math.min(1, this.koT / .4));
+      this.pose = Pose.lerp(Pose.hit(), Pose.koSprawl(), u);
+      this.poseKey = 'ko'; return;
+    }
     if (this.stun > 0) {
       const wasAir = this.y < 0 || !this.grounded;
       this.stun--; this.vx *= .92; this.x += this.vx * dt; this.vy += 1600 * dt; this.y += this.vy * dt;
       this.landCheck(wasAir);
-      this.pose = Pose.hit(); this.face = other.x >= this.x ? 1 : -1;
+      this.aim('hit', Pose.hit(), .05);
+      this.tickPose(dt);
+      this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
     if (this.atk) {
-      // Punch cancel of kick windup, or punch chain during recovery (reads pad/keys for this slot)
+      // Punch cancel of kick windup, or punch chain during recovery
       if (this.grounded && Input.edge(slot, 'punch')) {
         if (this.canCancelKickToPunch() || this.canChainPunch()) {
           this.startAtk('punch');
-          this.pose = this.atkPose();
+          this.driveAtkPose(dt);
+          this.tickPose(dt);
           this.clamp(other); return;
         }
       }
       this.atkT++;
       const a = this.atk, tot = a.su + a.ac + a.re;
-      this.pose = this.atkPose();
+      this.driveAtkPose(dt);
+      this.tickPose(dt);
       if (this.state === 'special' && this.atkT > a.su && this.atkT <= a.su + a.ac && this.dashLeft > 0) {
         const step = (Game.W * .4) / a.ac;
         const move = Math.min(step, this.dashLeft);
@@ -405,23 +636,28 @@ class Fighter {
       this.vy += 1600 * dt; this.y += this.vy * dt;
       this.landCheck(wasAir);
       if (this.atkT >= tot) {
-        // Arm a brief chain window after punch ends if hits remain
         if (this.state === 'punch' && this.hitDone && this.chain + 1 < Moves.punch.chainMax)
           this.chainArmed = Moves.punch.chainWindow;
         else if (this.state !== 'punch') this.chain = 0;
-        this.atk = null; this.state = 'idle'; this.dashLeft = 0;
+        this.atk = null; this.state = 'idle'; this.dashLeft = 0; this.atkPhase = '';
       }
       if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
     if (this.chainArmed > 0) { this.chainArmed--; if (this.chainArmed <= 0) this.chain = 0; }
     if (!Game.fighting) {
-      this.vx = 0; this.pose = Pose.idle(); this.state = 'idle';
+      this.vx = 0; this.state = 'idle';
+      const bob = Pose.copy(Pose.idle());
+      bob.hipBob = Math.sin(this.animT * Math.PI * 2 / .9) * 2;
+      this.aim('idle', bob, .12);
+      this.tickPose(dt);
       this.face = other.x >= this.x ? 1 : -1; this.clamp(other); return;
     }
     this.blocking = Input.held(slot, 'block') && this.grounded ? 1 : 0;
     if (this.blocking) {
-      this.vx = 0; this.pose = Pose.block(); this.state = 'block';
+      this.vx = 0; this.state = 'block';
+      this.aim('block', Pose.block(), .08);
+      this.tickPose(dt);
       this.face = other.x >= this.x ? 1 : -1; this.clamp(other); return;
     }
     let ax = 0;
@@ -429,23 +665,37 @@ class Fighter {
     if (Input.held(slot, 'right')) ax += 1;
     this.vx = ax * 220;
     if (ax && this.grounded) { this.walkT += dt; this.state = 'walk'; }
-    else if (this.grounded) { this.walkT = 0; this.state = 'idle'; }
+    else if (this.grounded && this.state !== 'jump') { this.walkT = 0; this.state = 'idle'; }
     if (Input.edge(slot, 'jump') && this.grounded) { this.vy = -520; this.grounded = false; this.state = 'jump'; }
     if (this.grounded && Input.edge(slot, 'special')) this.startAtk('special');
     else if (this.grounded && Input.edge(slot, 'punch')) this.startAtk('punch');
     else if (this.grounded && Input.edge(slot, 'kick')) this.startAtk('kick');
-    if (this.atk) { this.pose = this.atkPose(); this.clamp(other); return; }
+    if (this.atk) { this.driveAtkPose(dt); this.tickPose(dt); this.clamp(other); return; }
     const wasAir = this.y < 0 || !this.grounded;
     this.vy += 1600 * dt; this.x += this.vx * dt; this.y += this.vy * dt;
     if (this.landCheck(wasAir)) { if (this.state === 'jump') this.state = 'idle'; }
     else if (this.y < 0) this.state = 'jump';
     this.face = other.x >= this.x ? 1 : -1;
-    this.pose = this.state === 'jump' ? Pose.jump() : this.state === 'walk' ? Pose.walk(this.walkT) : Pose.idle();
+    if (this.state === 'jump') {
+      const apex = Math.abs(this.vy) < 80;
+      this.aim('jump', Pose.jump(apex), .1);
+    } else if (this.state === 'walk') {
+      this.poseKey = 'walk';
+      this.poseFrom = Pose.walk(this.walkT);
+      this.poseTo = this.poseFrom;
+      this.blendT = this.blendDur;
+      this.pose = Pose.copy(this.poseFrom);
+    } else if (this.landSquash <= 0) {
+      const bob = Pose.copy(Pose.idle());
+      bob.hipBob = Math.sin(this.animT * Math.PI * 2 / .9) * 2;
+      this.aim('idle', bob, .1);
+    }
+    this.tickPose(dt);
     this.clamp(other);
   }
   clamp() {
     this.x = Math.max(Game.minX, Math.min(Game.maxX, this.x));
-    const b = this.bones(), relL = this.x - b.x0, relR = b.x1 - this.x, sc = Game.scale, ox = Game.ox, c = 8;
+    const b = this.combatBones(), relL = this.x - b.x0, relR = b.x1 - this.x, sc = Game.scale, ox = Game.ox, c = 8;
     let lo = Game.minX, hi = Game.maxX;
     for (const btn of Game.btns) {
       if (Game.oy + b.y0 * sc >= btn.y + btn.h + c || Game.oy + b.y1 * sc <= btn.y - c) continue;
@@ -459,7 +709,7 @@ class Fighter {
     if (!this.atk || this.hitDone) return null;
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
-    const b = this.bones(), tip = (this.state === 'kick' || this.state === 'special') ? b.ll : b.ra;
+    const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'special') ? b.ll : b.ra;
     const r = this.state === 'special' ? 22 : 18;
     return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special'};
   }
@@ -472,19 +722,50 @@ class Fighter {
     }
     this.hp = Math.max(0, this.hp - atk.dmg); this.stun = atk.stun; this.flash = .08;
     this.vx = Math.sign(this.x - from.x) * atk.kb; this.atk = null; this.blocking = 0; this.dashLeft = 0;
+    this.atkPhase = '';
     this.state = 'hit'; return 'hit';
   }
+  /** Draw-only X nudge so visual bones() stay ≥8px from buttons. Does not move this.x / combat. */
+  drawNudgeX() {
+    const b = this.bones();
+    const sc = Game.scale, ox = Game.ox, oy = Game.oy, c = 8;
+    let dx = 0;
+    for (const btn of Game.btns) {
+      const y0 = oy + b.y0 * sc, y1 = oy + b.y1 * sc;
+      if (y0 >= btn.y + btn.h + c || y1 <= btn.y - c) continue;
+      if (btn.x + btn.w / 2 < innerWidth / 2) {
+        const gap = (ox + b.x0 * sc) - (btn.x + btn.w);
+        if (gap < c) dx = Math.max(dx, (c - gap) / sc);
+      } else {
+        const gap = btn.x - (ox + b.x1 * sc);
+        if (gap < c) dx = Math.min(dx, (gap - c) / sc);
+      }
+    }
+    return dx;
+  }
   draw(ctx) {
-    const b = this.bones(), p = this.pose, s = Fighter.S;
+    const nudge = this.drawNudgeX();
+    if (nudge) ctx.translate(nudge, 0);
+    const b = this.bones();
     const col = this.flash > 0 ? '#FFFFFF' : this.color;
-    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Game.lw; ctx.lineCap = 'round';
-    const f = this.face;
-    Fighter.limb(ctx, b.sh, 18 * s, p.la * f, p.le * f); Fighter.limb(ctx, b.sh, 18 * s, p.ra * f, p.re * f);
-    Fighter.limb(ctx, b.hip, 20 * s, p.ll * f, p.lk * f); Fighter.limb(ctx, b.hip, 20 * s, p.rl * f, p.rk * f);
-    ctx.beginPath(); ctx.moveTo(b.hip.x, b.hip.y); ctx.lineTo(b.sh.x, b.sh.y); ctx.lineTo(b.head.x, b.head.y + b.hr); ctx.stroke();
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Game.lw;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const chain = (pts) => {
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      for (let i = 0; i < pts.length - 1; i++) {
+        ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, Game.lw * .35, 0, Math.PI * 2); ctx.fill();
+      }
+    };
+    chain([b.hip, b.chest, b.neck]);
+    chain([b.sh, b.laJ, b.la]);
+    chain([b.sh, b.raJ, b.ra]);
+    chain([b.hip, b.llJ, b.ll]);
+    chain([b.hip, b.rlJ, b.rl]);
     ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.hr, 0, Math.PI * 2); ctx.fill();
     if (this.blocking || this.blockFlash > 0) {
-      const cx = this.x + this.face * 28, cy = b.sh.y + 10;
+      const cx = this.x + nudge + this.face * 28, cy = b.sh.y + 10;
       const a0 = -1.2 + (this.face > 0 ? 0 : Math.PI), a1 = 1.2 + (this.face > 0 ? 0 : Math.PI);
       if (this.blocking) {
         ctx.strokeStyle = this.color; ctx.globalAlpha = .6; ctx.lineWidth = 2;
@@ -500,11 +781,8 @@ class Fighter {
       ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(this.tag, b.head.x, b.y0 - 12 / Game.scale);
     }
-  }
-  static limb(ctx, o, len, a1, a2) {
-    const j = {x:o.x + Math.sin(a1) * len, y:o.y + Math.cos(a1) * len};
-    const e = {x:j.x + Math.sin(a1 + a2) * len, y:j.y + Math.cos(a1 + a2) * len};
-    ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(j.x, j.y); ctx.lineTo(e.x, e.y); ctx.stroke();
+  
+    if (nudge) ctx.translate(-nudge, 0);
   }
 }
 
