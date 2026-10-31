@@ -1,8 +1,8 @@
 /* Difficulty tuning table — single source of truth */
 const Diff = {
-  easy:   { react: 0.40, block: 0.15, punish: 0.20, special: 0.08, mistake: 0.38, aggro: 0.28, cool: 1.05 },
-  normal: { react: 0.25, block: 0.35, punish: 0.50, special: 0.40, mistake: 0.12, aggro: 0.62, cool: 0.55 },
-  hard:   { react: 0.15, block: 0.55, punish: 1.00, special: 0.75, mistake: 0.03, aggro: 0.92, cool: 0.32 },
+  easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.40, aggro: 0.26, cool: 1.10 },
+  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.42, mistake: 0.09, aggro: 0.72, cool: 0.48 },
+  hard:   { react: 0.14, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.95, cool: 0.28 },
 };
 
 class Input {
@@ -48,10 +48,64 @@ class Input {
   }
 }
 
+/* Move timing at 60fps (Game.STEP). Windup/hit/recovery + chain/cancel live here only. */
+const Moves = {
+  punch: {
+    su: 4, ac: 3, re: 8,           // first hit lands ~67ms (~70ms)
+    dmg: 5, kb: 160, stun: 10,
+    chainMax: 3,
+    chainDmg: [5, 5, 7],           // hit 1..3
+    chainSu: 3, chainAc: 3, chainRe: 8,
+    chainWindow: 10,               // frames into recovery when a follow-up is allowed
+    reach: 95,
+  },
+  kick: {
+    su: 13, ac: 5, re: 18,         // windup ~217ms; recovery ~300ms punish window
+    dmg: 10, kb: 300, stun: 16,
+    cancelInto: ['punch'],         // punch may cancel kick during windup only
+    reach: 155,
+  },
+  special: {
+    su: 8, ac: 12, re: 14,
+    dmg: 20, chip: 5, kb: 340, stun: 20,
+  },
+};
+
+/** Resolved attack snapshot used by Fighter (reads Moves). */
 class Atk {
-  static punch = {su:4, ac:4, re:10, dmg:5, kb:180, stun:10};
-  static kick = {su:7, ac:5, re:16, dmg:9, kb:260, stun:14};
-  static special = {su:8, ac:12, re:14, dmg:20, chip:5, kb:340, stun:20};
+  static of(kind, chain = 0) {
+    const m = Moves[kind];
+    if (!m) return null;
+    if (kind === 'punch') {
+      const n = Math.max(0, Math.min(chain, m.chainMax - 1));
+      const follow = n > 0;
+      return {
+        su: follow ? m.chainSu : m.su,
+        ac: follow ? m.chainAc : m.ac,
+        re: follow ? m.chainRe : m.re,
+        dmg: m.chainDmg[n],
+        kb: m.kb, stun: m.stun,
+        chain: n, kind: 'punch',
+        chainMax: m.chainMax, chainWindow: m.chainWindow,
+      };
+    }
+    if (kind === 'kick') {
+      return {
+        su: m.su, ac: m.ac, re: m.re,
+        dmg: m.dmg, kb: m.kb, stun: m.stun,
+        kind: 'kick', cancelInto: m.cancelInto.slice(),
+      };
+    }
+    return {
+      su: m.su, ac: m.ac, re: m.re,
+      dmg: m.dmg, chip: m.chip || 0, kb: m.kb, stun: m.stun,
+      kind: 'special',
+    };
+  }
+  // Back-compat mirrors for any Atk.punch.su style reads (Bot ranges still use literals via Moves)
+  static get punch() { return Atk.of('punch', 0); }
+  static get kick() { return Atk.of('kick'); }
+  static get special() { return Atk.of('special'); }
 }
 
 class Pose {
@@ -120,7 +174,7 @@ class Bot {
   }
   static pickMode(dist, me, foe) {
     const cfg = Bot.cfg();
-    const kickR = 150, punchR = 90;
+    const kickR = Moves.kick.reach, punchR = Moves.punch.reach;
     if (Bot.whiffedKick(foe, dist) || (Bot.lastBlockKind === 'special' && Bot.inRecovery(foe))) {
       if (Math.random() < cfg.punish) { Bot.mode = 'punish'; Bot.modeT = .6; return; }
     }
@@ -135,7 +189,7 @@ class Bot {
     else if (dist > punchR + 10) Bot.mode = 'poke';
     else if (Bot.stringLeft > 0) Bot.mode = 'pressure';
     else if (dist < punchR - 15) Bot.mode = 'retreat';
-    else Bot.mode = Math.random() < .55 ? 'poke' : 'pressure';
+    else Bot.mode = Math.random() < .4 ? 'poke' : 'pressure';
     Bot.modeT = .35 + Math.random() * .45;
   }
   static update(dt, me, foe) {
@@ -144,7 +198,15 @@ class Bot {
     const cfg = Bot.cfg();
     Bot.wait -= dt; Bot.cool -= dt; Bot.react -= dt; Bot.blockT -= dt; Bot.modeT -= dt;
     if (Bot.pendingT > 0) Bot.pendingT -= dt;
-    if (!Game.fighting || me.stun > 0 || me.atk) return;
+    if (!Game.fighting || me.stun > 0) return;
+    // While attacking: only chain punches or cancel kick windup into punch
+    if (me.atk) {
+      if (me.canCancelKickToPunch() && Math.random() < 0.35) { p.punch = 1; return; }
+      if (me.canChainPunch() && Bot.stringLeft > 0) {
+        p.punch = 1; Bot.stringLeft = Math.max(0, Bot.stringLeft - 1); return;
+      }
+      return;
+    }
     const dist = Bot.observe(dt, me, foe);
     const dx = foe.x - me.x, dir = Math.sign(dx) || 1;
 
@@ -198,28 +260,35 @@ class Bot {
     }
 
     if (Bot.mode === 'punish' && Bot.cool <= 0) {
-      Bot.queue(dist < 100 ? 'punch' : 'kick', cfg.react * .7);
+      // Whiffed / recovering kick is a punch punish; otherwise poke
+      const punchPunish = Bot.whiffedKick(foe, dist) || dist < Moves.punch.reach;
+      Bot.queue(punchPunish ? 'punch' : 'kick', cfg.react * .7);
+      if (punchPunish) Bot.stringLeft = Math.max(Bot.stringLeft, Moves.punch.chainMax - 1);
       Bot.mode = 'retreat'; Bot.modeT = .3; return;
     }
 
     if (Bot.mode === 'approach') {
       if (dir < 0) p.left = 1; else p.right = 1;
-      if (dist < 155 && Bot.cool <= 0 && Math.random() < .4) Bot.queue('kick');
+      if (dist < Moves.kick.reach && Bot.cool <= 0 && Math.random() < .4) Bot.queue('kick');
       return;
     }
     if (Bot.mode === 'poke') {
-      if (dist > 160) { if (dir < 0) p.left = 1; else p.right = 1; }
-      else if (dist < 130) { if (dir < 0) p.right = 1; else p.left = 1; }
-      if (Bot.cool <= 0 && dist < 165 && dist > 100 && Math.random() < cfg.aggro) {
-        Bot.queue('kick'); Bot.stringLeft = 1 + (Math.random() < .4 ? 1 : 0);
+      if (dist > Moves.kick.reach + 5) { if (dir < 0) p.left = 1; else p.right = 1; }
+      else if (dist < Moves.kick.reach - 25) { if (dir < 0) p.right = 1; else p.left = 1; }
+      if (Bot.cool <= 0 && dist <= Moves.punch.reach && Math.random() < cfg.aggro * .85) {
+        Bot.queue('punch'); Bot.stringLeft = Math.max(Bot.stringLeft, Moves.punch.chainMax - 1);
+      } else if (Bot.cool <= 0 && dist < Moves.kick.reach + 10 && dist > Moves.punch.reach && Math.random() < cfg.aggro) {
+        Bot.queue('kick'); Bot.stringLeft = 0;
       } else if (Bot.cool <= 0 && Math.random() < (1 - cfg.aggro) * .02) Bot.wait = .2 + Math.random() * .4;
       return;
     }
     if (Bot.mode === 'pressure') {
       if (dir < 0) p.left = 1; else p.right = 1;
-      if (Bot.cool <= 0 && dist < 100 && Math.random() < cfg.aggro) {
-        Bot.queue('punch'); Bot.stringLeft = Math.max(Bot.stringLeft, 1);
-      } else if (Bot.cool <= 0 && dist < 150 && Math.random() < cfg.aggro) Bot.queue('kick');
+      if (Bot.cool <= 0 && dist < Moves.punch.reach && Math.random() < cfg.aggro) {
+        Bot.queue('punch');
+        Bot.stringLeft = Math.max(Bot.stringLeft, Moves.punch.chainMax - 1);
+      } else if (Bot.cool <= 0 && dist < Moves.kick.reach && dist > Moves.punch.reach - 10 && Math.random() < cfg.aggro * .5)
+        Bot.queue('kick');
       return;
     }
     if (Bot.mode === 'retreat') {
@@ -240,6 +309,7 @@ class Fighter {
     this.grounded = true; this.state = 'idle'; this.pose = Pose.idle(); this.walkT = 0;
     this.hp = 100; this.chip = 100; this.stun = 0; this.flash = 0; this.blocking = 0;
     this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0;
+    this.chain = 0; this.chainArmed = 0;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
   }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n); }
@@ -262,8 +332,36 @@ class Fighter {
     if (kind === 'special') {
       if (this.meter < 100) return;
       this.meter = 0; this.dashLeft = Game.W * .4;
+      this.chain = 0; this.chainArmed = 0;
+    } else if (kind === 'punch') {
+      const m = Moves.punch;
+      let n = 0;
+      const linking = (this.chainArmed > 0) || this.canChainPunch();
+      if (linking) n = Math.min(this.chain + 1, m.chainMax - 1);
+      this.chain = n;
+      this.chainArmed = 0;
+    } else {
+      this.chain = 0; this.chainArmed = 0;
     }
-    this.atk = Atk[kind]; this.atkT = 0; this.hitDone = 0; this.state = kind; this.blocking = 0;
+    this.atk = Atk.of(kind, kind === 'punch' ? this.chain : 0);
+    this.atkT = 0; this.hitDone = 0; this.state = kind; this.blocking = 0;
+  }
+  canChainPunch() {
+    const m = Moves.punch;
+    if (!this.atk || this.state !== 'punch') return false;
+    if (this.chain + 1 >= m.chainMax) return false;
+    const a = this.atk;
+    // During recovery, within chainWindow frames after active ends (or any recovery if hit confirmed)
+    if (!this.hitDone) return false;
+    if (this.atkT <= a.su + a.ac) return false;
+    const intoRe = this.atkT - (a.su + a.ac);
+    return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
+  }
+  canCancelKickToPunch() {
+    const m = Moves.kick;
+    if (!this.atk || this.state !== 'kick') return false;
+    if (!m.cancelInto || m.cancelInto.indexOf('punch') < 0) return false;
+    return this.atkT > 0 && this.atkT <= this.atk.su;
   }
   atkPose() {
     if (this.state === 'special') return this.atkT <= this.atk.su ? Pose.windup() : Pose.special();
@@ -287,6 +385,14 @@ class Fighter {
       this.clamp(other); return;
     }
     if (this.atk) {
+      // Punch cancel of kick windup, or punch chain during recovery (reads pad/keys for this slot)
+      if (this.grounded && Input.edge(slot, 'punch')) {
+        if (this.canCancelKickToPunch() || this.canChainPunch()) {
+          this.startAtk('punch');
+          this.pose = this.atkPose();
+          this.clamp(other); return;
+        }
+      }
       this.atkT++;
       const a = this.atk, tot = a.su + a.ac + a.re;
       this.pose = this.atkPose();
@@ -298,10 +404,17 @@ class Fighter {
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
       this.landCheck(wasAir);
-      if (this.atkT >= tot) { this.atk = null; this.state = 'idle'; this.dashLeft = 0; }
-      if (this.state !== 'special' || this.atkT <= a.su) this.face = other.x >= this.x ? 1 : -1;
+      if (this.atkT >= tot) {
+        // Arm a brief chain window after punch ends if hits remain
+        if (this.state === 'punch' && this.hitDone && this.chain + 1 < Moves.punch.chainMax)
+          this.chainArmed = Moves.punch.chainWindow;
+        else if (this.state !== 'punch') this.chain = 0;
+        this.atk = null; this.state = 'idle'; this.dashLeft = 0;
+      }
+      if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
+    if (this.chainArmed > 0) { this.chainArmed--; if (this.chainArmed <= 0) this.chain = 0; }
     if (!Game.fighting) {
       this.vx = 0; this.pose = Pose.idle(); this.state = 'idle';
       this.face = other.x >= this.x ? 1 : -1; this.clamp(other); return;
