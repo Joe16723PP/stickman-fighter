@@ -407,9 +407,22 @@ class Game {
     Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
     Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
     fighters[0].meter = 0; fighters[1].meter = 0;
-    fighters[0].reset(Game.W * .35, 1); fighters[1].reset(Game.W * .65, -1);
+    Game.placeTitleFighters();
     Bot.reset();
     Game.syncControls();
+  }
+  /** Title-only: idle fighters at ~15% / 85% width, facing in. Match spawn unchanged. */
+  static placeTitleFighters() {
+    const sc = Game.scale || 1;
+    const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
+    const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
+    const inset = (16 + Math.max(safeL, safeR)) / sc;
+    // Approximate full limb reach from body center (idle pose + stroke)
+    const reach = 48;
+    let x0 = Game.W * .15, x1 = Game.W * .85;
+    x0 = Math.max(inset + reach, Math.min(Game.W / 2 - 80, x0));
+    x1 = Math.min(Game.W - inset - reach, Math.max(Game.W / 2 + 80, x1));
+    fighters[0].reset(x0, 1); fighters[1].reset(x1, -1);
   }
   static startMatch() {
     try { localStorage.setItem('stickman-level', Game.level); } catch (e) {}
@@ -472,7 +485,9 @@ class Game {
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     const lane = innerWidth < 740 ? .2 : .15;
     Game.minX = Game.W * lane; Game.maxX = Game.W * (1 - lane);
-    if (Game.phase !== 'matchEnd') {
+    if (Game.phase === 'title') {
+      Game.placeTitleFighters();
+    } else if (Game.phase !== 'matchEnd') {
       fighters[0].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[0].x || Game.W * .35));
       fighters[1].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[1].x || Game.W * .65));
     }
@@ -533,6 +548,7 @@ class Game {
       if (Game.phase === 'title') {
         fighters[0].face = 1; fighters[1].face = -1;
         fighters[0].pose = Pose.idle(); fighters[1].pose = Pose.idle();
+        fighters[0].y = 0; fighters[1].y = 0;
       } else if (Game.phase === 'intro' || Game.phase === 'roundEnd') {
         Game.bannerT -= step;
         if (Game.bannerT <= 0) {
