@@ -1,8 +1,8 @@
 /* Difficulty tuning table — single source of truth */
 const Diff = {
-  // Retuned for tightened 15–85%+REACH lane (layout); restore 10/90, 77/23, 96/4 @ seed 0xC0FFEE42
+  // Retuned for Moves timing (punch su7/re11, kick su11) + layout lane; restore 10/90, 77/23, 96/4 @ seed 0xC0FFEE42
   easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.42, aggro: 0.26, cool: 1.10 },
-  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.44, mistake: 0.09, aggro: 0.72, cool: 0.48 },
+  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.44, mistake: 0.09, aggro: 0.80, cool: 0.48 },
   hard:   { react: 0.14, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.92, cool: 0.28 },
 };
 
@@ -52,7 +52,7 @@ class Input {
 /* Move timing at 60fps (Game.STEP). Windup/hit/recovery + chain/cancel live here only. */
 const Moves = {
   punch: {
-    su: 4, ac: 3, re: 8,           // first hit lands ~67ms (~70ms)
+    su: 7, ac: 3, re: 11,          // first hit lands ~117ms (~110ms); recovery ~183ms (~180ms)
     dmg: 5, kb: 160, stun: 10,
     chainMax: 3,
     chainDmg: [5, 5, 7],           // hit 1..3
@@ -61,7 +61,7 @@ const Moves = {
     reach: 95,
   },
   kick: {
-    su: 13, ac: 5, re: 18,         // windup ~217ms; recovery ~300ms punish window
+    su: 11, ac: 5, re: 18,         // windup ~183ms (~180ms); recovery ~300ms punish window
     dmg: 10, kb: 300, stun: 16,
     cancelInto: ['punch'],         // punch may cancel kick during windup only
     reach: 155,
@@ -125,16 +125,41 @@ class CombatPose {
 }
 
 class Pose {
-  static KEYS = ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk','hipBob'];
+  static KEYS = ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk','hipBob','shPull'];
+  static ANGLE_KEYS = ['chest','neck','head','la','le','ra','re','ll','lk','rl','rk'];
   static deg(d) { return d * Math.PI / 180; }
+  /** Shortest signed delta from a→b in radians, in (-π, π]. */
+  static angleDelta(a, b) {
+    let d = (b || 0) - (a || 0);
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d <= -Math.PI) d += Math.PI * 2;
+    return d;
+  }
   static base() {
-    return {chest:0, neck:0, head:0, la:0, le:0, ra:0, re:0, ll:0, lk:0, rl:0, rk:0, hipBob:0};
+    return {chest:0, neck:0, head:0, la:0, le:0, ra:0, re:0, ll:0, lk:0, rl:0, rk:0, hipBob:0, shPull:0};
   }
   static copy(p) {
     const o = {}; for (const k of Pose.KEYS) o[k] = p[k] || 0; return o;
   }
   static lerp(a, b, t) {
-    const o = {}; for (const k of Pose.KEYS) o[k] = (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * t; return o;
+    const o = {};
+    for (const k of Pose.KEYS) {
+      if (Pose.ANGLE_KEYS.indexOf(k) >= 0)
+        o[k] = (a[k] || 0) + Pose.angleDelta(a[k], b[k]) * t;
+      else
+        o[k] = (a[k] || 0) + ((b[k] || 0) - (a[k] || 0)) * t;
+    }
+    return o;
+  }
+  /** Step each angle toward target by at most maxStep radians (shortest path). */
+  static stepAngles(from, to, maxStep) {
+    const o = Pose.copy(to);
+    for (const k of Pose.ANGLE_KEYS) {
+      const d = Pose.angleDelta(from[k], to[k]);
+      if (Math.abs(d) <= maxStep) o[k] = to[k];
+      else o[k] = (from[k] || 0) + Math.sign(d) * maxStep;
+    }
+    return o;
   }
   static easeOut(t) { t = Math.max(0, Math.min(1, t)); return 1 - Math.pow(1 - t, 3); }
   /** Fight stance, hands near face. */
@@ -171,10 +196,11 @@ class Pose {
   }
   static punchWind() {
     const d = Pose.deg, id = Pose.idle();
-    // Signs match fv=-face so the cocked fist stays toward the foe
-    return {chest:d(-8), neck:d(2), head:d(4),
-      la:id.la, le:id.le, ra:d(-20), re:d(130),
-      ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0};
+    // Cocked fist (R2-1): chest +8° away, shPull 6px; re≈140° bend ⇒ ~40° inside elbow;
+    // ra≈75° places wrist 6–14px behind shoulder, near chin height (bones only)
+    return {chest:d(8), neck:d(-2), head:d(-2),
+      la:id.la, le:id.le, ra:d(75), re:d(140),
+      ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0, shPull:6};
   }
   static punchStrike(over) {
     const d = Pose.deg, o = over ? d(10) : 0;
@@ -428,6 +454,7 @@ class Fighter {
     this.chain = 0; this.chainArmed = 0;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
     this.landSquash = 0; this.koT = 0; this.atkPhase = '';
+    this.punchSoft = 0;
   }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n); }
   aim(key, target, dur) {
@@ -435,13 +462,31 @@ class Fighter {
       this.poseTo = target; return;
     }
     if (this.poseKey === key) { this.poseTo = target; return; }
+    // R3-1: 15°/frame soft-step ONLY in punch recovery (+ trailing idle). Windup/strike snap freely.
+    if (key === 'pr') this.punchSoft = 1;
+    else if (/^(pw|pwd|ps|ps2)$/.test(key)) this.punchSoft = 0;
     this.poseFrom = Pose.copy(this.pose); this.poseTo = target;
     this.blendT = 0; this.blendDur = Math.max(.04, dur); this.poseKey = key;
   }
   tickPose(dt) {
     this.blendT = Math.min(this.blendDur, this.blendT + dt);
     const u = Pose.easeOut(this.blendDur <= 0 ? 1 : this.blendT / this.blendDur);
-    this.pose = Pose.lerp(this.poseFrom, this.poseTo, u);
+    const lerped = Pose.lerp(this.poseFrom, this.poseTo, u);
+    let next = lerped;
+    // R3-1/R2-2: shortest-path lerp; ≤15°/frame only while punchSoft (recovery + trailing idle)
+    if (this.punchSoft) {
+      next = Pose.stepAngles(this.pose, lerped, Pose.deg(15));
+      next.hipBob = lerped.hipBob;
+      next.shPull = lerped.shPull;
+    }
+    this.pose = next;
+    if (this.punchSoft && this.blendT >= this.blendDur) {
+      let settled = true;
+      for (const k of Pose.ANGLE_KEYS) {
+        if (Math.abs(Pose.angleDelta(this.pose[k], this.poseTo[k])) > Pose.deg(0.5)) { settled = false; break; }
+      }
+      if (settled && this.poseKey !== 'pr') this.punchSoft = 0;
+    }
     if (this.landSquash > 0) {
       this.landSquash = Math.max(0, this.landSquash - dt);
       const k = this.landSquash / .08;
@@ -474,8 +519,12 @@ class Fighter {
       const e = {x: j.x + Math.sin(a1 + a2) * len, y: j.y + Math.cos(a1 + a2) * len};
       pts.push(j, e); return {j, e};
     };
-    const Larm = seg(sh, arm, p.la * fv, p.le * fv);
-    const Rarm = seg(sh, arm, p.ra * fv, p.re * fv);
+    // shPull: lead shoulder chambers back ~6px away from foe (visual only; combatBones untouched)
+    const pull = p.shPull || 0;
+    const shL = sh;
+    const shR = pull ? { x: sh.x - pull * f, y: sh.y } : sh;
+    const Larm = seg(shL, arm, p.la * fv, p.le * fv);
+    const Rarm = seg(shR, arm, p.ra * fv, p.re * fv);
     const Lleg = seg(hip, leg, p.ll * f, p.lk * f);
     const Rleg = seg(hip, leg, p.rl * f, p.rk * f);
     // Head is a filled circle radius hr; limbs use stroke half-width hw
@@ -486,7 +535,7 @@ class Fighter {
       y0 = Math.min(y0, q.y - hw); y1 = Math.max(y1, q.y + hw);
     }
     return {
-      hip, chest, neck, sh, head, hr,
+      hip, chest, neck, sh, shL, shR, head, hr,
       la: Larm.e, ra: Rarm.e, ll: Lleg.e, rl: Rleg.e,
       laJ: Larm.j, raJ: Rarm.j, llJ: Lleg.j, rlJ: Rleg.j,
       x0, x1, y0, y1,
@@ -579,16 +628,34 @@ class Fighter {
       } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.kickRec(), a.re * Game.STEP); this.atkPhase = 'kr'; }
       return;
     }
-    // punch
-    if (t <= a.su) {
-      if (this.atkPhase !== 'pw') { this.aim('pw', Pose.punchWind(), a.su * Game.STEP); this.atkPhase = 'pw'; }
-    } else if (t <= a.su + a.ac) {
-      if (this.atkPhase !== 'ps') {
-        this.aim('ps', Pose.punchStrike(true), .03); this.atkPhase = 'ps';
-      } else if (this.blendT >= this.blendDur * .55 && this.poseKey === 'ps') {
-        this.aim('ps2', Pose.punchStrike(false), .04); this.atkPhase = 'ps2';
+    // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
+    const pullFr = Math.max(1, Math.round(a.su * 0.4));
+    if (t <= pullFr) {
+      if (this.atkPhase !== 'pw') {
+        this.aim('pw', Pose.punchWind(), pullFr * Game.STEP);
+        this.atkPhase = 'pw';
       }
-    } else if (this.atkPhase !== 'pr') { this.aim('pr', Pose.punchRec(), a.re * Game.STEP); this.atkPhase = 'pr'; }
+    } else if (t <= a.su) {
+      // Rest of windup drives forward to land on the hit frame; 10° overshoot kept (punchStrike true)
+      if (this.atkPhase !== 'pwd') {
+        this.aim('pwd', Pose.punchStrike(true), Math.max(Game.STEP, (a.su - pullFr) * Game.STEP));
+        this.atkPhase = 'pwd';
+      }
+    } else if (t <= a.su + a.ac) {
+      // R3-1: first active frame at full extension incl. 10° overshoot (1–2 frame snap is intended)
+      if (this.atkPhase !== 'ps') {
+        const strike = Pose.punchStrike(true);
+        this.aim('ps', strike, .03); this.atkPhase = 'ps';
+        this.pose = Pose.copy(strike);
+        this.poseFrom = Pose.copy(strike);
+        this.poseTo = Pose.copy(strike);
+        this.blendT = this.blendDur;
+        this.punchSoft = 0;
+      }
+    } else if (this.atkPhase !== 'pr') {
+      // AC7 / R2-2: ease back to idle over full recovery; ≤15°/frame soft-step
+      this.aim('pr', Pose.punchRec(), a.re * Game.STEP); this.atkPhase = 'pr';
+    }
   }
   landCheck(wasAir) {
     if (wasAir && this.y >= 0) {
@@ -643,9 +710,10 @@ class Fighter {
       this.vy += 1600 * dt; this.y += this.vy * dt;
       this.landCheck(wasAir);
       if (this.atkT >= tot) {
+        // Chain only continues after a connected punch; whiff clears the string (AC2)
         if (this.state === 'punch' && this.hitDone && this.chain + 1 < Moves.punch.chainMax)
           this.chainArmed = Moves.punch.chainWindow;
-        else if (this.state !== 'punch') this.chain = 0;
+        else { this.chain = 0; this.chainArmed = 0; }
         this.atk = null; this.state = 'idle'; this.dashLeft = 0; this.atkPhase = '';
       }
       if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
@@ -760,8 +828,9 @@ class Fighter {
       }
     };
     chain([b.hip, b.chest, b.neck]);
-    chain([b.sh, b.laJ, b.la]);
-    chain([b.sh, b.raJ, b.ra]);
+    // Lead/rear shoulders: shR carries punch shPull (~6px back); shL stays on chest
+    chain([b.shL || b.sh, b.laJ, b.la]);
+    chain([b.shR || b.sh, b.raJ, b.ra]);
     chain([b.hip, b.llJ, b.ll]);
     chain([b.hip, b.rlJ, b.rl]);
     ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.hr, 0, Math.PI * 2); ctx.fill();
