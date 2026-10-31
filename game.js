@@ -1,8 +1,9 @@
 /* Difficulty tuning table — single source of truth */
 const Diff = {
-  easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.40, aggro: 0.26, cool: 1.10 },
-  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.42, mistake: 0.09, aggro: 0.72, cool: 0.48 },
-  hard:   { react: 0.14, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.95, cool: 0.28 },
+  // Retuned for tightened 15–85%+REACH lane (layout); restore 10/90, 77/23, 96/4 @ seed 0xC0FFEE42
+  easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.42, aggro: 0.26, cool: 1.10 },
+  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.44, mistake: 0.09, aggro: 0.72, cool: 0.48 },
+  hard:   { react: 0.14, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.92, cool: 0.28 },
 };
 
 class Input {
@@ -700,15 +701,9 @@ class Fighter {
     this.clamp(other);
   }
   clamp() {
+    // Lane only — button clearance is guaranteed by ending the lane early enough
+    // that drawNudgeX stays 0 for every visual pose (controls stay screen-edge pinned).
     this.x = Math.max(Game.minX, Math.min(Game.maxX, this.x));
-    const b = this.combatBones(), relL = this.x - b.x0, relR = b.x1 - this.x, sc = Game.scale, ox = Game.ox, c = 8;
-    let lo = Game.minX, hi = Game.maxX;
-    for (const btn of Game.btns) {
-      if (Game.oy + b.y0 * sc >= btn.y + btn.h + c || Game.oy + b.y1 * sc <= btn.y - c) continue;
-      if (btn.x + btn.w / 2 < innerWidth / 2) lo = Math.max(lo, (btn.x + btn.w + c - ox) / sc + relL);
-      else hi = Math.min(hi, (btn.x - c - ox) / sc - relR);
-    }
-    if (lo <= hi) this.x = Math.max(lo, Math.min(hi, this.x));
     this.hitbox.x = this.x - 21; this.hitbox.y = Game.GROUND + this.y - 135; this.hitbox.w = 42; this.hitbox.h = 135;
   }
   strike() {
@@ -911,7 +906,8 @@ class Game {
   }
   static startRound() {
     Game.stop = 0; Game.shake = 0; Game.timer = 60; Game.fighting = 0; Game.matchOver = 0;
-    fighters[0].reset(Game.W * .35, 1); fighters[1].reset(Game.W * .65, -1);
+    fighters[0].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .35)), 1);
+    fighters[1].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .65)), -1);
     Fx.clear(); Bot.reset();
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
     Game.phase = 'intro'; Game.banner = 'Round ' + Game.round; Game.bannerT = 1.2;
@@ -961,8 +957,22 @@ class Game {
     Game.canvas.style.width = innerWidth + 'px'; Game.canvas.style.height = innerHeight + 'px';
     Game.canvas.width = Math.round(innerWidth * dpr); Game.canvas.height = Math.round(innerHeight * dpr);
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
-    const lane = innerWidth < 740 ? .2 : .15;
-    Game.minX = Game.W * lane; Game.maxX = Game.W * (1 - lane);
+    // Prefer middle 70% (15%–85%), but end the lane early enough that visual
+    // bones() at the edges stay ≥8px from edge-pinned controls (drawNudgeX → 0).
+    const EDGE = 16;
+    const BTN = 64, GAP = 10, CLEAR = 8;
+    const PAD_W = BTN * 2 + GAP; // move row / 2×2 cluster width
+    const REACH = 65; // max observed visual AABB past hip (worst pose)
+    const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
+    const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
+    const loBtn = (EDGE + safeL + PAD_W + CLEAR) / scale + REACH;
+    const hiBtn = (innerWidth - EDGE - safeR - PAD_W - CLEAR) / scale - REACH;
+    Game.minX = Math.max(Game.W * .15, loBtn);
+    Game.maxX = Math.min(Game.W * .85, hiBtn);
+    if (Game.minX > Game.maxX) { // ultra-narrow: keep a usable centre strip
+      const mid = Game.W * .5, half = Math.max(40, (hiBtn - loBtn) * .5);
+      Game.minX = mid - half; Game.maxX = mid + half;
+    }
     if (Game.phase === 'title') {
       Game.placeTitleFighters();
     } else if (Game.phase !== 'matchEnd') {
