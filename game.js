@@ -7,11 +7,11 @@ const Diff = {
 };
 
 const FighterClasses = {
-  kickboxing: { name: 'KICKBOXING', role: 'BALANCED COMBOS', punchMove: 'JAB · CROSS', kickMove: 'ROUND KICK', super: 'COMBINATION FINISHER', color: '#3B82F6', accent: '#FBBF24', style: 'rush', pitch: 1.05, speed: 1.08, punch: 1.12, kick: .98, superPower: 1.05, meter: 1, dash: .14 },
-  muaythai: { name: 'MUAY THAI', role: 'CLOSE RANGE POWER', punchMove: 'ELBOW · KNEE', kickMove: 'ROUNDHOUSE', super: 'EIGHT LIMBS BARRAGE', color: '#22C55E', accent: '#FB923C', style: 'flame', pitch: .9, speed: .98, punch: 1, kick: 1.2, superPower: 1.12, meter: 1, dash: .12 },
-  taekwondo: { name: 'TAE KWON DO', role: 'FAST LONG KICKS', punchMove: 'LEAD BACKFIST', kickMove: 'SPINNING HEEL', super: 'TORNADO KICK', color: '#22D3EE', accent: '#A78BFA', style: 'flash', pitch: 1.3, speed: 1.16, punch: .98, kick: 1.18, superPower: 1.12, meter: 1.08, dash: .2 },
-  wingchun: { name: 'WING CHUN', role: 'CENTERLINE PRESSURE', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'CENTERLINE FLURRY', color: '#A78BFA', accent: '#F5F3FF', style: 'ward', pitch: 1.12, speed: 1.04, punch: 1.08, kick: .96, superPower: 1.08, meter: 1.12, dash: .13 },
-  sumo: { name: 'SUMO', role: 'HEAVY IMPACT', punchMove: 'PALM STRIKE', kickMove: 'PUSH KICK', super: 'YOKOZUNA CHARGE', color: '#F97316', accent: '#FBBF24', style: 'quake', pitch: .76, speed: .86, punch: 1.12, kick: 1.18, superPower: 1.3, meter: .92, dash: .1 },
+  kickboxing: { name: 'KICKBOXING', role: 'BALANCED COMBOS', punchMove: 'JAB · CROSS', kickMove: 'ROUND KICK', super: 'COMBINATION FINISHER', color: '#3B82F6', accent: '#FBBF24', style: 'rush', pitch: 1.05, speed: 1.08, punch: 1.12, kick: .98, superPower: 1.05, criticalChance: .1, criticalDamage: 1.65, meter: 1, dash: .14 },
+  muaythai: { name: 'MUAY THAI', role: 'CLOSE RANGE POWER', punchMove: 'ELBOW · KNEE', kickMove: 'ROUNDHOUSE', super: 'EIGHT LIMBS BARRAGE', color: '#22C55E', accent: '#FB923C', style: 'flame', pitch: .9, speed: .98, punch: 1, kick: 1.2, superPower: 1.12, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
+  taekwondo: { name: 'TAE KWON DO', role: 'FAST LONG KICKS', punchMove: 'LEAD BACKFIST', kickMove: 'SPINNING HEEL', super: 'TORNADO KICK', color: '#22D3EE', accent: '#A78BFA', style: 'flash', pitch: 1.3, speed: 1.16, punch: .98, kick: 1.18, superPower: 1.12, criticalChance: .15, criticalDamage: 1.55, meter: 1.08, dash: .2 },
+  wingchun: { name: 'WING CHUN', role: 'CENTERLINE PRESSURE', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'CENTERLINE FLURRY', color: '#A78BFA', accent: '#F5F3FF', style: 'ward', pitch: 1.12, speed: 1.04, punch: 1.08, kick: .96, superPower: 1.08, criticalChance: .13, criticalDamage: 1.55, meter: 1.12, dash: .13 },
+  sumo: { name: 'SUMO', role: 'HEAVY IMPACT', punchMove: 'PALM STRIKE', kickMove: 'PUSH KICK', super: 'YOKOZUNA CHARGE', color: '#F97316', accent: '#FBBF24', style: 'quake', pitch: .76, speed: .86, punch: 1.12, kick: 1.18, superPower: 1.3, criticalChance: .06, criticalDamage: 2, meter: .92, dash: .1 },
 };
 
 class Sfx {
@@ -50,6 +50,7 @@ class Sfx {
     else if (name === 'super-charge') { Sfx.tone(95 * pitch, 260 * pitch, .2, 'sawtooth', .055); setTimeout(() => Sfx.tone(240 * pitch, 520 * pitch, .13, 'triangle', .045), 95); }
     else if (name === 'super-dash') Sfx.tone(620 * pitch, 130 * pitch, .16, 'sawtooth', .075);
     else if (name === 'super-hit') { Sfx.tone(105 * pitch, 32 * pitch, .26, 'sawtooth', .1); setTimeout(() => Sfx.tone(390 * pitch, 80 * pitch, .18, 'triangle', .06), 55); }
+    else if (name === 'critical') { Sfx.tone(520 * pitch, 170 * pitch, .15, 'square', .07); setTimeout(() => Sfx.tone(760 * pitch, 320 * pitch, .12, 'triangle', .055), 45); }
   }
 }
 
@@ -853,6 +854,11 @@ class Fighter {
           : (this.classProfile?.punch || 1);
       this.atk.dmg *= multiplier;
       if (kind === 'special') this.atk.kb *= multiplier;
+      if (kind !== 'special' && Math.random() < (this.classProfile?.criticalChance ?? .1)) {
+        this.atk.critical = true;
+        this.atk.dmg *= this.classProfile?.criticalDamage ?? 1.6;
+        this.atk.kb *= 1.2;
+      }
       if (kind === 'special' && this.classProfile) {
         const hitCount = style === 'rush' ? 2 : style === 'flame' ? 4 : style === 'ward' ? 5 : 1;
         this.atk.hitCount = hitCount;
@@ -1130,7 +1136,7 @@ class Fighter {
     }
     const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'airKick' || this.state === 'special') ? b.ll : b.ra;
     const r = this.state === 'special' ? 22 : 18;
-    return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special'};
+    return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical};
   }
   takeHit(atk, from) {
     const frontal = (from.x - this.x) * this.face > 0;
@@ -1268,10 +1274,15 @@ class Fx {
     Fx.list.push({kind:'ring',x,y,r0:10 / sc,r1:30 / sc,life:.2,max:.2,color,width:3 / sc});
     Fx.sparks(x,y,5,color,.55,.12);
   }
-  static damage(x, y, amount, blocked) {
+  static damage(x, y, amount, blocked, critical = false) {
     if (amount <= 0 || !Fx.allowed(x, y)) return;
     const value = Math.round(amount * 10) / 10;
-    Fx.list.push({kind:'damage', text:'-' + value, x, y, life:.7, max:.7, color:blocked ? '#FBBF24' : '#FFFFFF'});
+    Fx.list.push({kind:'damage', text:(critical ? 'CRITICAL!  ' : '') + '-' + value, x, y, life:critical ? .95 : .7, max:critical ? .95 : .7, color:critical ? '#FFE16B' : blocked ? '#FBBF24' : '#FFFFFF', critical});
+  }
+  static critical(x, y, profile) {
+    const color = profile?.accent || '#FFE16B', sc = Game.scale || 1;
+    if (Fx.allowed(x, y)) Fx.list.push({kind:'ring',x,y,r0:5 / sc,r1:34 / sc,life:.2,max:.2,color,width:3 / sc});
+    Fx.sparks(x, y, 10, color, 1, .18);
   }
   static land(x) {
     const y = Game.GROUND, sc = Game.scale || 1;
@@ -1315,9 +1326,9 @@ class Fx {
         const fade = e.life / e.max;
         if (!Fx.allowed(e.x, e.y)) continue;
         ctx.globalAlpha = fade;
-        ctx.font = 'bold ' + 18 / sc + 'px system-ui,sans-serif';
+        ctx.font = 'bold ' + (e.critical ? 22 : 18) / sc + 'px system-ui,sans-serif';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.lineJoin = 'round'; ctx.lineWidth = 4 / sc; ctx.strokeStyle = '#11131A';
+        ctx.lineJoin = 'round'; ctx.lineWidth = (e.critical ? 5 : 4) / sc; ctx.strokeStyle = '#11131A';
         ctx.strokeText(e.text, e.x, e.y);
         ctx.fillStyle = e.color; ctx.fillText(e.text, e.x, e.y);
         ctx.textBaseline = 'alphabetic';
@@ -1840,14 +1851,16 @@ class BeatEmUp {
         if (!hit.special || !attacker.f.specialMeterTargets.has(target)) target.f.gainMeter(hit.special ? 12 : hit.dmg * 1.5);
         if (hit.special) attacker.f.specialMeterTargets.add(target);
         const cx = hit.x + hit.w / 2, cy = hit.y + hit.h / 2;
-        Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block');
+        const criticalHit = !!hit.critical && kind === 'hit';
+        Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block', criticalHit);
+        if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && !attacker.f.specialEffectDone) {
           Fx.special(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile);
           Sfx.play('super-hit', attacker.f.classProfile);
           attacker.f.specialEffectDone = 1;
         }
         else if (kind === 'block') Fx.blocked(cx, cy);
-        else Fx.hit(cx, cy);
+        else if (!criticalHit) Fx.hit(cx, cy);
         Game.stop = .05; Game.shake = .1; Game.shMag = 3;
         if (kind === 'hit') target.f.vy = -100;
         if (attacker.role === 'player') {
@@ -2368,10 +2381,12 @@ class Game {
       if (!box.special || !me.specialMeterTargets.has(foe)) foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       if (box.special) me.specialMeterTargets.add(foe);
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
-      Fx.damage(cx, cy - 12, damage, kind === 'block');
+      const criticalHit = !!box.critical && kind === 'hit';
+      Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
+      if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
       if (box.special && !me.specialEffectDone) { Fx.special(cx, cy, me.classProfile); Sfx.play('super-hit', me.classProfile); me.specialEffectDone = 1; }
       else if (kind === 'block') Fx.blocked(cx, cy);
-      else Fx.hit(cx, cy);
+      else if (!criticalHit) Fx.hit(cx, cy);
       Game.stop = .06; Game.shake = .12; Game.shMag = 4;
       if (kind === 'hit') foe.vy = -120;
       if (kind === 'block' && box.special) Bot.lastBlockKind = 'special';
