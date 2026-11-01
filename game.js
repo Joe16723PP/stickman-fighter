@@ -1182,6 +1182,24 @@ class Fighter {
     if (!this.atk || (this.hitDone && this.state !== 'special')) return null;
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
+    const weapon = this.classProfile?.weapon;
+    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch');
+    if (weaponAttack) {
+      const geometry = this.weaponGeometry(this.combatBones(), true);
+      if (geometry) {
+        const r = (weapon === 'staff' ? 8 : 7) * Fighter.S;
+        const {start,end} = {start:geometry.start,end:geometry.tip};
+        const segment = {x1:start.x,y1:start.y,x2:end.x,y2:end.y,r};
+        const x = Math.min(start.x,end.x) - r, y = Math.min(start.y,end.y) - r;
+        const w = Math.abs(end.x - start.x) + r * 2, h = Math.abs(end.y - start.y) + r * 2;
+        const common = {x,y,w,h,segment,dmg:a.dmg,kb:a.kb,stun:a.stun,chip:a.chip || 0,special:this.state === 'special',critical:!!a.critical};
+        if (this.state === 'special') {
+          const hitCount = a.hitCount || 1;
+          common.pulse = Math.min(hitCount - 1, Math.floor((this.atkT - a.su - 1) / Math.max(1, a.ac / hitCount)));
+        }
+        return common;
+      }
+    }
     if (this.state === 'special') {
       const style = this.classProfile?.style || 'rush';
       const hitCount = a.hitCount || 1;
@@ -1204,10 +1222,6 @@ class Fighter {
       };
     }
     const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'airKick' || this.state === 'special') ? b.ll : b.ra;
-    if (this.classProfile?.weapon && (this.state === 'punch' || this.state === 'airPunch')) {
-      const weapon = this.weaponGeometry(b, true), r = this.classProfile.weapon === 'staff' ? 24 : 19;
-      return {x:weapon.tip.x - r, y:weapon.tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:false, critical:!!a.critical};
-    }
     const r = this.state === 'special' ? 22 : 18;
     return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical};
   }
@@ -2565,7 +2579,23 @@ class Game {
     });
     Game.titleBtns = Game.titleLayout().levels;
   }
-  static hitTest(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+  static hitTest(a, b) {
+    if (!a.segment) return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    // Segment versus target AABB expanded by the weapon's visible half-width.
+    // This avoids treating the empty corners around a diagonal blade/staff as hits.
+    const {x1,y1,x2,y2,r} = a.segment;
+    const left = b.x - r, right = b.x + b.w + r, top = b.y - r, bottom = b.y + b.h + r;
+    const dx = x2 - x1, dy = y2 - y1;
+    let enter = 0, leave = 1;
+    for (const [p,q] of [[-dx,x1-left],[dx,right-x1],[-dy,y1-top],[dy,bottom-y1]]) {
+      if (Math.abs(p) < 1e-8) { if (q < 0) return false; continue; }
+      const t = q / p;
+      if (p < 0) enter = Math.max(enter,t);
+      else leave = Math.min(leave,t);
+      if (enter > leave) return false;
+    }
+    return true;
+  }
   static resolve() {
     for (let i = 0; i < 2; i++) {
       const me = fighters[i], foe = fighters[i ^ 1], box = me.strike();
