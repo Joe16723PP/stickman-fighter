@@ -484,6 +484,10 @@ class Pose {
       la:d(-100), le:d(-40), ra:d(-90), re:d(-35),
       ll:d(22), lk:d(28), rl:d(-30), rk:d(35), hipBob:0};
   }
+  static ragdoll() {
+    const d = Pose.deg;
+    return {chest:d(8),neck:d(4),head:d(8),la:d(-25),le:d(-82),ra:d(18),re:d(76),ll:d(26),lk:d(38),rl:d(-34),rk:d(48),hipBob:0};
+  }
   static koSprawl() {
     const d = Pose.deg;
     // Fall away from attacker under fv; arms ~horizontal toward foe (compensate lean)
@@ -693,6 +697,9 @@ class Fighter {
     this.chain = 0; this.chainArmed = 0;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
     this.landSquash = 0; this.koT = 0; this.atkPhase = '';
+    this.damageBurst = 0; this.damageBurstT = 0;
+    this.ragdollActive = false; this.ragdollKO = false; this.ragdollElapsed = 0;
+    this.ragdollDirection = 0; this.ragdollAngle = 0; this.ragdollFrom = null;
     this.punchSoft = 0;
   }
   setClass(id) {
@@ -976,16 +983,17 @@ class Fighter {
   }
   update(dt, other, slot) {
     this.wardShieldT = Math.max(0, this.wardShieldT - dt);
+    this.damageBurstT = Math.max(0, this.damageBurstT - dt);
+    if (this.damageBurstT <= 0) this.damageBurst = 0;
     if (this.flash > 0) this.flash -= dt;
     if (this.blockFlash > 0) this.blockFlash -= dt;
     if (this.chip > this.hp) this.chip = Math.max(this.hp, this.chip - (100 * dt / .3));
     this.animT += dt;
-    if (this.hp <= 0) {
-      this.state = 'ko'; this.vx *= .9; this.x += this.vx * dt;
-      this.koT += dt;
-      const u = Pose.easeOut(Math.min(1, this.koT / .4));
-      this.pose = Pose.lerp(Pose.hit(), Pose.koSprawl(), u);
-      this.poseKey = 'ko'; return;
+    if (this.hp <= 0 && !this.ragdollActive) this.startRagdoll(null, true);
+    if (this.ragdollActive) {
+      this.updateRagdoll(dt);
+      this.clamp();
+      return;
     }
     if (this.stun > 0) {
       const wasAir = this.y < 0 || !this.grounded;
@@ -1144,9 +1152,13 @@ class Fighter {
     if (this.blocking && frontal) {
       Sfx.play('block', this.classProfile);
       const dmg = (atk.special ? atk.chip : atk.dmg * .2) * (warded ? .55 : 1);
+      const hpBefore = this.hp;
       this.hp = Math.max(0, this.hp - dmg); this.flash = .08; this.blockFlash = .12;
-      this.vx = Math.sign(this.x - from.x) * atk.kb * .25; return 'block';
+      this.vx = Math.sign(this.x - from.x) * atk.kb * .25;
+      this.recordDamage(hpBefore - this.hp, from);
+      return 'block';
     }
+    const hpBefore = this.hp;
     this.hp = Math.max(0, this.hp - atk.dmg * (warded ? .55 : 1)); this.stun = atk.stun; this.flash = .08;
     if (warded) {
       const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
@@ -1156,7 +1168,58 @@ class Fighter {
     Sfx.play('hit', this.classProfile);
     this.vx = Math.sign(this.x - from.x) * atk.kb; this.atk = null; this.blocking = 0; this.dashLeft = 0;
     this.atkPhase = '';
-    this.state = 'hit'; return 'hit';
+    this.state = 'hit';
+    this.recordDamage(hpBefore - this.hp, from);
+    return 'hit';
+  }
+  recordDamage(amount, from) {
+    if (amount <= 0) return;
+    if (this.damageBurstT <= 0) this.damageBurst = 0;
+    this.damageBurst += amount;
+    this.damageBurstT = 1.6;
+    if (this.hp <= 0) this.startRagdoll(from, true);
+    else if (!this.ragdollActive && this.damageBurst >= 30) {
+      this.damageBurst = 0;
+      this.startRagdoll(from, false);
+    }
+  }
+  startRagdoll(from, lethal = false) {
+    if (this.ragdollActive) { if (lethal) this.ragdollKO = true; return; }
+    this.ragdollActive = true; this.ragdollKO = lethal; this.ragdollElapsed = 0; this.koT = 0;
+    this.ragdollFrom = Pose.copy(this.pose);
+    this.ragdollDirection = Math.sign(this.x - (from?.x ?? this.x + this.face)) || -this.face;
+    this.ragdollAngle = 0;
+    this.vx = this.ragdollDirection * Math.max(Math.abs(this.vx), lethal ? 190 : 145);
+    this.vy = Math.min(this.vy, -150); this.grounded = false;
+    this.atk = null; this.atkT = 0; this.stun = 0; this.blocking = 0; this.dashLeft = 0;
+    this.state = lethal ? 'ko' : 'knockdown'; this.atkPhase = '';
+    this.poseKey = 'ragdoll'; this.punchSoft = 0;
+  }
+  updateRagdoll(dt) {
+    this.ragdollElapsed += dt;
+    this.x += this.vx * dt; this.vx *= Math.exp(-4.2 * dt);
+    if (!this.grounded || this.vy < 0) {
+      this.vy += 1600 * dt; this.y += this.vy * dt;
+      if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; Fx.land(this.x); }
+    }
+    const fall = Pose.easeOut(Math.min(1, this.ragdollElapsed / .28));
+    const getUp = this.ragdollKO ? 0 : Pose.easeOut(Math.max(0, Math.min(1, (this.ragdollElapsed - .68) / .3)));
+    this.ragdollAngle = this.ragdollDirection * Math.PI * .5 * fall * (1 - getUp);
+    const flop = Math.exp(-this.ragdollElapsed * 1.7) * (1 - getUp);
+    const prone = Pose.lerp(this.ragdollFrom || Pose.hit(), Pose.ragdoll(), fall);
+    prone.la += Math.sin(this.ragdollElapsed * 19) * .3 * flop;
+    prone.ra += Math.sin(this.ragdollElapsed * 16 + 1) * .34 * flop;
+    prone.ll += Math.sin(this.ragdollElapsed * 14 + 2) * .2 * flop;
+    prone.rl += Math.sin(this.ragdollElapsed * 17) * .2 * flop;
+    this.pose = Pose.lerp(prone, Pose.idle(this.classProfile), getUp);
+    this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose); this.poseKey = 'ragdoll';
+    if (this.ragdollKO) { this.state = 'ko'; return; }
+    if (this.ragdollElapsed >= .98) {
+      this.ragdollActive = false; this.ragdollAngle = 0; this.ragdollElapsed = 0;
+      this.y = 0; this.vy = 0; this.grounded = true; this.state = 'idle';
+      this.damageBurst = 0; this.damageBurstT = 0;
+      this.aim('idle', Pose.idle(this.classProfile), .16);
+    }
   }
   /** Draw-only X nudge so visual bones() stay ≥8px from buttons. Does not move this.x / combat. */
   drawNudgeX() {
@@ -1179,6 +1242,12 @@ class Fighter {
   draw(ctx) {
     const nudge = this.drawNudgeX();
     if (nudge) ctx.translate(nudge, 0);
+    if (this.ragdollActive) {
+      ctx.save();
+      ctx.translate(this.x + nudge, Game.GROUND + this.y);
+      ctx.rotate(this.ragdollAngle);
+      ctx.translate(-this.x - nudge, -Game.GROUND - this.y);
+    }
     const b = this.bones();
     const col = this.flash > 0 ? '#FFFFFF' : this.color;
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Game.lw;
@@ -1211,11 +1280,12 @@ class Fighter {
       }
       ctx.globalAlpha = 1; ctx.lineWidth = Game.lw;
     }
-    if (!Game.banner && Game.phase !== 'title') {
+    if (!this.ragdollActive && !Game.banner && Game.phase !== 'title') {
       ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
       ctx.fillText(this.tag, b.head.x, b.y0 - 12 / Game.scale);
     }
   
+    if (this.ragdollActive) ctx.restore();
     if (nudge) ctx.translate(-nudge, 0);
   }
 }
@@ -1363,6 +1433,8 @@ class BeatEmUp {
   static goArmed = 0;
   static boss = null;
   static stageOver = 0; // 0 playing, 1 win, -1 lose
+  static downPending = 0;
+  static downTimer = 0;
   static lives = BeatEmUp.START_LIVES;
   static score = 0;
   static combo = 0;
@@ -1467,6 +1539,7 @@ class BeatEmUp {
     BeatEmUp.goArmed = 0;
     BeatEmUp.boss = null;
     BeatEmUp.stageOver = 0;
+    BeatEmUp.downPending = 0; BeatEmUp.downTimer = 0;
     BeatEmUp.lives = BeatEmUp.START_LIVES;
     BeatEmUp.score = 0;
     BeatEmUp.combo = 0;
@@ -1582,14 +1655,20 @@ class BeatEmUp {
   }
 
   static playerDown() {
+    if (BeatEmUp.downPending) return;
     BeatEmUp.lives = Math.max(0, BeatEmUp.lives - 1);
     BeatEmUp.combo = 0;
     BeatEmUp.comboT = 0;
     if (BeatEmUp.lives <= 0) { BeatEmUp.loseStage(); return; }
+    BeatEmUp.downPending = 1;
+    BeatEmUp.downTimer = .78;
+  }
+
+  static respawnPlayer() {
     const p = BeatEmUp.playerEntry();
     if (p) {
       p.f.reset(BeatEmUp.cameraX + Game.W * .28, 1);
-      p.f.color = '#3B82F6'; p.f.tag = 'YOU'; p.f.meter = 0;
+      p.f.color = p.f.classProfile?.color || '#3B82F6'; p.f.tag = 'YOU'; p.f.meter = 0;
       p.depth = .55;
     }
     if (BeatEmUp.wave === 4) BeatEmUp.startBoss(true);
@@ -1659,6 +1738,12 @@ class BeatEmUp {
     if (BeatEmUp.stageOver) return;
     const player = BeatEmUp.playerEntry();
     if (!player) return;
+    if (BeatEmUp.downPending) {
+      BeatEmUp.withDepth(player, () => { player.f.updateRagdoll(dt); BeatEmUp.clampFighterBones(player); });
+      BeatEmUp.downTimer -= dt;
+      if (BeatEmUp.downTimer <= 0) { BeatEmUp.downPending = 0; BeatEmUp.respawnPlayer(); }
+      return;
+    }
     BeatEmUp.comboT = Math.max(0, BeatEmUp.comboT - dt);
     if (BeatEmUp.comboT <= 0) BeatEmUp.combo = 0;
     BeatEmUp.eventT = Math.max(0, BeatEmUp.eventT - dt);
@@ -1707,7 +1792,11 @@ class BeatEmUp {
     // AI plans pads, then each enemy updates with its own pad on slot 1
     BeatEmUp.updateGroupAI(dt, player);
     for (const e of BeatEmUp.cast) {
-      if (e.role !== 'enemy' || e.f.hp <= 0) continue;
+      if (e.role !== 'enemy') continue;
+      if (e.f.hp <= 0) {
+        if (e.f.ragdollActive && e.f.ragdollElapsed < 2) BeatEmUp.withDepth(e, () => e.f.updateRagdoll(dt));
+        continue;
+      }
       const pad = e._pad || {};
       Input.acts.forEach(a => { Input.pad[1][a] = pad[a] || 0; Input.was[1][a] = 0; });
       BeatEmUp.withDepth(e, () => {
@@ -2093,10 +2182,13 @@ class BeatEmUp {
   static draw(ctx) {
     BeatEmUp.drawArena(ctx);
     if (BeatEmUp.stageOver) {
+      const corpses = BeatEmUp.cast.filter(e => e.f.ragdollKO && e.f.ragdollElapsed < 2).slice().sort((a, b) => a.depth - b.depth);
+      for (const e of corpses) BeatEmUp.drawFighter(ctx, e);
+      Fx.draw(ctx);
       BeatEmUp.drawResults(ctx);
       return;
     }
-    const ordered = BeatEmUp.cast.filter(e => e.f.hp > 0 || e.role === 'player').slice()
+    const ordered = BeatEmUp.cast.filter(e => e.f.hp > 0 || e.role === 'player' || (e.f.ragdollKO && e.f.ragdollElapsed < 2)).slice()
       .sort((a, b) => a.depth - b.depth);
     for (const e of ordered) BeatEmUp.drawFighter(ctx, e);
     Fx.draw(ctx);
@@ -2185,6 +2277,7 @@ class Game {
     Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
     Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
     fighters[0].meter = 0; fighters[1].meter = 0;
+    fighters.forEach(f => { f.ragdollActive = false; f.ragdollKO = false; f.ragdollAngle = 0; f.ragdollElapsed = 0; f.damageBurst = 0; f.damageBurstT = 0; f.y = 0; f.vy = 0; f.state = 'idle'; });
     Input.keys.clear();
     Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
@@ -2445,7 +2538,10 @@ class Game {
             Game.round++; Game.startRound();
           }
         }
-        fighters.forEach(f => { if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3); });
+        fighters.forEach(f => {
+          if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3);
+          if (Game.phase === 'roundEnd' && f.ragdollActive) f.updateRagdoll(step);
+        });
         if (Game.mode === 'beatemup') {
           for (const e of BeatEmUp.cast) {
             if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
@@ -2471,7 +2567,15 @@ class Game {
           }
         }
       } else if (Game.phase === 'matchEnd') {
-        fighters.forEach(f => { if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3); });
+        if (Game.mode === 'beatemup') {
+          for (const e of BeatEmUp.cast) {
+            if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
+            if (e.f.ragdollActive) BeatEmUp.withDepth(e, () => e.f.updateRagdoll(step));
+          }
+        } else fighters.forEach(f => {
+          if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3);
+          if (f.ragdollActive) f.updateRagdoll(step);
+        });
       }
       Game.acc -= step;
     }
