@@ -283,6 +283,7 @@ class Pose {
   static idle(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-5),neck:d(2),head:d(1),la:d(-102),le:d(-48),ra:d(-78),re:d(-82),shPull:0,ll:d(40),lk:d(30),rl:d(-48),rk:d(24),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-7),neck:d(2),head:d(1),la:d(-58),le:d(-34),ra:d(-120),re:d(-24),shPull:0,ll:d(34),lk:d(22),rl:d(-38),rk:d(28),hipBob:0};
     const stances = {
       rush: {chest:d(-4),neck:d(2),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),shPull:7,ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
       flame:{chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-104),ra:d(-62),re:d(-98),shPull:3,ll:d(24),lk:d(10),rl:d(-22),rk:d(24),hipBob:0},
@@ -305,6 +306,12 @@ class Pose {
       return {...id,la:id.la - arm * .2,le:id.le + d(4),ra:id.ra - arm * .15,re:id.re - d(3),
         ll:step + d(10),lk:Math.max(0,Math.sin(phase)) * d(22) + d(8),
         rl:-step - d(12),rk:Math.max(0,-Math.sin(phase)) * d(20) + d(8),hipBob:dip * .45};
+    }
+    if (profile?.weapon === 'blade') {
+      const step = Math.sin(phase) * d(16 + 6 * stride);
+      return {...id,la:id.la - arm * .18,le:id.le + d(3),ra:id.ra - arm * .12,re:id.re - d(3),
+        ll:step + d(12),lk:Math.max(0,Math.sin(phase)) * d(22) + d(8),
+        rl:-step - d(12),rk:Math.max(0,-Math.sin(phase)) * d(20) + d(8),hipBob:dip * .4};
     }
     if (profile?.style === 'flash') {
       // Quick, short steps keep the ninja planted instead of swinging limbs wide.
@@ -364,6 +371,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(-10),neck:d(2),head:d(1),la:d(-98),le:d(-42),ra:d(-72),re:d(-78),ll:d(32),lk:d(24),rl:d(-42),rk:d(20),hipBob:0,shPull:5};
+    if (profile?.weapon === 'blade') return {chest:d(9),neck:d(2),head:d(1),la:d(-68),le:d(-38),ra:d(-142),re:d(-34),ll:d(30),lk:d(20),rl:d(-34),rk:d(26),hipBob:0,shPull:4};
     if (style === 'flame') return {chest:d(5),neck:d(-1),head:d(2),la:d(-104),le:d(-108),ra:d(12),re:d(142),ll:d(22),lk:d(12),rl:d(-18),rk:d(20),hipBob:0,shPull:5};
     if (style === 'flash') return {chest:d(3),neck:d(1),head:d(1),la:d(-84),le:d(-68),ra:d(48),re:d(128),ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0,shPull:4};
     if (style === 'quake') return {chest:d(19),neck:d(-5),head:d(7),la:d(-110),le:d(-58),ra:d(30),re:d(18),ll:d(27),lk:d(15),rl:d(-22),rk:d(28),hipBob:0,shPull:8};
@@ -377,6 +385,7 @@ class Pose {
     const d = Pose.deg, o = over ? d(10) : 0;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(-16),neck:d(1),head:0,la:d(-90),le:d(-44),ra:d(-102) - o,re:d(-18),ll:d(34),lk:d(20),rl:d(-42),rk:d(18),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-18),neck:d(-1),head:0,la:d(-48),le:d(-28),ra:d(-78) - o,re:d(-18),ll:d(42),lk:d(24),rl:d(-42),rk:d(24),hipBob:0};
     if (style === 'flame') return {chest:d(-3),neck:d(2),head:d(2),la:d(-102),le:d(-108),ra:d(-82),re:d(42),ll:d(20),lk:d(12),rl:d(-20),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(-10),neck:d(1),head:d(0),la:d(-82),le:d(-66),ra:d(-92),re:d(-22),ll:d(14),lk:d(12),rl:d(-16),rk:d(16),hipBob:0};
     if (style === 'quake') return {chest:d(-13),neck:d(3),head:d(6),la:d(-112),le:d(-58),ra:d(-105),re:d(58),ll:d(25),lk:d(14),rl:d(-24),rk:d(26),hipBob:0};
@@ -391,6 +400,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(-2),neck:d(1),head:d(1),la:d(-100),le:d(-48),ra:d(-76),re:d(-82),ll:d(86),lk:d(-78),rl:d(-48),rk:d(24),hipBob:-1};
+    if (profile?.weapon === 'blade') return {chest:d(-4),neck:d(1),head:d(1),la:d(-58),le:d(-34),ra:d(-112),re:d(-24),ll:d(86),lk:d(-88),rl:d(-36),rk:d(26),hipBob:-1};
     if (style === 'rush') return {chest:d(5),neck:d(1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(102),lk:d(-70),rl:d(-20),rk:d(20),hipBob:-1};
     if (style === 'flash') return {chest:d(5),neck:d(1),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),ll:d(72),lk:d(-82),rl:d(-22),rk:d(20),hipBob:-1};
     if (style === 'quake') return {chest:d(14),neck:d(-3),head:d(5),la:d(-110),le:d(-56),ra:d(-56),re:d(-64),ll:d(128),lk:d(-112),rl:d(-20),rk:d(24),hipBob:-2};
@@ -403,6 +413,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(8),neck:d(-1),head:d(1),la:d(-102),le:d(-44),ra:d(-72),re:d(-80),ll:d(92),lk:d(-18),rl:d(-46),rk:d(20),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(7),neck:d(-1),head:d(1),la:d(-56),le:d(-32),ra:d(-106),re:d(-22),ll:d(92),lk:d(-14),rl:d(-34),rk:d(24),hipBob:0};
     if (style === 'rush') return {chest:d(5),neck:d(-1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(105),lk:d(-8),rl:d(-18),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(10),neck:d(-1),head:d(1),la:d(-86),le:d(-64),ra:d(-62),re:d(-98),ll:d(78),lk:d(-18),rl:d(-18),rk:d(16),hipBob:0};
     if (style === 'quake') return {chest:d(20),neck:d(-4),head:d(5),la:d(-112),le:d(-56),ra:d(-56),re:d(-64),ll:d(130),lk:d(-12),rl:d(-22),rk:d(24),hipBob:0};
@@ -416,6 +427,7 @@ class Pose {
   static airPunchWind(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-12),neck:d(2),head:d(1),la:d(-96),le:d(-42),ra:d(-74),re:d(-78),ll:d(72),lk:d(-48),rl:d(-50),rk:d(38),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-12),neck:d(2),head:d(1),la:d(-62),le:d(-32),ra:d(-136),re:d(-30),ll:d(76),lk:d(-50),rl:d(-50),rk:d(38),hipBob:0};
     if (profile?.style === 'rush') return {chest:d(-7),neck:d(2),head:d(2),la:d(-92),le:d(-78),ra:d(46),re:d(118),ll:d(66),lk:d(-42),rl:d(-44),rk:d(34),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(2),neck:d(1),head:d(2),la:d(-104),le:d(-98),ra:d(26),re:d(132),ll:d(78),lk:d(-62),rl:d(-38),rk:d(28),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-8),neck:d(2),head:d(1),la:d(-78),le:d(-64),ra:d(44),re:d(126),ll:d(72),lk:d(-48),rl:d(-48),rk:d(38),hipBob:0};
@@ -428,6 +440,7 @@ class Pose {
   static airPunchStrike(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-24),neck:d(-3),head:d(-2),la:d(-88),le:d(-38),ra:d(-104),re:d(-16),ll:d(-64),lk:d(8),rl:d(-46),rk:d(-8),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-20),neck:d(-3),head:d(-2),la:d(-42),le:d(-26),ra:d(-82),re:d(-16),ll:d(-66),lk:d(8),rl:d(-48),rk:d(-8),hipBob:0};
     if (profile?.style === 'rush') return {chest:d(-19),neck:d(-2),head:d(-2),la:d(-90),le:d(-76),ra:d(-88),re:d(-12),ll:d(-58),lk:d(6),rl:d(-42),rk:d(-8),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(-12),neck:d(-2),head:d(-1),la:d(-104),le:d(-98),ra:d(-78),re:d(34),ll:d(-44),lk:d(-8),rl:d(-36),rk:d(-2),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-22),neck:d(-3),head:d(-3),la:d(62),le:d(28),ra:d(-86),re:d(-12),ll:d(-70),lk:d(8),rl:d(-48),rk:d(-8),hipBob:0};
@@ -442,6 +455,7 @@ class Pose {
   static airKickWind(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-4),neck:d(1),head:d(1),la:d(-100),le:d(-46),ra:d(-76),re:d(-82),ll:d(82),lk:d(-90),rl:d(-48),rk:d(38),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-3),neck:d(1),head:d(1),la:d(-58),le:d(-34),ra:d(-116),re:d(-24),ll:d(82),lk:d(-92),rl:d(-48),rk:d(38),hipBob:0};
     if (profile?.style === 'rush') return {chest:d(-1),neck:d(1),head:d(2),la:d(-92),le:d(-78),ra:d(-68),re:d(-104),ll:d(76),lk:d(-84),rl:d(-48),rk:d(38),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(8),neck:d(-1),head:d(2),la:d(-104),le:d(-98),ra:d(-60),re:d(-96),ll:d(96),lk:d(-102),rl:d(-32),rk:d(24),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-4),neck:d(1),head:d(1),la:d(-78),le:d(-64),ra:d(-70),re:d(-100),ll:d(82),lk:d(-92),rl:d(-50),rk:d(40),hipBob:0};
@@ -454,6 +468,7 @@ class Pose {
   static airKickStrike(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(8),neck:d(-1),head:d(1),la:d(-100),le:d(-44),ra:d(-74),re:d(-80),ll:d(88),lk:d(-16),rl:d(-44),rk:d(34),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(9),neck:d(-1),head:d(1),la:d(-54),le:d(-30),ra:d(-104),re:d(-20),ll:d(88),lk:d(-16),rl:d(-46),rk:d(36),hipBob:0};
     if (profile?.style === 'rush') return {chest:d(6),neck:d(0),head:d(2),la:d(-92),le:d(-78),ra:d(-68),re:d(-104),ll:d(82),lk:d(-18),rl:d(-44),rk:d(34),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(16),neck:d(-2),head:d(2),la:d(-104),le:d(-98),ra:d(-60),re:d(-96),ll:d(98),lk:d(-12),rl:d(-32),rk:d(24),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(8),neck:d(-1),head:d(1),la:d(-82),le:d(-62),ra:d(-68),re:d(-98),ll:d(84),lk:d(-16),rl:d(-46),rk:d(38),hipBob:0};
@@ -467,6 +482,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(-12),neck:d(2),head:d(1),la:d(-108),le:d(-44),ra:d(-82),re:d(-86),ll:d(42),lk:d(28),rl:d(-50),rk:d(24),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-12),neck:d(2),head:d(1),la:d(-48),le:d(-30),ra:d(-150),re:d(-28),ll:d(34),lk:d(22),rl:d(-40),rk:d(28),hipBob:0};
     if (style === 'flame') return {chest:d(17),neck:d(-3),head:d(3),la:d(-110),le:d(-100),ra:d(28),re:d(150),ll:d(115),lk:d(-104),rl:d(-24),rk:d(20),hipBob:-2};
     if (style === 'flash') return {chest:d(8),neck:d(1),head:d(1),la:d(-84),le:d(-72),ra:d(-36),re:d(112),ll:d(68),lk:d(-76),rl:d(-24),rk:d(20),hipBob:0};
     if (style === 'quake') return {chest:d(22),neck:d(-6),head:d(7),la:d(25),le:d(30),ra:d(-110),re:d(-65),ll:d(130),lk:d(-100),rl:d(-24),rk:d(24),hipBob:-3};
@@ -479,6 +495,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(-18),neck:d(2),head:0,la:d(-84),le:d(-30),ra:d(-100),re:d(-8),ll:d(76),lk:d(-48),rl:d(-46),rk:d(34),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-18),neck:d(2),head:0,la:d(-38),le:d(-22),ra:d(-86),re:d(-12),ll:d(78),lk:d(-44),rl:d(-48),rk:d(32),hipBob:0};
     if (style === 'flame') return {chest:d(22),neck:d(-5),head:d(-3),la:d(80),le:d(32),ra:d(-90),re:d(60),ll:d(125),lk:d(-15),rl:d(-28),rk:d(36),hipBob:0};
     if (style === 'flash') return {chest:d(15),neck:d(1),head:d(0),la:d(68),le:d(24),ra:d(-38),re:d(102),ll:d(86),lk:d(-14),rl:d(-34),rk:d(28),hipBob:0};
     if (style === 'quake') return {chest:d(28),neck:d(-8),head:d(8),la:d(35),le:d(40),ra:d(-105),re:d(-62),ll:d(145),lk:d(-14),rl:d(-18),rk:d(25),hipBob:0};
@@ -490,6 +507,7 @@ class Pose {
   static block(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-7),neck:d(2),head:d(1),la:d(-104),le:d(-44),ra:d(-78),re:d(-84),shPull:0,ll:d(38),lk:d(28),rl:d(-46),rk:d(22),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-8),neck:d(2),head:d(1),la:d(-54),le:d(-30),ra:d(-112),re:d(-24),shPull:0,ll:d(32),lk:d(20),rl:d(-36),rk:d(26),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-112),ra:d(-62),re:d(-104),shPull:3,ll:d(22),lk:d(12),rl:d(-20),rk:d(22),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-7),neck:d(2),head:d(1),la:d(-78),le:d(-62),ra:d(-66),re:d(-98),shPull:0,ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(7),neck:d(-2),head:d(4),la:d(-108),le:d(-62),ra:d(-56),re:d(-68),shPull:0,ll:d(24),lk:d(18),rl:d(-20),rk:d(24),hipBob:0};
@@ -1278,7 +1296,7 @@ class Fighter {
     }
     return active
       ? {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}}
-      : {start:{x:hand.x - face * 12,y:hand.y + 18},tip:{x:hand.x + face * 40,y:hand.y - 70}};
+      : {start:{x:hand.x - face * 8,y:hand.y + 12},tip:{x:hand.x + face * 24,y:hand.y - 82}};
   }
   drawWeapon(ctx, b) {
     const weapon = this.classProfile?.weapon;
@@ -1294,6 +1312,7 @@ class Fighter {
       for (const p of [start,tip]) { ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.stroke(); }
     } else {
       const grip = {x:start.x - this.face * 13,y:start.y + 3};
+      const dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx,dy) || 1;
       ctx.strokeStyle = '#20232C'; ctx.lineWidth = 11;
       ctx.beginPath(); ctx.moveTo(grip.x,grip.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
       ctx.strokeStyle = '#D7E0EA'; ctx.lineWidth = 7;
@@ -1301,7 +1320,7 @@ class Fighter {
       ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x - this.face * 8,tip.y + 2); ctx.stroke();
       ctx.strokeStyle = this.classProfile.accent; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.moveTo(grip.x - this.face * 5,grip.y - 6); ctx.lineTo(grip.x + this.face * 5,grip.y + 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(start.x - dy / len * 9,start.y + dx / len * 9); ctx.lineTo(start.x + dy / len * 9,start.y - dx / len * 9); ctx.stroke();
     }
     ctx.restore();
   }
