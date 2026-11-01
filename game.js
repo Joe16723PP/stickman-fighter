@@ -280,7 +280,8 @@ class Pose {
     const stances = {
       rush: {chest:d(-4),neck:d(2),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),shPull:7,ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
       flame:{chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-104),ra:d(-62),re:d(-98),shPull:3,ll:d(24),lk:d(10),rl:d(-22),rk:d(24),hipBob:0},
-      flash:{chest:d(-11),neck:d(3),head:d(0),la:d(-48),le:d(-70),ra:d(-112),re:d(-82),shPull:0,ll:d(34),lk:d(24),rl:d(-34),rk:d(-18),hipBob:0},
+      // Ninja: narrow, low guard with the hands close to the face and elbows tucked.
+      flash:{chest:d(-5),neck:d(2),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),shPull:0,ll:d(18),lk:d(16),rl:d(-18),rk:d(18),hipBob:0},
       quake:{chest:d(7),neck:d(-2),head:d(4),la:d(-112),le:d(-56),ra:d(-56),re:d(-64),shPull:0,ll:d(24),lk:d(18),rl:d(-20),rk:d(24),hipBob:0},
       ward: {chest:d(-2),neck:d(2),head:d(1),la:d(-42),le:d(-18),ra:d(-80),re:d(-112),shPull:0,ll:d(16),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
     };
@@ -293,6 +294,15 @@ class Pose {
     const leg = Math.sin(phase) * d(22 + 12 * stride), arm = Math.sin(phase) * d(14 + 10 * stride);
     const dip = (1 - Math.cos(phase * 2)) * (1 + 1.5 * stride);
     const id = Pose.idle(profile);
+    if (profile?.style === 'flash') {
+      // Quick, short steps keep the ninja planted instead of swinging limbs wide.
+      const step = Math.sin(phase) * d(17 + 7 * stride);
+      return {...id,
+        la:id.la - arm * .35, le:id.le + d(5), ra:id.ra - arm * .35, re:id.re - d(5),
+        ll:step, lk:Math.max(0, Math.sin(phase)) * d(24) + d(8),
+        rl:-step, rk:Math.max(0, -Math.sin(phase)) * d(24) + d(8),
+        hipBob:dip * .55};
+    }
     return {...id,
       la:id.la - arm, le:id.le + d(10), ra:id.ra - arm, re:id.re - d(8),
       ll:leg, lk:Math.max(0, Math.sin(phase)) * d(40) + d(8),
@@ -336,7 +346,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'flame') return {chest:d(5),neck:d(-1),head:d(2),la:d(-104),le:d(-108),ra:d(12),re:d(142),ll:d(22),lk:d(12),rl:d(-18),rk:d(20),hipBob:0,shPull:5};
-    if (style === 'flash') return {chest:d(4),neck:d(1),head:d(1),la:d(-48),le:d(-74),ra:d(112),re:d(148),ll:d(30),lk:d(20),rl:d(-30),rk:d(-12),hipBob:0,shPull:2};
+    if (style === 'flash') return {chest:d(3),neck:d(1),head:d(1),la:d(-84),le:d(-68),ra:d(48),re:d(128),ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0,shPull:4};
     if (style === 'quake') return {chest:d(19),neck:d(-5),head:d(7),la:d(-110),le:d(-58),ra:d(30),re:d(18),ll:d(27),lk:d(15),rl:d(-22),rk:d(28),hipBob:0,shPull:8};
     if (style === 'ward') return {chest:d(4),neck:d(1),head:d(1),la:d(-42),le:d(-18),ra:d(10),re:d(148),ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0,shPull:4};
     // Turn the shoulder back while keeping the lead hand high as a guard.
@@ -348,7 +358,7 @@ class Pose {
     const d = Pose.deg, o = over ? d(10) : 0;
     const style = profile?.style;
     if (style === 'flame') return {chest:d(-3),neck:d(2),head:d(2),la:d(-102),le:d(-108),ra:d(-82),re:d(42),ll:d(20),lk:d(12),rl:d(-20),rk:d(20),hipBob:0};
-    if (style === 'flash') return {chest:d(-15),neck:d(2),head:d(0),la:d(-50),le:d(-76),ra:d(-105),re:d(-6),ll:d(30),lk:d(18),rl:d(-32),rk:d(-14),hipBob:0};
+    if (style === 'flash') return {chest:d(-10),neck:d(1),head:d(0),la:d(-82),le:d(-66),ra:d(-92),re:d(-22),ll:d(14),lk:d(12),rl:d(-16),rk:d(16),hipBob:0};
     if (style === 'quake') return {chest:d(-13),neck:d(3),head:d(6),la:d(-112),le:d(-58),ra:d(-105),re:d(58),ll:d(25),lk:d(14),rl:d(-24),rk:d(26),hipBob:0};
     if (style === 'ward') return {chest:d(-7),neck:d(2),head:d(2),la:d(-42),le:d(-18),ra:d(-100),re:d(14),ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0};
     return {chest:d(-8), neck:d(1), head:d(4),
@@ -361,7 +371,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'rush') return {chest:d(5),neck:d(1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(102),lk:d(-70),rl:d(-20),rk:d(20),hipBob:-1};
-    if (style === 'flash') return {chest:d(1),neck:d(2),head:0,la:d(-48),le:d(-70),ra:d(-112),re:d(-82),ll:d(90),lk:d(-95),rl:d(-34),rk:d(-18),hipBob:-1};
+    if (style === 'flash') return {chest:d(5),neck:d(1),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),ll:d(72),lk:d(-82),rl:d(-22),rk:d(20),hipBob:-1};
     if (style === 'quake') return {chest:d(14),neck:d(-3),head:d(5),la:d(-110),le:d(-56),ra:d(-56),re:d(-64),ll:d(128),lk:d(-112),rl:d(-20),rk:d(24),hipBob:-2};
     if (style === 'ward') return {chest:d(-4),neck:d(1),head:d(1),la:d(-42),le:d(-18),ra:d(-80),re:d(-112),ll:d(105),lk:d(-95),rl:d(-16),rk:d(18),hipBob:-1};
     return {chest:d(10), neck:d(-2), head:d(3),
@@ -372,7 +382,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'rush') return {chest:d(5),neck:d(-1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(105),lk:d(-8),rl:d(-18),rk:d(20),hipBob:0};
-    if (style === 'flash') return {chest:d(4),neck:d(1),head:0,la:d(-48),le:d(-70),ra:d(-112),re:d(-82),ll:d(104),lk:d(-12),rl:d(-35),rk:d(-20),hipBob:0};
+    if (style === 'flash') return {chest:d(10),neck:d(-1),head:d(1),la:d(-86),le:d(-64),ra:d(-62),re:d(-98),ll:d(78),lk:d(-18),rl:d(-18),rk:d(16),hipBob:0};
     if (style === 'quake') return {chest:d(20),neck:d(-4),head:d(5),la:d(-112),le:d(-56),ra:d(-56),re:d(-64),ll:d(130),lk:d(-12),rl:d(-22),rk:d(24),hipBob:0};
     if (style === 'ward') return {chest:d(-4),neck:d(1),head:d(1),la:d(-42),le:d(-18),ra:d(-80),re:d(-112),ll:d(105),lk:d(-16),rl:d(-16),rk:d(18),hipBob:0};
     // Turn the hip through and extend the chambered shin across at waist height.
@@ -383,7 +393,7 @@ class Pose {
   static kickRec(profile = null) { return Pose.idle(profile); }
   static airPunchWind(profile = null) {
     const d = Pose.deg;
-    if (profile?.style === 'flash') return {chest:d(-14),neck:d(3),head:0,la:d(-42),le:d(-66),ra:d(108),re:d(146),ll:d(105),lk:d(-60),rl:d(-78),rk:d(62),hipBob:0};
+    if (profile?.style === 'flash') return {chest:d(-8),neck:d(2),head:d(1),la:d(-78),le:d(-64),ra:d(44),re:d(126),ll:d(72),lk:d(-48),rl:d(-48),rk:d(38),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(12),neck:d(-3),head:d(4),la:d(-110),le:d(-56),ra:d(66),re:d(0),ll:d(100),lk:d(-58),rl:d(-70),rk:d(62),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-8),neck:d(2),head:d(2),la:d(-38),le:d(-10),ra:d(78),re:d(112),ll:d(82),lk:d(-50),rl:d(-74),rk:d(60),hipBob:0};
     return {chest:d(-5), neck:d(2), head:d(3),
@@ -392,7 +402,7 @@ class Pose {
   }
   static airPunchStrike(profile = null) {
     const d = Pose.deg;
-    if (profile?.style === 'flash') return {chest:d(-32),neck:d(-1),head:d(-1),la:d(72),le:d(18),ra:d(-108),re:d(-2),ll:d(-110),lk:d(8),rl:d(-78),rk:d(-12),hipBob:0};
+    if (profile?.style === 'flash') return {chest:d(-22),neck:d(-3),head:d(-3),la:d(62),le:d(28),ra:d(-86),re:d(-12),ll:d(-70),lk:d(8),rl:d(-48),rk:d(-8),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(-18),neck:d(-4),head:d(-2),la:d(-105),le:d(60),ra:d(-100),re:d(54),ll:d(-92),lk:d(10),rl:d(-72),rk:d(-14),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-20),neck:d(-3),head:d(-2),la:d(-38),le:d(-10),ra:d(-100),re:d(8),ll:d(-102),lk:d(12),rl:d(-75),rk:d(-14),hipBob:0};
     // Pitch the whole body into the target, drive the fist straight through,
@@ -403,7 +413,7 @@ class Pose {
   }
   static airKickWind(profile = null) {
     const d = Pose.deg;
-    if (profile?.style === 'flash') return {chest:d(-2),neck:d(2),head:0,la:d(-42),le:d(-66),ra:d(-105),re:d(-80),ll:d(100),lk:d(-110),rl:d(-62),rk:d(58),hipBob:0};
+    if (profile?.style === 'flash') return {chest:d(-4),neck:d(1),head:d(1),la:d(-78),le:d(-64),ra:d(-70),re:d(-100),ll:d(82),lk:d(-92),rl:d(-50),rk:d(40),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(15),neck:d(-2),head:d(3),la:d(-108),le:d(-56),ra:d(-56),re:d(-64),ll:d(130),lk:d(-112),rl:d(-70),rk:d(60),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-2),neck:d(1),head:d(1),la:d(-38),le:d(-10),ra:d(-78),re:d(-108),ll:d(105),lk:d(-100),rl:d(-66),rk:d(58),hipBob:0};
     return {chest:d(8), neck:d(-1), head:d(3),
@@ -412,7 +422,7 @@ class Pose {
   }
   static airKickStrike(profile = null) {
     const d = Pose.deg;
-    if (profile?.style === 'flash') return {chest:d(10),neck:d(1),head:0,la:d(-42),le:d(-66),ra:d(-105),re:d(-80),ll:d(105),lk:d(-12),rl:d(-65),rk:d(50),hipBob:0};
+    if (profile?.style === 'flash') return {chest:d(8),neck:d(-1),head:d(1),la:d(-82),le:d(-62),ra:d(-68),re:d(-98),ll:d(84),lk:d(-16),rl:d(-46),rk:d(38),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(20),neck:d(-3),head:d(4),la:d(-108),le:d(-56),ra:d(-56),re:d(-64),ll:d(132),lk:d(-12),rl:d(-70),rk:d(58),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-2),neck:d(1),head:d(1),la:d(-38),le:d(-10),ra:d(-78),re:d(-108),ll:d(105),lk:d(-14),rl:d(-66),rk:d(58),hipBob:0};
     return {chest:d(12), neck:d(-1), head:d(3),
@@ -423,7 +433,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'flame') return {chest:d(17),neck:d(-3),head:d(3),la:d(-110),le:d(-100),ra:d(28),re:d(150),ll:d(115),lk:d(-104),rl:d(-24),rk:d(20),hipBob:-2};
-    if (style === 'flash') return {chest:d(-16),neck:d(5),head:0,la:d(-40),le:d(-65),ra:d(105),re:d(145),ll:d(52),lk:d(-45),rl:d(-48),rk:d(-18),hipBob:0};
+    if (style === 'flash') return {chest:d(-10),neck:d(3),head:d(1),la:d(-70),le:d(-56),ra:d(42),re:d(112),ll:d(44),lk:d(-36),rl:d(-28),rk:d(24),hipBob:0};
     if (style === 'quake') return {chest:d(22),neck:d(-6),head:d(7),la:d(25),le:d(30),ra:d(-110),re:d(-65),ll:d(130),lk:d(-100),rl:d(-24),rk:d(24),hipBob:-3};
     if (style === 'ward') return {chest:d(-8),neck:d(2),head:d(1),la:d(-30),le:d(-8),ra:d(-90),re:d(-112),ll:d(16),lk:d(14),rl:d(-16),rk:d(18),hipBob:0};
     return {chest:d(10), neck:d(-4), head:d(-6),
@@ -434,7 +444,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'flame') return {chest:d(22),neck:d(-5),head:d(-3),la:d(80),le:d(32),ra:d(-90),re:d(60),ll:d(125),lk:d(-15),rl:d(-28),rk:d(36),hipBob:0};
-    if (style === 'flash') return {chest:d(-24),neck:d(5),head:d(1),la:d(80),le:d(25),ra:d(-110),re:d(2),ll:d(115),lk:d(4),rl:d(-78),rk:d(-18),hipBob:0};
+    if (style === 'flash') return {chest:d(-14),neck:d(3),head:d(1),la:d(58),le:d(24),ra:d(-82),re:d(-12),ll:d(82),lk:d(-42),rl:d(-48),rk:d(34),hipBob:0};
     if (style === 'quake') return {chest:d(28),neck:d(-8),head:d(8),la:d(35),le:d(40),ra:d(-105),re:d(-62),ll:d(145),lk:d(-14),rl:d(-18),rk:d(25),hipBob:0};
     if (style === 'ward') return {chest:d(3),neck:d(1),head:d(1),la:d(-28),le:d(-6),ra:d(-78),re:d(-110),ll:d(18),lk:d(14),rl:d(-18),rk:d(18),hipBob:0};
     return {chest:d(18), neck:d(-6), head:d(-4),
@@ -444,7 +454,7 @@ class Pose {
   static block(profile = null) {
     const d = Pose.deg;
     if (profile?.style === 'flame') return {chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-112),ra:d(-62),re:d(-104),shPull:3,ll:d(22),lk:d(12),rl:d(-20),rk:d(22),hipBob:0};
-    if (profile?.style === 'flash') return {chest:d(-12),neck:d(3),head:0,la:d(-50),le:d(-70),ra:d(-112),re:d(-82),shPull:0,ll:d(34),lk:d(20),rl:d(-34),rk:d(-14),hipBob:0};
+    if (profile?.style === 'flash') return {chest:d(-7),neck:d(2),head:d(1),la:d(-78),le:d(-62),ra:d(-66),re:d(-98),shPull:0,ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(7),neck:d(-2),head:d(4),la:d(-108),le:d(-62),ra:d(-56),re:d(-68),shPull:0,ll:d(24),lk:d(18),rl:d(-20),rk:d(24),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-2),neck:d(2),head:d(1),la:d(-36),le:d(-12),ra:d(-82),re:d(-112),shPull:0,ll:d(16),lk:d(14),rl:d(-16),rk:d(18),hipBob:0};
     // Tight high guard under fv=-face, matching the boxing idle stance.
