@@ -2492,17 +2492,19 @@ class Game {
       const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
       const y = Game.H * (compact ? .61 : .51) - cardH / 2;
       const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
-      const bw = 174 / sc, bh = 48 / sc;
-      return { tabs, classes, levels: [{ id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .87 : .75) - bh / 2, w: bw, h: bh, label: 'START RUN' }] };
+      const bw = 174 / sc, bh = 52 / sc;
+      return { tabs, classes, levels: [], start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .88 : .76) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
     }
     const bw = 120 / sc, bh = 57 / sc, gap = 12 / sc;
     const total = 3 * bw + 2 * gap;
     let x0 = (Game.W - total) / 2;
     x0 = Math.max(inset, Math.min(Game.W - inset - total, x0));
-    const y = Game.H * .55 - bh / 2;
+    const y = Game.H * .53 - bh / 2;
+    const startW = 190 / sc, startH = 52 / sc;
     return {
       tabs,
       levels: Game.levels.map((id, i) => ({id, x: x0 + i * (bw + gap), y, w: bw, h: bh, label: Game.levelLabels[id]})),
+      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * .75 - startH / 2,w:startW,h:startH,label:'START FIGHT'},
     };
   }
   static modeTabs() {
@@ -2526,14 +2528,15 @@ class Game {
     if (Game.mode === 'beatemup') {
       const card = (layout.classes || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
       if (card) { Game.selectClass(card.id); return; }
-      const start = layout.levels.find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
-      if (start) Game.startMatch();
+      const start = layout.start;
+      if (start && gx >= start.x && gx <= start.x + start.w && gy >= start.y && gy <= start.y + start.h) Game.startMatch();
       return;
     }
     if (Game.mode === '1v1') {
       const hit = layout.levels.find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
       if (hit) { Game.level = hit.id; return; }
-      Game.startMatch();
+      const start = layout.start;
+      if (start && gx >= start.x && gx <= start.x + start.w && gy >= start.y && gy <= start.y + start.h) Game.startMatch();
     }
   }
   static tryTitleKey(key) {
@@ -2844,6 +2847,13 @@ class Game {
       }
       ctx.fillText(b.label || Game.levelLabels[b.id] || b.id, b.x + b.w / 2, b.y + b.h / 2);
     }
+    const start = layout.start;
+    if (start) {
+      ctx.fillStyle = '#FBBF24'; ctx.fillRect(start.x, start.y, start.w, start.h);
+      ctx.strokeStyle = '#FFF1B8'; ctx.lineWidth = 2 / sc; ctx.strokeRect(start.x, start.y, start.w, start.h);
+      ctx.fillStyle = '#171923'; ctx.font = 'bold ' + 20 / sc + 'px system-ui,sans-serif';
+      ctx.fillText(start.label, start.x + start.w / 2, start.y + start.h / 2);
+    }
     for (const card of layout.classes || []) {
       const p = card.profile, selected = card.id === Game.selectedClass;
       ctx.fillStyle = selected ? '#303A52' : '#191C26';
@@ -2873,7 +2883,7 @@ class Game {
     }
     ctx.globalAlpha = .8; ctx.fillStyle = '#FFFFFF';
     ctx.font = 16 / sc + 'px system-ui,sans-serif';
-    ctx.fillText(Game.mode === 'beatemup' ? 'Stats are % of base • Choose a fighter • Tap START RUN' : 'Tap to fight', Game.W / 2, Game.H * (compact ? .97 : .87));
+    ctx.fillText(Game.mode === 'beatemup' ? 'Choose a fighter • Press START RUN when ready' : 'Choose difficulty • Press START FIGHT when ready', Game.W / 2, Game.H * (compact ? .97 : .87));
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
