@@ -282,7 +282,7 @@ class Pose {
   /** Compact boxing guard, elbows tucked and fists high. */
   static idle(profile = null) {
     const d = Pose.deg;
-    if (profile?.weapon === 'staff') return {chest:d(-5),neck:d(2),head:d(1),la:d(-102),le:d(-48),ra:d(-78),re:d(-82),shPull:0,ll:d(40),lk:d(30),rl:d(-48),rk:d(24),hipBob:0};
+    if (profile?.weapon === 'staff') return {chest:d(-4),neck:d(2),head:d(1),la:d(-60),le:d(-120),ra:d(0),re:d(-60),shPull:0,ll:d(34),lk:d(24),rl:d(-32),rk:d(26),hipBob:0};
     if (profile?.weapon === 'blade') return {chest:d(-7),neck:d(2),head:d(1),la:d(-58),le:d(-34),ra:d(-120),re:d(-24),shPull:0,ll:d(34),lk:d(22),rl:d(-38),rk:d(28),hipBob:0};
     const stances = {
       rush: {chest:d(-4),neck:d(2),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),shPull:7,ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
@@ -525,7 +525,7 @@ class Pose {
   }
   static block(profile = null) {
     const d = Pose.deg;
-    if (profile?.weapon === 'staff') return {chest:d(-7),neck:d(2),head:d(1),la:d(-104),le:d(-44),ra:d(-78),re:d(-84),shPull:0,ll:d(38),lk:d(28),rl:d(-46),rk:d(22),hipBob:0};
+    if (profile?.weapon === 'staff') return {chest:d(-8),neck:d(2),head:d(1),la:d(-60),le:d(-120),ra:d(0),re:d(-60),shPull:0,ll:d(38),lk:d(28),rl:d(-40),rk:d(24),hipBob:0};
     if (profile?.weapon === 'blade') return {chest:d(-8),neck:d(2),head:d(1),la:d(-54),le:d(-30),ra:d(-112),re:d(-24),shPull:0,ll:d(32),lk:d(20),rl:d(-36),rk:d(26),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-112),ra:d(-62),re:d(-104),shPull:3,ll:d(22),lk:d(12),rl:d(-20),rk:d(22),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-7),neck:d(2),head:d(1),la:d(-78),le:d(-62),ra:d(-66),re:d(-98),shPull:0,ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0};
@@ -1328,17 +1328,20 @@ class Fighter {
     if (!weapon) return null;
     const hand = b.ra, face = this.face;
     if (weapon === 'staff') {
-      const resting = {start:{x:hand.x - face * 54,y:hand.y + 55},tip:{x:hand.x + face * 38,y:hand.y - 82}};
-      const thrust = {start:{x:hand.x - face * 34,y:hand.y + 16},tip:{x:hand.x + face * 112,y:hand.y - 18}};
-      const sweep = {start:{x:hand.x - face * 52,y:hand.y - 62},tip:{x:hand.x + face * 82,y:hand.y + 38}};
-      const target = this.state === 'kick' ? sweep : thrust;
-      if (active) return target;
-      if (this.atk && (this.state === 'punch' || this.state === 'kick') && this.atk.su > 0) {
-        const t = Pose.easeOut(this.atkT / this.atk.su);
-        return {start:{x:resting.start.x + (target.start.x - resting.start.x) * t,y:resting.start.y + (target.start.y - resting.start.y) * t},
-          tip:{x:resting.tip.x + (target.tip.x - resting.tip.x) * t,y:resting.tip.y + (target.tip.y - resting.tip.y) * t}};
+      // Build the staff shaft through both hands, then extend it past each grip.
+      // This keeps idle, thrust, and heavy sweep collision on the drawn weapon.
+      const leadIsLeft = (b.la.x - b.ra.x) * face >= 0;
+      const rear = leadIsLeft ? b.ra : b.la, lead = leadIsLeft ? b.la : b.ra;
+      let dx = (lead.x - rear.x) * face, dy = lead.y - rear.y;
+      let length = Math.hypot(dx,dy);
+      if (length < 10) {
+        dx = Math.cos(this.state === 'kick' ? .72 : 0);
+        dy = Math.sin(this.state === 'kick' ? .72 : 0);
+        length = 1;
       }
-      return resting;
+      const ux = face * dx / length, uy = dy / length;
+      const back = 44, front = 74;
+      return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
     }
     return active
       ? {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}}
