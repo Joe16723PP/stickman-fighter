@@ -7,7 +7,8 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 .pad{position:absolute;bottom:calc(24px + env(safe-area-inset-bottom,0px));pointer-events:none}
 .pad.left{left:calc(24px + env(safe-area-inset-left,0px))}
 .pad.right{right:calc(24px + env(safe-area-inset-right,0px))}
-.move-stick{width:132px;height:132px;pointer-events:auto;touch-action:none;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
+.move-stick{position:relative;width:132px;height:132px;pointer-events:auto;touch-action:none;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
+.move-stick::after{content:'MOVE ← →  /  LANE ↑ ↓';position:absolute;left:50%;top:-14px;transform:translateX(-50%);color:rgba(235,240,255,.72);font:700 9px/1 system-ui,sans-serif;letter-spacing:.08em;white-space:nowrap;text-shadow:0 1px 3px #111;pointer-events:none}
 .stick-ring{width:116px;height:116px;border:2px solid rgba(220,228,255,.7);border-radius:50%;background:radial-gradient(circle,rgba(83,94,125,.72) 0 42%,rgba(35,40,56,.88) 43% 100%);box-shadow:inset 0 0 0 8px rgba(255,255,255,.07),0 4px 18px rgba(0,0,0,.35);display:grid;place-items:center}
 .stick-knob{width:54px;height:54px;border:2px solid rgba(255,255,255,.95);border-radius:50%;background:linear-gradient(145deg,rgba(119,137,183,.98),rgba(55,64,89,.98));box-shadow:0 3px 10px rgba(0,0,0,.48);transform:translate(0,0);will-change:transform}
 .actions{position:relative;width:200px;height:200px;pointer-events:none}
@@ -20,8 +21,8 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 .cluster .block{width:48px;height:48px;left:10px;top:0;font-size:9px}
 .cluster .special{width:56px;height:56px;left:129px;top:36px;background:rgba(105,82,155,.94);font-size:10px}
 .actions .special{opacity:.82}
-.actions .special.ready{opacity:1;background:rgba(251,191,36,.88);border-color:#FFE08A;box-shadow:0 0 14px 3px rgba(251,191,36,.58)}
-.actions .special.ready:active,.actions .special.ready.held{opacity:1;background:rgba(251,191,36,1)}
+.actions .special.ready{opacity:1;background:var(--class-accent,#FBBF24);border-color:#FFF1B8;box-shadow:0 0 14px 3px color-mix(in srgb,var(--class-accent,#FBBF24) 68%,transparent)}
+.actions .special.ready:active,.actions .special.ready.held{opacity:1;filter:brightness(1.12)}
 .actions button:disabled{opacity:.36;pointer-events:none}
 @media (max-height:420px){
 .pad{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
