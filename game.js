@@ -854,7 +854,7 @@ class Fighter {
           : (this.classProfile?.punch || 1);
       this.atk.dmg *= multiplier;
       if (kind === 'special') this.atk.kb *= multiplier;
-      if (kind !== 'special' && Math.random() < (this.classProfile?.criticalChance ?? .1)) {
+      if (Math.random() < (this.classProfile?.criticalChance ?? .1)) {
         this.atk.critical = true;
         this.atk.dmg *= this.classProfile?.criticalDamage ?? 1.6;
         this.atk.kb *= 1.2;
@@ -1131,7 +1131,7 @@ class Fighter {
       return {
         x: this.face > 0 ? this.x + lead : this.x - w - lead,
         y: Game.GROUND + this.y - h,
-        w, h, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:true, pulse,
+        w, h, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:true, pulse, critical:!!a.critical,
       };
     }
     const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'airKick' || this.state === 'special') ? b.ll : b.ra;
