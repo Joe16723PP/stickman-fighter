@@ -2384,7 +2384,8 @@ class Game {
       const step = Game.STEP;
       if (Game.phase === 'title') {
         fighters[0].face = 1; fighters[1].face = -1;
-        fighters[0].pose = Pose.idle(); fighters[1].pose = Pose.idle();
+        fighters[0].pose = Pose.idle(fighters[0].classProfile);
+        fighters[1].pose = Pose.idle(fighters[1].classProfile);
         fighters[0].y = 0; fighters[1].y = 0;
       } else if (Game.phase === 'intro' || Game.phase === 'roundEnd') {
         Game.bannerT -= step;
