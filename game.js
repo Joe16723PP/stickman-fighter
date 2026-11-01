@@ -98,6 +98,12 @@ class Input {
       btn.addEventListener('pointerup', end); btn.addEventListener('pointercancel', end);
       btn.addEventListener('pointerleave', e => { if (e.buttons) set(0); });
     });
+    const menuBtn = document.getElementById('main-menu-button');
+    if (menuBtn) {
+      // Keep the menu tap from being interpreted as a retry on the Beat 'em up results screen.
+      menuBtn.addEventListener('pointerdown', e => { e.stopPropagation(); Sfx.unlock(); });
+      menuBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); Game.goTitle(); });
+    }
     const stick = document.getElementById('move-stick');
     if (stick) {
       const knob = stick.querySelector('.stick-knob');
@@ -2166,6 +2172,9 @@ class Game {
     Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
     Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
     fighters[0].meter = 0; fighters[1].meter = 0;
+    Input.keys.clear();
+    Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
+    Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
     fighters[0].color = '#3B82F6'; fighters[1].color = '#EF4444';
     fighters[0].setClass(Game.mode === 'beatemup' ? Game.selectedClass : null);
     fighters[0].tag = 'YOU'; fighters[1].tag = 'CPU';
@@ -2225,6 +2234,8 @@ class Game {
   static syncControls() {
     const el = document.getElementById('controls');
     if (el) el.style.display = Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
+    const menu = document.getElementById('main-menu-button');
+    if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
   }
   static titleLayout() {
     const sc = Game.scale;
