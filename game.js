@@ -2456,7 +2456,8 @@ class Game {
     Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
     fighters[0].color = '#3B82F6'; fighters[1].color = '#EF4444';
-    fighters[0].setClass(Game.mode === 'beatemup' ? Game.selectedClass : null);
+    fighters[0].setClass(Game.selectedClass);
+    fighters[0].color = FighterClasses[Game.selectedClass].color;
     fighters[0].tag = 'YOU'; fighters[1].tag = 'CPU';
     fighters[0].hp = 100; fighters[1].hp = 100;
     BeatEmUp.stageOver = 0; BeatEmUp.showGo = 0; BeatEmUp.cast = []; BeatEmUp.boss = null;
@@ -2474,8 +2475,8 @@ class Game {
   }
   static selectMode(mode) {
     Game.mode = mode; Input.syncMode();
-    fighters[0].setClass(mode === 'beatemup' ? Game.selectedClass : null);
-    fighters[0].color = mode === 'beatemup' ? FighterClasses[Game.selectedClass].color : '#3B82F6';
+    fighters[0].setClass(Game.selectedClass);
+    fighters[0].color = FighterClasses[Game.selectedClass].color;
   }
   /** Title-only: idle fighters at ~15% / 85% width, facing in. Match spawn unchanged. */
   static placeTitleFighters() {
@@ -2503,7 +2504,10 @@ class Game {
   }
   static startRound() {
     Game.stop = 0; Game.shake = 0; Game.timer = 60; Game.fighting = 0; Game.matchOver = 0;
-    fighters.forEach((f, i) => { f.setClass(null); f.color = i === 0 ? '#3B82F6' : '#EF4444'; });
+    fighters.forEach((f, i) => {
+      f.setClass(i === 0 ? Game.selectedClass : null);
+      f.color = i === 0 ? FighterClasses[Game.selectedClass].color : '#EF4444';
+    });
     fighters[0].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .35)), 1);
     fighters[1].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .65)), -1);
     Fx.clear(); Bot.reset();
@@ -2538,12 +2542,18 @@ class Game {
     const total = 3 * bw + 2 * gap;
     let x0 = (Game.W - total) / 2;
     x0 = Math.max(inset, Math.min(Game.W - inset - total, x0));
-    const y = Game.H * .53 - bh / 2;
+    const y = Game.H * .49 - bh / 2;
     const startW = 190 / sc, startH = 52 / sc;
+    const classCount = Object.keys(FighterClasses).length;
+    const classGap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - classGap * (classCount - 1)) / classCount);
+    const cardH = 112 / sc, cardTotal = cardW * classCount + classGap * (classCount - 1);
+    const classes = Object.entries(FighterClasses).map(([id,profile],i) => ({id,profile,menuCompact:true,
+      x:(Game.W-cardTotal)/2 + i*(cardW+classGap),y:Game.H*.66-cardH/2,w:cardW,h:cardH}));
     return {
       tabs,
+      classes,
       levels: Game.levels.map((id, i) => ({id, x: x0 + i * (bw + gap), y, w: bw, h: bh, label: Game.levelLabels[id]})),
-      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * .75 - startH / 2,w:startW,h:startH,label:'START FIGHT'},
+      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * .87 - startH / 2,w:startW,h:startH,label:'START FIGHT'},
     };
   }
   static modeTabs() {
@@ -2572,6 +2582,8 @@ class Game {
       return;
     }
     if (Game.mode === '1v1') {
+      const card = (layout.classes || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
+      if (card) { Game.selectClass(card.id); return; }
       const hit = layout.levels.find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
       if (hit) { Game.level = hit.id; return; }
       const start = layout.start;
@@ -2595,6 +2607,11 @@ class Game {
       if (Game.mode === 'beatemup') { const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass); Game.selectClass(ids[(i + 1) % ids.length]); return; }
       const i = Game.levels.indexOf(Game.level);
       Game.level = Game.levels[Math.min(Game.levels.length - 1, i + 1)]; return;
+    }
+    if (Game.mode === '1v1' && (key === 'ArrowUp' || key === 'ArrowDown')) {
+      const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass);
+      const step = key === 'ArrowUp' ? -1 : 1;
+      Game.selectClass(ids[(i + step + ids.length) % ids.length]); return;
     }
     if (key === 'Enter' || key === ' ' || key === 'j' || key === 'J') Game.startMatch();
   }
@@ -2900,6 +2917,19 @@ class Game {
       ctx.fillRect(card.x, card.y, card.w, card.h);
       ctx.strokeStyle = selected ? p.accent : 'rgba(220,228,255,.32)'; ctx.lineWidth = (selected ? 3 : 1.5) / sc;
       ctx.strokeRect(card.x, card.y, card.w, card.h);
+      if (card.menuCompact) {
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(card.x + card.w / 2, card.y + 15 / sc, 6 / sc, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min(12 / sc, card.w * .11) + 'px system-ui,sans-serif';
+        ctx.fillText(p.name, card.x + card.w / 2, card.y + 34 / sc);
+        ctx.fillStyle = '#D7DCE9'; ctx.font = Math.min(8 / sc, card.w * .075) + 'px system-ui,sans-serif';
+        ctx.fillText(p.role, card.x + card.w / 2, card.y + 51 / sc);
+        ctx.fillStyle = '#E7EAF2'; ctx.font = 'bold ' + Math.min(8 / sc, card.w * .075) + 'px system-ui,sans-serif';
+        ctx.fillText('NORMAL  ' + p.punchMove, card.x + card.w / 2, card.y + 73 / sc);
+        ctx.fillText('HEAVY  ' + p.kickMove, card.x + card.w / 2, card.y + 91 / sc);
+        ctx.fillStyle = selected ? p.accent : '#9AA3B7'; ctx.font = 'bold ' + 7 / sc + 'px system-ui,sans-serif';
+        ctx.fillText(selected ? 'SELECTED' : 'CHOOSE', card.x + card.w / 2, card.y + 105 / sc);
+        continue;
+      }
       const at = (normal, small) => card.y + (compact ? small : normal) / sc;
       ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(card.x + card.w / 2, at(22,11), (compact ? 6 : 9) / sc, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 14) / sc, card.w * .11) + 'px system-ui,sans-serif';
@@ -2923,7 +2953,7 @@ class Game {
     }
     ctx.globalAlpha = .8; ctx.fillStyle = '#FFFFFF';
     ctx.font = 16 / sc + 'px system-ui,sans-serif';
-    ctx.fillText(Game.mode === 'beatemup' ? 'Choose a fighter • Press START RUN when ready' : 'Choose difficulty • Press START FIGHT when ready', Game.W / 2, Game.H * (compact ? .97 : .87));
+    ctx.fillText(Game.mode === 'beatemup' ? 'Choose a fighter • Press START RUN when ready' : 'Choose a fighter and difficulty • Press START FIGHT', Game.W / 2, Game.H * (compact ? .97 : .97));
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
