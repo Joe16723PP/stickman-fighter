@@ -743,7 +743,7 @@ class Fighter {
   static GROUND_BRAKE = 1800;
   static TURN_ACCEL = 1700;
   constructor(x, color, side, tag) {
-    this.color = color; this.tag = tag; this.meter = 0; this.reset(x, side);
+    this.color = color; this.tag = tag; this.playerControlled = tag === 'YOU'; this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
     this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side;
@@ -757,6 +757,7 @@ class Fighter {
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
     this.landSquash = 0; this.koT = 0; this.atkPhase = '';
     this.damageBurst = 0; this.damageBurstT = 0;
+    this.invincibleT = 0;
     this.ragdollActive = false; this.ragdollKO = false; this.ragdollElapsed = 0;
     this.ragdollDirection = 0; this.ragdollAngle = 0; this.ragdollFrom = null;
     this.punchSoft = 0;
@@ -1046,6 +1047,7 @@ class Fighter {
   }
   update(dt, other, slot) {
     this.wardShieldT = Math.max(0, this.wardShieldT - dt);
+    this.invincibleT = Math.max(0, this.invincibleT - dt);
     this.damageBurstT = Math.max(0, this.damageBurstT - dt);
     if (this.damageBurstT <= 0) this.damageBurst = 0;
     if (this.flash > 0) this.flash -= dt;
@@ -1230,6 +1232,7 @@ class Fighter {
     return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical};
   }
   takeHit(atk, from) {
+    if (this.playerControlled && this.invincibleT > 0) return 'invulnerable';
     const frontal = (from.x - this.x) * this.face > 0;
     const warded = this.wardShieldT > 0 && this.classProfile?.style === 'ward';
     if (this.blocking && frontal) {
@@ -1300,6 +1303,7 @@ class Fighter {
     if (this.ragdollElapsed >= .98) {
       this.ragdollActive = false; this.ragdollAngle = 0; this.ragdollElapsed = 0;
       this.y = 0; this.vy = 0; this.grounded = true; this.state = 'idle';
+      if (this.playerControlled) this.invincibleT = 1.5;
       this.damageBurst = 0; this.damageBurstT = 0;
       this.aim('idle', Pose.idle(this.classProfile), .16);
     }
@@ -1383,7 +1387,8 @@ class Fighter {
       ctx.translate(-this.x - nudge, -Game.GROUND - this.y);
     }
     const b = this.bones();
-    const col = this.flash > 0 ? '#FFFFFF' : this.color;
+    const invulnBlink = this.playerControlled && this.invincibleT > 0 && Math.floor(this.invincibleT * 14) % 2 === 0;
+    const col = this.flash > 0 || invulnBlink ? '#FFFFFF' : this.color;
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Game.lw;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const chain = (pts) => {
@@ -1804,6 +1809,7 @@ class BeatEmUp {
     if (p) {
       p.f.reset(BeatEmUp.cameraX + Game.W * .28, 1);
       p.f.color = p.f.classProfile?.color || '#3B82F6'; p.f.tag = 'YOU'; p.f.meter = 0;
+      p.f.invincibleT = 1.5;
       p.depth = .55;
     }
     if (BeatEmUp.wave === 4) BeatEmUp.startBoss(true);
@@ -2064,6 +2070,7 @@ class BeatEmUp {
         let th = null;
         BeatEmUp.withDepth(target, () => { th = { x: target.f.hitbox.x, y: target.f.hitbox.y, w: target.f.hitbox.w, h: target.f.hitbox.h }; });
         if (!th || !Game.hitTest(hit, th)) continue;
+        if (target.f.playerControlled && target.f.invincibleT > 0) continue;
         attacker.f.hitDone = 1;
         if (hit.special) attacker.f.hitTargets.set(target, hit.pulse);
         const hpBefore = target.f.hp;
@@ -2621,6 +2628,7 @@ class Game {
       if (!box || foe.hp <= 0) continue;
       if (box.special && me.hitTargets.get(foe) === box.pulse) continue;
       if (!Game.hitTest(box, foe.hitbox)) continue;
+      if (foe.playerControlled && foe.invincibleT > 0) continue;
       me.hitDone = 1;
       if (box.special) me.hitTargets.set(foe, box.pulse);
       const hpBefore = foe.hp;
