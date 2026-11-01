@@ -417,9 +417,10 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') {
-      if (combo === 1) return Pose.staffGrip(10,[-132,-22,8,48],[38,18,-38,20],0);
-      if (combo === 2) return Pose.staffGrip(14,[-148,-18,-12,46],[50,28,-46,25],-1);
-      return Pose.staffGrip(8,[-112,-24,20,50],[30,22,-34,22],0);
+      if (combo === 1) return Pose.staffGrip(12,[-132,-46,-88,-44],[42,26,-40,28],0);
+      if (combo === 2) return Pose.staffGrip(16,[-148,-28,-110,-52],[52,28,-48,30],-1);
+      // Draw the rear hand back, keeping both hands spaced along the shaft.
+      return Pose.staffGrip(8,[-130,20,-60,100],[30,22,-34,22],0);
     }
     if (profile?.weapon === 'blade') {
       if (combo === 1) return {chest:d(15),neck:d(-2),head:d(2),la:d(-114),le:d(-22),ra:d(-154),re:d(-52),ll:d(34),lk:d(24),rl:d(-38),rk:d(28),hipBob:0,shPull:7};
@@ -441,9 +442,10 @@ class Pose {
     const d = Pose.deg, o = over ? d(10) : 0;
     const style = profile?.style;
     if (profile?.weapon === 'staff') {
-      if (combo === 1) return Pose.staffGrip(-15,[-128,-18,2,46],[42,18,-44,20],0);
-      if (combo === 2) return Pose.staffGrip(-20,[-145,-18,-18,42],[56,26,-52,26],-2);
-      return Pose.staffGrip(-13,[-108,-20,18,46],[34,18,-38,18],0);
+      if (combo === 1) return Pose.staffGrip(-16,[-92,8,-34,-118],[40,20,-42,22],0);
+      if (combo === 2) return Pose.staffGrip(-22,[-74,16,-38,-112],[54,28,-50,26],-2);
+      // Drive both hands forward together for a clear two-hand thrust.
+      return Pose.staffGrip(-13,[-90,0,-30,-120],[34,18,-38,18],0);
     }
     if (profile?.weapon === 'blade') {
       if (combo === 1) return {chest:d(-20),neck:d(-2),head:d(-1),la:d(-108),le:d(-14),ra:d(-62),re:d(-28),ll:d(44),lk:d(22),rl:d(-44),rk:d(24),hipBob:0};
@@ -470,7 +472,7 @@ class Pose {
   static kickWind(profile = null) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return Pose.staffGrip(9,[-126,-24,12,46],[70,46,-34,20],-2);
+    if (profile?.weapon === 'staff') return Pose.staffGrip(12,[-132,-46,-88,-44],[48,26,-42,30],-2);
     if (profile?.weapon === 'blade') return {chest:d(11),neck:d(-1),head:d(2),la:d(-110),le:d(-160),ra:d(-100),re:d(-150),ll:d(30),lk:d(22),rl:d(-34),rk:d(26),hipBob:-1};
     if (style === 'rush') return {chest:d(5),neck:d(1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(102),lk:d(-70),rl:d(-20),rk:d(20),hipBob:-1};
     if (style === 'flash') return {chest:d(5),neck:d(1),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),ll:d(72),lk:d(-82),rl:d(-22),rk:d(20),hipBob:-1};
@@ -483,7 +485,11 @@ class Pose {
   static kickStrike(profile = null) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return Pose.staffGrip(-12,[-126,-22,12,44],[118,-10,-26,18],-2);
+    if (profile?.weapon === 'staff') {
+      // Plant the feet and rotate through a two-hand staff sweep; the active
+      // weapon segment is derived from these grip points in weaponGeometry().
+      return Pose.staffGrip(-18,[-95,10,-35,-115],[36,22,-38,24],-2);
+    }
     if (profile?.weapon === 'blade') return {chest:d(-16),neck:d(-2),head:d(1),la:d(-60),le:d(-120),ra:d(-90),re:d(-60),ll:d(34),lk:d(22),rl:d(-36),rk:d(28),hipBob:-2};
     if (style === 'rush') return {chest:d(5),neck:d(-1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(105),lk:d(-8),rl:d(-18),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(10),neck:d(-1),head:d(1),la:d(-86),le:d(-64),ra:d(-62),re:d(-98),ll:d(78),lk:d(-18),rl:d(-18),rk:d(16),hipBob:0};
