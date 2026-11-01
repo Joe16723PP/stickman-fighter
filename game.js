@@ -1390,6 +1390,24 @@ class Fighter {
     }
     ctx.restore();
   }
+  drawFullMeterAura(ctx, b) {
+    if (this.meter < 100 || this.hp <= 0 || this.ragdollActive) return;
+    const color = this.classProfile?.color || this.color;
+    const cx = (b.head.x + b.hip.x) / 2, cy = (b.head.y + b.hip.y) / 2;
+    const rx = 38 * Fighter.S, ry = 58 * Fighter.S;
+    const pulse = .78 + .14 * Math.sin(this.animT * 5);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    const glow = ctx.createRadialGradient(cx,cy,4 * Fighter.S,cx,cy,ry * 1.18);
+    glow.addColorStop(0,color + '44'); glow.addColorStop(.62,color + '20'); glow.addColorStop(1,color + '00');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = .7 * pulse;
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5 * Fighter.S;
+    ctx.setLineDash([7 * Fighter.S,11 * Fighter.S]); ctx.lineDashOffset = -this.animT * 18 * Fighter.S;
+    ctx.beginPath(); ctx.ellipse(cx,cy,rx * .9,ry * .9,0,0,Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
   draw(ctx) {
     const nudge = this.drawNudgeX();
     if (nudge) ctx.translate(nudge, 0);
@@ -1400,6 +1418,7 @@ class Fighter {
       ctx.translate(-this.x - nudge, -Game.GROUND - this.y);
     }
     const b = this.bones();
+    this.drawFullMeterAura(ctx,b);
     const invulnBlink = this.playerControlled && this.invincibleT > 0 && Math.floor(this.invincibleT * 14) % 2 === 0;
     const col = this.flash > 0 || invulnBlink ? '#FFFFFF' : this.color;
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Game.lw;
