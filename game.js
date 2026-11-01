@@ -31,7 +31,7 @@ class Input {
     };
     addEventListener('keydown', e => on(e, 1));
     addEventListener('keyup', e => on(e, 0));
-    addEventListener('blur', () => { Input.keys.clear(); Input.pad.forEach(p => Input.acts.forEach(a => p[a] = 0)); });
+    addEventListener('blur', () => { Input.keys.clear(); Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; }); });
     addEventListener('pointerdown', e => {
       if (Game.phase === 'title') { Game.titlePointer(e); return; }
       if (Game.matchOver) {
@@ -49,6 +49,40 @@ class Input {
       btn.addEventListener('pointerup', end); btn.addEventListener('pointercancel', end);
       btn.addEventListener('pointerleave', e => { if (e.buttons) set(0); });
     });
+    const stick = document.getElementById('move-stick');
+    if (stick) {
+      const knob = stick.querySelector('.stick-knob');
+      let pointerId = null;
+      const resetStick = () => {
+        pointerId = null;
+        Input.pad[0].left = 0; Input.pad[0].right = 0;
+        Input.pad[0].depthUp = 0; Input.pad[0].depthDown = 0;
+        knob.style.transform = 'translate(0,0)';
+      };
+      const moveStick = e => {
+        if (e.pointerId !== pointerId) return;
+        const rect = stick.getBoundingClientRect();
+        const radius = Math.min(rect.width, rect.height) * .25;
+        const dx = Math.max(-radius, Math.min(radius, e.clientX - (rect.left + rect.width / 2)));
+        const dy = Math.max(-radius, Math.min(radius, e.clientY - (rect.top + rect.height / 2)));
+        knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+        const deadZone = radius * .22;
+        Input.pad[0].left = dx < -deadZone ? 1 : 0;
+        Input.pad[0].right = dx > deadZone ? 1 : 0;
+        Input.pad[0].depthUp = dy < -deadZone ? 1 : 0;
+        Input.pad[0].depthDown = dy > deadZone ? 1 : 0;
+      };
+      stick.addEventListener('pointerdown', e => {
+        e.preventDefault(); e.stopPropagation();
+        pointerId = e.pointerId;
+        stick.setPointerCapture(pointerId);
+        moveStick(e);
+      });
+      stick.addEventListener('pointermove', moveStick);
+      stick.addEventListener('pointerup', e => { if (e.pointerId === pointerId) resetStick(); });
+      stick.addEventListener('pointercancel', resetStick);
+      stick.addEventListener('lostpointercapture', resetStick);
+    }
   }
   static syncMode() {
     // In beat mode, jump is Space + Jump button only; W/↑ move depth instead.
@@ -61,7 +95,8 @@ class Input {
   static held(p, a) { return Input.keyMap[p][a].some(k => Input.keys.has(k)) || !!Input.pad[p][a]; }
   static depthHeld(dir) {
     if (Game.mode !== 'beatemup') return false;
-    return (Input.depthKeys[dir] || []).some(k => Input.keys.has(k));
+    const padKey = dir === 'up' ? 'depthUp' : 'depthDown';
+    return (Input.depthKeys[dir] || []).some(k => Input.keys.has(k)) || !!Input.pad[0][padKey];
   }
   static edge(p, a) {
     const on = Input.held(p, a), e = on && !Input.was[p][a];
@@ -86,6 +121,8 @@ const Moves = {
     cancelInto: ['punch'],         // punch may cancel kick during windup only
     reach: 155,
   },
+  airPunch: { su: 2, ac: 3, re: 11, dmg: 6, kb: 180, stun: 11 },
+  airKick:  { su: 3, ac: 4, re: 14, dmg: 8, kb: 250, stun: 14 },
   special: {
     su: 8, ac: 12, re: 14,
     dmg: 20, chip: 5, kb: 340, stun: 20,
@@ -117,6 +154,9 @@ class Atk {
         kind: 'kick', cancelInto: m.cancelInto.slice(),
       };
     }
+    if (kind === 'airPunch' || kind === 'airKick') {
+      return {su:m.su, ac:m.ac, re:m.re, dmg:m.dmg, kb:m.kb, stun:m.stun, kind};
+    }
     return {
       su: m.su, ac: m.ac, re: m.re,
       dmg: m.dmg, chip: m.chip || 0, kb: m.kb, stun: m.stun,
@@ -138,6 +178,8 @@ class CombatPose {
   static jump() { return {torso:-.05,la:-2.6,le:-.5,ra:2.6,re:.5,ll:.9,lk:1.1,rl:-.9,rk:1.1}; }
   static punch() { return {torso:.15,la:-.5,le:-.2,ra:1.55,re:.2,ll:.2,lk:.1,rl:-.2,rk:.1}; }
   static kick() { return {torso:-.15,la:-.6,le:-.2,ra:.5,re:.2,ll:1.55,lk:.2,rl:-.25,rk:.2}; }
+  static airPunch() { return {torso:-.42,la:-2.3,le:.25,ra:1.62,re:-.08,ll:-1.2,lk:.15,rl:-.85,rk:-.2}; }
+  static airKick() { return {torso:.1,la:-.6,le:-.2,ra:.5,re:.2,ll:1.6,lk:-.3,rl:-.7,rk:.7}; }
   static special() { return {torso:-.25,la:-1.1,le:-.4,ra:.8,re:.3,ll:1.85,lk:.15,rl:-.5,rk:.4}; }
   static windup() { return {torso:.1,la:-.8,le:-.3,ra:.6,re:.2,ll:-.6,lk:.9,rl:.3,rk:.2}; }
   static block() { return {torso:-.05,la:.9,le:1.2,ra:.7,re:1.1,ll:.2,lk:.15,rl:-.2,rk:.15}; }
@@ -182,18 +224,19 @@ class Pose {
     return o;
   }
   static easeOut(t) { t = Math.max(0, Math.min(1, t)); return 1 - Math.pow(1 - t, 3); }
-  /** Fight stance, hands near face. */
+  /** Compact boxing guard, elbows tucked and fists high. */
   static idle() {
     const d = Pose.deg;
-    return {chest:d(4), neck:d(-2), head:0,
-      la:d(-70), le:d(-95), ra:d(55), re:d(-100),
-      ll:d(12), lk:d(18), rl:d(-14), rk:d(16), hipBob:0};
+    return {chest:d(-4), neck:d(2), head:d(2),
+      la:d(-92), le:d(-82), ra:d(-68), re:d(-108), shPull:7,
+      ll:d(18), lk:d(14), rl:d(-16), rk:d(18), hipBob:0};
   }
-  /** Legs ±28°, opposite arms ±18°, hip dip applied by caller via step phase. */
-  static walk(t) {
+  /** Speed-scaled gait; hip dip follows the step phase. */
+  static walk(t, speed = 1) {
     const d = Pose.deg, phase = t * Math.PI * 2 / .45;
-    const leg = Math.sin(phase) * d(28), arm = Math.sin(phase) * d(18);
-    const dip = (1 - Math.cos(phase * 2)) * 1; // 0..2px hip dip per step
+    const stride = Math.max(0, Math.min(1, speed));
+    const leg = Math.sin(phase) * d(22 + 12 * stride), arm = Math.sin(phase) * d(14 + 10 * stride);
+    const dip = (1 - Math.cos(phase * 2)) * (1 + 1.5 * stride);
     const id = Pose.idle();
     return {chest:id.chest, neck:id.neck, head:0,
       la:id.la - arm, le:id.le + d(10), ra:id.ra - arm, re:id.re - d(8),
@@ -201,49 +244,94 @@ class Pose {
       rl:-leg, rk:Math.max(0, -Math.sin(phase)) * d(40) + d(8),
       hipBob:dip};
   }
-  static jump(apex) {
-    const d = Pose.deg, tuck = apex ? 1 : .55;
-    // Both arms forward under fv=-face (was ±110 spread → rear hand ~47px away)
-    return {chest:d(-6), neck:d(4), head:d(-4),
-      la:d(-110), le:d(-40), ra:d(-110), re:d(-40),
-      ll:d(25)*tuck, lk:d(110)*tuck, rl:d(-25)*tuck, rk:d(110)*tuck, hipBob:0};
+  static jumpPhase(vy) {
+    if (vy < -420) return 'takeoff';
+    if (Math.abs(vy) < 80) return 'apex';
+    return vy < 0 ? 'rise' : 'fall';
+  }
+  static jump(phase) {
+    const d = Pose.deg;
+    if (phase === 'takeoff') {
+      return {chest:d(-6), neck:d(2), head:d(3),
+        la:d(-98), le:d(-84), ra:d(-72), re:d(-108),
+        ll:d(40), lk:d(-55), rl:d(-25), rk:d(55), hipBob:0};
+    }
+    if (phase === 'rise') {
+      return {chest:d(-4), neck:d(2), head:d(2),
+        la:d(-100), le:d(-84), ra:d(-72), re:d(-108),
+        ll:d(95), lk:d(-55), rl:d(-70), rk:d(65), hipBob:0};
+    }
+    if (phase === 'apex') {
+      return {chest:d(-2), neck:d(2), head:d(1),
+        la:d(-102), le:d(-82), ra:d(-74), re:d(-108),
+        ll:d(100), lk:d(-72), rl:d(-65), rk:d(68), hipBob:0};
+    }
+    // Bring the legs under the hips before impact and return the hands to guard.
+    return {chest:d(3), neck:d(1), head:0,
+      la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
+      ll:d(25), lk:0, rl:d(-25), rk:0, hipBob:0};
   }
   static land() {
     const d = Pose.deg;
-    return {chest:d(8), neck:d(-4), head:0,
-      la:d(-50), le:d(-80), ra:d(45), re:d(-85),
-      ll:d(20), lk:d(55), rl:d(-18), rk:d(50), hipBob:4};
+    return {chest:d(6), neck:d(-1), head:d(3),
+      la:d(-90), le:d(-108), ra:d(-65), re:d(-120),
+      ll:d(38), lk:d(-75), rl:d(-38), rk:d(75), hipBob:4};
   }
   static punchWind() {
-    const d = Pose.deg, id = Pose.idle();
-    // Cocked fist (R2-1): chest +8° away, shPull 6px; re≈140° bend ⇒ ~40° inside elbow;
-    // ra≈75° places wrist 6–14px behind shoulder, near chin height (bones only)
-    return {chest:d(8), neck:d(-2), head:d(-2),
-      la:id.la, le:id.le, ra:d(75), re:d(140),
+    const d = Pose.deg;
+    // Turn the shoulder back while keeping the lead hand high as a guard.
+    return {chest:d(8), neck:d(-1), head:d(4),
+      la:d(-92), le:d(-82), ra:d(75), re:d(140),
       ll:d(16), lk:d(20), rl:d(-20), rk:d(18), hipBob:0, shPull:6};
   }
   static punchStrike(over) {
     const d = Pose.deg, o = over ? d(10) : 0;
-    return {chest:d(-12), neck:d(-2), head:d(-4),
-      la:d(60), le:d(90), ra:d(-95) - o, re:d(10) + o * .3,
+    return {chest:d(-8), neck:d(1), head:d(4),
+      la:d(-92), le:d(-82), ra:d(-95) - o, re:d(10) + o * .3,
       ll:d(18), lk:d(16), rl:d(-22), rk:d(20), hipBob:0};
   }
   static punchRec() { return Pose.idle(); }
-  /** Cocked, leaning-back windup — distinct from kickStrike. */
+  /** Muay Thai knee chamber with both hands protecting the head. */
   static kickWind() {
     const d = Pose.deg;
-    // lean back, chamber kick knee high, arms counterbalance; not the extended strike
-    return {chest:d(14), neck:d(-6), head:d(-8),
-      la:d(-95), le:d(-55), ra:d(55), re:d(-110),
-      ll:d(-55), lk:d(125), rl:d(8), rk:d(18), hipBob:-2};
+    return {chest:d(10), neck:d(-2), head:d(3),
+      la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
+      ll:d(115), lk:d(-105), rl:d(-16), rk:d(20), hipBob:-2};
   }
-  static kickStrike(over) {
-    const d = Pose.deg, o = over ? d(10) : 0;
-    return {chest:d(12), neck:d(-4), head:d(-2),
-      la:d(70), le:d(60), ra:d(-50), re:d(80),
-      ll:d(95) + o, lk:d(8), rl:d(-20), rk:d(25), hipBob:0};
+  static kickStrike() {
+    const d = Pose.deg;
+    // Turn the hip through and extend the chambered shin across at waist height.
+    return {chest:d(16), neck:d(-2), head:d(3),
+      la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
+      ll:d(110), lk:d(-20), rl:d(-18), rk:d(22), hipBob:0};
   }
   static kickRec() { return Pose.idle(); }
+  static airPunchWind() {
+    const d = Pose.deg;
+    return {chest:d(-5), neck:d(2), head:d(3),
+      la:d(-98), le:d(-84), ra:d(70), re:d(125),
+      ll:d(92), lk:d(-58), rl:d(-68), rk:d(62), hipBob:0};
+  }
+  static airPunchStrike() {
+    const d = Pose.deg;
+    // Pitch the whole body into the target, drive the fist straight through,
+    // and trail both legs behind to read as a committed aerial dive.
+    return {chest:d(-28), neck:d(-4), head:d(-5),
+      la:d(72), le:d(20), ra:d(-100), re:d(-4),
+      ll:d(-105), lk:d(10), rl:d(-72), rk:d(-14), hipBob:0};
+  }
+  static airKickWind() {
+    const d = Pose.deg;
+    return {chest:d(8), neck:d(-1), head:d(3),
+      la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
+      ll:d(112), lk:d(-100), rl:d(-70), rk:d(62), hipBob:0};
+  }
+  static airKickStrike() {
+    const d = Pose.deg;
+    return {chest:d(12), neck:d(-1), head:d(3),
+      la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
+      ll:d(108), lk:d(-18), rl:d(-65), rk:d(55), hipBob:0};
+  }
   static specialWind() {
     const d = Pose.deg;
     return {chest:d(10), neck:d(-4), head:d(-6),
@@ -258,9 +346,9 @@ class Pose {
   }
   static block() {
     const d = Pose.deg;
-    // Guard toward foe under fv=-face (elbows stay folded, not flipped)
-    return {chest:d(4), neck:0, head:d(2),
-      la:d(-55), le:d(-120), ra:d(-45), re:d(-115),
+    // Tight high guard under fv=-face, matching the boxing idle stance.
+    return {chest:d(-2), neck:d(1), head:d(3),
+      la:d(-88), le:d(-112), ra:d(-62), re:d(-120), shPull:5,
       ll:d(14), lk:d(22), rl:d(-16), rk:d(20), hipBob:0};
   }
   static hit() {
@@ -461,6 +549,10 @@ class Fighter {
   static LEG = 20 * 1.5;
   static TORSO = 22 * 1.5;
   static NECK = 8 * 1.5;
+  static RUN_SPEED = 220;
+  static GROUND_ACCEL = 1300;
+  static GROUND_BRAKE = 1800;
+  static TURN_ACCEL = 1700;
   constructor(x, color, side, tag) {
     this.color = color; this.tag = tag; this.meter = 0; this.reset(x, side);
   }
@@ -567,6 +659,8 @@ class Fighter {
     if (this.hp <= 0 || this.state === 'ko' || this.state === 'hit' || this.stun > 0) return CombatPose.hit();
     if (this.atk) {
       if (this.state === 'special') return this.atkT <= this.atk.su ? CombatPose.windup() : CombatPose.special();
+      if (this.state === 'airPunch') return CombatPose.airPunch();
+      if (this.state === 'airKick') return CombatPose.airKick();
       return this.state === 'kick' ? CombatPose.kick() : CombatPose.punch();
     }
     if (this.blocking) return CombatPose.block();
@@ -641,11 +735,29 @@ class Fighter {
         if (this.atkPhase !== 'kw') { this.aim('kw', Pose.kickWind(), a.su * Game.STEP); this.atkPhase = 'kw'; }
       } else if (t <= a.su + a.ac) {
         if (this.atkPhase !== 'ks') {
-          this.aim('ks', Pose.kickStrike(true), .03); this.atkPhase = 'ks';
-        } else if (this.blendT >= this.blendDur * .55 && this.poseKey === 'ks') {
-          this.aim('ks2', Pose.kickStrike(false), .04); this.atkPhase = 'ks2';
+          this.aim('ks', Pose.kickStrike(), .04); this.atkPhase = 'ks';
         }
       } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.kickRec(), a.re * Game.STEP); this.atkPhase = 'kr'; }
+      return;
+    }
+    if (this.state === 'airPunch' || this.state === 'airKick') {
+      const punch = this.state === 'airPunch';
+      const wind = punch ? Pose.airPunchWind() : Pose.airKickWind();
+      const strike = punch ? Pose.airPunchStrike() : Pose.airKickStrike();
+      const prefix = punch ? 'ap' : 'ak';
+      if (t <= a.su) {
+        if (this.atkPhase !== prefix + 'w') { this.aim(prefix + 'w', wind, a.su * Game.STEP); this.atkPhase = prefix + 'w'; }
+      } else if (t <= a.su + a.ac) {
+        if (this.atkPhase !== prefix + 's') {
+          this.aim(prefix + 's', strike, .035);
+          this.pose = Pose.copy(strike); this.poseFrom = Pose.copy(strike); this.poseTo = Pose.copy(strike);
+          this.blendT = this.blendDur; this.atkPhase = prefix + 's';
+        }
+      } else {
+        const phase = Pose.jumpPhase(this.vy);
+        const key = prefix + 'r-' + phase;
+        if (this.atkPhase !== key) { this.aim(key, Pose.jump(phase), .09); this.atkPhase = key; }
+      }
       return;
     }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
@@ -717,6 +829,8 @@ class Fighter {
           this.clamp(other); return;
         }
       }
+      const airAttack = this.state === 'airPunch' || this.state === 'airKick';
+      if (airAttack) { Input.edge(slot, 'punch'); Input.edge(slot, 'kick'); }
       this.atkT++;
       const a = this.atk, tot = a.su + a.ac + a.re;
       this.driveAtkPose(dt);
@@ -725,10 +839,22 @@ class Fighter {
         const step = (Game.W * .4) / a.ac;
         const move = Math.min(step, this.dashLeft);
         this.x += this.face * move; this.dashLeft -= move; this.vx = 0;
+      } else if (airAttack) {
+        let ax = 0;
+        if (Input.held(slot, 'left')) ax--;
+        if (Input.held(slot, 'right')) ax++;
+        const targetVx = ax * Fighter.RUN_SPEED;
+        const reversing = ax !== 0 && this.vx * ax < 0;
+        const accel = ax === 0 ? Fighter.GROUND_BRAKE : reversing ? Fighter.TURN_ACCEL : Fighter.GROUND_ACCEL;
+        const deltaV = targetVx - this.vx;
+        this.vx += Math.sign(deltaV) * Math.min(Math.abs(deltaV), accel * dt);
+        if (Math.abs(this.vx) < 4 && ax === 0) this.vx = 0;
+        this.x += this.vx * dt;
       } else this.vx = 0;
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
-      this.landCheck(wasAir);
+      const landed = this.landCheck(wasAir);
+      if (landed && airAttack) { this.atk = null; this.state = 'idle'; this.atkPhase = ''; }
       if (this.atkT >= tot) {
         // Chain only continues after a connected punch; whiff clears the string (AC2)
         if (this.state === 'punch' && this.hitDone && this.chain + 1 < Moves.punch.chainMax)
@@ -758,13 +884,29 @@ class Fighter {
     let ax = 0;
     if (Input.held(slot, 'left')) ax -= 1;
     if (Input.held(slot, 'right')) ax += 1;
-    this.vx = ax * 220;
-    if (ax && this.grounded) { this.walkT += dt; this.state = 'walk'; }
-    else if (this.grounded && this.state !== 'jump') { this.walkT = 0; this.state = 'idle'; }
-    if (Input.edge(slot, 'jump') && this.grounded) { this.vy = -520; this.grounded = false; this.state = 'jump'; }
-    if (this.grounded && Input.edge(slot, 'special')) this.startAtk('special');
-    else if (this.grounded && Input.edge(slot, 'punch')) this.startAtk('punch');
-    else if (this.grounded && Input.edge(slot, 'kick')) this.startAtk('kick');
+    const targetVx = ax * Fighter.RUN_SPEED;
+    const reversing = ax !== 0 && this.vx * ax < 0;
+    const accel = ax === 0 ? Fighter.GROUND_BRAKE : reversing ? Fighter.TURN_ACCEL : Fighter.GROUND_ACCEL;
+    const deltaV = targetVx - this.vx;
+    this.vx += Math.sign(deltaV) * Math.min(Math.abs(deltaV), accel * dt);
+    if (Math.abs(this.vx) < 4 && ax === 0) this.vx = 0;
+    const speedRatio = Math.min(1, Math.abs(this.vx) / Fighter.RUN_SPEED);
+    if (this.grounded && (ax !== 0 || speedRatio > .04)) {
+      this.walkT += dt * speedRatio;
+      this.state = 'walk';
+    } else if (this.grounded && this.state !== 'jump') {
+      this.walkT = 0; this.state = 'idle';
+    }
+    const jumpPressed = Input.edge(slot, 'jump');
+    const specialPressed = Input.edge(slot, 'special');
+    const punchPressed = Input.edge(slot, 'punch');
+    const kickPressed = Input.edge(slot, 'kick');
+    if (jumpPressed && this.grounded) { this.vy = -520; this.grounded = false; this.state = 'jump'; }
+    if (this.grounded && specialPressed) this.startAtk('special');
+    else if (this.grounded && punchPressed) this.startAtk('punch');
+    else if (this.grounded && kickPressed) this.startAtk('kick');
+    else if (!this.grounded && punchPressed) this.startAtk('airPunch');
+    else if (!this.grounded && kickPressed) this.startAtk('airKick');
     if (this.atk) { this.driveAtkPose(dt); this.tickPose(dt); this.clamp(other); return; }
     const wasAir = this.y < 0 || !this.grounded;
     this.vy += 1600 * dt; this.x += this.vx * dt; this.y += this.vy * dt;
@@ -772,14 +914,10 @@ class Fighter {
     else if (this.y < 0) this.state = 'jump';
     this.face = other.x >= this.x ? 1 : -1;
     if (this.state === 'jump') {
-      const apex = Math.abs(this.vy) < 80;
-      this.aim('jump', Pose.jump(apex), .1);
+      const phase = Pose.jumpPhase(this.vy);
+      this.aim('jump-' + phase, Pose.jump(phase), phase === 'takeoff' ? .07 : .09);
     } else if (this.state === 'walk') {
-      this.poseKey = 'walk';
-      this.poseFrom = Pose.walk(this.walkT);
-      this.poseTo = this.poseFrom;
-      this.blendT = this.blendDur;
-      this.pose = Pose.copy(this.poseFrom);
+      this.aim('walk', Pose.walk(this.walkT, speedRatio), .12);
     } else if (this.landSquash <= 0) {
       const bob = Pose.copy(Pose.idle());
       bob.hipBob = Math.sin(this.animT * Math.PI * 2 / .9) * 2;
@@ -798,7 +936,7 @@ class Fighter {
     if (!this.atk || this.hitDone) return null;
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
-    const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'special') ? b.ll : b.ra;
+    const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'airKick' || this.state === 'special') ? b.ll : b.ra;
     const r = this.state === 'special' ? 22 : 18;
     return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special'};
   }
@@ -904,6 +1042,11 @@ class Fx {
   static hit(x, y) { Fx.sparks(x, y, 6, '#FFFFFF', 1, .12); }
   static blocked(x, y) { Fx.sparks(x, y, 4, '#F5F5F5', .5, .12); }
   static special(x, y) { Fx.sparks(x, y, 10, '#FBBF24', 1, .12); }
+  static damage(x, y, amount, blocked) {
+    if (amount <= 0 || !Fx.allowed(x, y)) return;
+    const value = Math.round(amount * 10) / 10;
+    Fx.list.push({kind:'damage', text:'-' + value, x, y, life:.7, max:.7, color:blocked ? '#FBBF24' : '#FFFFFF'});
+  }
   static land(x) {
     const y = Game.GROUND, sc = Game.scale || 1;
     for (let i = 0; i < 3; i++) {
@@ -913,7 +1056,7 @@ class Fx {
     }
   }
   static update(dt) {
-    for (const e of Fx.list) e.life -= dt;
+    for (const e of Fx.list) { e.life -= dt; if (e.kind === 'damage') e.y -= 30 * dt; }
     Fx.list = Fx.list.filter(e => e.life > 0);
   }
   static draw(ctx) {
@@ -928,6 +1071,16 @@ class Fx {
         ctx.globalAlpha = e.alpha * fade;
         ctx.strokeStyle = e.color; ctx.lineWidth = 2 / sc; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(x2, y2); ctx.stroke();
+      } else if (e.kind === 'damage') {
+        const fade = e.life / e.max;
+        if (!Fx.allowed(e.x, e.y)) continue;
+        ctx.globalAlpha = fade;
+        ctx.font = 'bold ' + 18 / sc + 'px system-ui,sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round'; ctx.lineWidth = 4 / sc; ctx.strokeStyle = '#11131A';
+        ctx.strokeText(e.text, e.x, e.y);
+        ctx.fillStyle = e.color; ctx.fillText(e.text, e.x, e.y);
+        ctx.textBaseline = 'alphabetic';
       } else if (e.kind === 'dust') {
         if (!Fx.allowed(e.x, e.y)) continue;
         const fade = e.life / e.max;
@@ -1180,7 +1333,7 @@ class BeatEmUp {
     BeatEmUp.resetStage();
     Game.syncControls();
     Game.syncSpecialBtn();
-    Game.btns = [...document.querySelectorAll('#controls button')].map(el => {
+    Game.btns = [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, w: r.width, h: r.height };
     });
@@ -1339,11 +1492,14 @@ class BeatEmUp {
         BeatEmUp.withDepth(target, () => { th = { x: target.f.hitbox.x, y: target.f.hitbox.y, w: target.f.hitbox.w, h: target.f.hitbox.h }; });
         if (!th || !Game.hitTest(hit, th)) continue;
         attacker.f.hitDone = 1;
+        const hpBefore = target.f.hp;
         let kind = 'hit';
         BeatEmUp.withDepth(target, () => { kind = target.f.takeHit(hit, attacker.f); });
+        const damage = Math.round((hpBefore - target.f.hp) * 10) / 10;
         attacker.f.gainMeter(hit.special ? 0 : hit.dmg * 2.5);
         target.f.gainMeter(hit.special ? 12 : hit.dmg * 1.5);
         const cx = hit.x + hit.w / 2, cy = hit.y + hit.h / 2;
+        Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block');
         if (hit.special) Fx.special(cx, cy);
         else if (kind === 'block') Fx.blocked(cx, cy);
         else Fx.hit(cx, cy);
@@ -1689,13 +1845,13 @@ class Game {
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     // Prefer middle 70% (15%–85%), but end the lane early enough that visual
     // bones() at the edges stay ≥8px from edge-pinned controls (drawNudgeX → 0).
-    const EDGE = 16;
-    const BTN = 64, GAP = 10, CLEAR = 8;
-    const PAD_W = BTN * 2 + GAP; // move row / 2×2 cluster width
+    const EDGE = 16, CLEAR = 8;
+    const MOVE_W = 132;
+    const PAD_W = 200; // right-thumb action cluster width
     const REACH = 65; // max observed visual AABB past hip (worst pose)
     const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
     const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
-    const loBtn = (EDGE + safeL + PAD_W + CLEAR) / scale + REACH;
+    const loBtn = (EDGE + safeL + MOVE_W + CLEAR) / scale + REACH;
     const hiBtn = (innerWidth - EDGE - safeR - PAD_W - CLEAR) / scale - REACH;
     Game.minX = Math.max(Game.W * .15, loBtn);
     Game.maxX = Math.min(Game.W * .85, hiBtn);
@@ -1711,7 +1867,7 @@ class Game {
       fighters[0].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[0].x || Game.W * .35));
       fighters[1].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[1].x || Game.W * .65));
     }
-    Game.btns = Game.phase === 'title' ? [] : [...document.querySelectorAll('#controls button')].map(el => {
+    Game.btns = Game.phase === 'title' ? [] : [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     });
     Game.titleBtns = Game.titleLayout().levels;
@@ -1723,10 +1879,13 @@ class Game {
       if (!box || foe.hp <= 0) continue;
       if (!Game.hitTest(box, foe.hitbox)) continue;
       me.hitDone = 1;
+      const hpBefore = foe.hp;
       const kind = foe.takeHit(box, me);
+      const damage = Math.round((hpBefore - foe.hp) * 10) / 10;
       me.gainMeter(box.special ? 0 : box.dmg * 2.5);
       foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      Fx.damage(cx, cy - 12, damage, kind === 'block');
       if (box.special) Fx.special(cx, cy);
       else if (kind === 'block') Fx.blocked(cx, cy);
       else Fx.hit(cx, cy);
