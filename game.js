@@ -7,11 +7,9 @@ const Diff = {
 };
 
 const FighterClasses = {
-  kickboxing: { name: 'KICKBOXING', role: 'BALANCED COMBOS', punchMove: 'JAB · CROSS', kickMove: 'ROUND KICK', super: 'COMBINATION FINISHER', color: '#3B82F6', accent: '#FBBF24', style: 'rush', pitch: 1.05, speed: 1.08, punch: 1.12, kick: .98, superPower: 1.05, criticalChance: .1, criticalDamage: 1.65, meter: 1, dash: .14 },
-  muaythai: { name: 'MUAY THAI', role: 'CLOSE RANGE POWER', punchMove: 'ELBOW · KNEE', kickMove: 'ROUNDHOUSE', super: 'EIGHT LIMBS BARRAGE', color: '#22C55E', accent: '#FB923C', style: 'flame', pitch: .9, speed: .98, punch: 1, kick: 1.2, superPower: 1.12, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
-  taekwondo: { name: 'TAE KWON DO', role: 'FAST LONG KICKS', punchMove: 'LEAD BACKFIST', kickMove: 'SPINNING HEEL', super: 'TORNADO KICK', color: '#22D3EE', accent: '#A78BFA', style: 'flash', pitch: 1.3, speed: 1.16, punch: .98, kick: 1.18, superPower: 1.12, criticalChance: .15, criticalDamage: 1.55, meter: 1.08, dash: .2 },
-  wingchun: { name: 'WING CHUN', role: 'CENTERLINE PRESSURE', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'CENTERLINE FLURRY', color: '#A78BFA', accent: '#F5F3FF', style: 'ward', pitch: 1.12, speed: 1.04, punch: 1.08, kick: .96, superPower: 1.08, criticalChance: .13, criticalDamage: 1.55, meter: 1.12, dash: .13 },
-  sumo: { name: 'SUMO', role: 'HEAVY IMPACT', punchMove: 'PALM STRIKE', kickMove: 'PUSH KICK', super: 'YOKOZUNA CHARGE', color: '#F97316', accent: '#FBBF24', style: 'quake', pitch: .76, speed: .86, punch: 1.12, kick: 1.18, superPower: 1.3, criticalChance: .06, criticalDamage: 2, meter: .92, dash: .1 },
+  freehand: { name: 'FREE HAND', role: 'CENTERLINE COMBOS', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'IRON FIST FLURRY', color: '#3B82F6', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, punch: 1.12, kick: 1, superPower: 1.08, superHits: 5, criticalChance: .13, criticalDamage: 1.55, meter: 1.08, dash: .13 },
+  staff: { name: 'STAFF', role: 'LONG REACH CONTROL', punchMove: 'BO STAFF THRUST', kickMove: 'LOW SWEEP', super: 'DRAGON STAFF SPIN', color: '#22C55E', accent: '#FBBF24', style: 'quake', weapon: 'staff', pitch: .92, speed: .98, punch: .95, kick: 1.06, superPower: 1.18, superHits: 3, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
+  blade: { name: 'BLADE', role: 'FAST PRECISE CUTS', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#EF4444', accent: '#FCA5A5', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, punch: 1.04, kick: .96, superPower: 1.16, superHits: 2, criticalChance: .16, criticalDamage: 1.6, meter: 1.1, dash: .18 },
 };
 
 class Sfx {
@@ -867,7 +865,7 @@ class Fighter {
         this.atk.kb *= 1.2;
       }
       if (kind === 'special' && this.classProfile) {
-        const hitCount = style === 'rush' ? 2 : style === 'flame' ? 4 : style === 'ward' ? 5 : 1;
+        const hitCount = this.classProfile?.superHits || (style === 'rush' ? 2 : style === 'flame' ? 4 : style === 'ward' ? 5 : 1);
         this.atk.hitCount = hitCount;
         this.atk.dmg /= hitCount;
         this.atk.chip /= hitCount;
@@ -1133,7 +1131,9 @@ class Fighter {
         flash:{w:Game.W * .2,h:105 * Fighter.S,lead:10 * Fighter.S},
         quake:{w:Game.W * .22,h:62 * Fighter.S,lead:0},
         ward:{w:155 * Fighter.S,h:150 * Fighter.S,lead:10 * Fighter.S},
-      }[style];
+        staff:{w:245 * Fighter.S,h:118 * Fighter.S,lead:32 * Fighter.S},
+        blade:{w:190 * Fighter.S,h:126 * Fighter.S,lead:20 * Fighter.S},
+      }[this.classProfile?.weapon || style];
       const shapes = this.classProfile ? classShapes : {w:150 * Fighter.S,h:112 * Fighter.S,lead:18 * Fighter.S};
       const {w,h,lead} = shapes;
       return {
@@ -1143,6 +1143,10 @@ class Fighter {
       };
     }
     const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'airKick' || this.state === 'special') ? b.ll : b.ra;
+    if (this.classProfile?.weapon && (this.state === 'punch' || this.state === 'airPunch')) {
+      const weapon = this.weaponGeometry(b, true), r = this.classProfile.weapon === 'staff' ? 24 : 19;
+      return {x:weapon.tip.x - r, y:weapon.tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:false, critical:!!a.critical};
+    }
     const r = this.state === 'special' ? 22 : 18;
     return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical};
   }
@@ -1239,6 +1243,44 @@ class Fighter {
     }
     return dx;
   }
+  weaponGeometry(b, active = !!(this.atk && this.atkT > this.atk.su)) {
+    const weapon = this.classProfile?.weapon;
+    if (!weapon) return null;
+    const hand = b.ra, face = this.face;
+    if (weapon === 'staff') {
+      return active
+        ? {start:{x:hand.x - face * 34,y:hand.y + 16},tip:{x:hand.x + face * 112,y:hand.y - 18}}
+        : {start:{x:hand.x - face * 54,y:hand.y + 55},tip:{x:hand.x + face * 38,y:hand.y - 82}};
+    }
+    return active
+      ? {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}}
+      : {start:{x:hand.x - face * 12,y:hand.y + 18},tip:{x:hand.x + face * 40,y:hand.y - 70}};
+  }
+  drawWeapon(ctx, b) {
+    const weapon = this.classProfile?.weapon;
+    if (!weapon) return;
+    const {start,tip} = this.weaponGeometry(b);
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (weapon === 'staff') {
+      ctx.strokeStyle = '#25202A'; ctx.lineWidth = 11;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#A96937'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 3;
+      for (const p of [start,tip]) { ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.stroke(); }
+    } else {
+      const grip = {x:start.x - this.face * 13,y:start.y + 3};
+      ctx.strokeStyle = '#20232C'; ctx.lineWidth = 11;
+      ctx.beginPath(); ctx.moveTo(grip.x,grip.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#D7E0EA'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x - this.face * 8,tip.y + 2); ctx.stroke();
+      ctx.strokeStyle = this.classProfile.accent; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(grip.x - this.face * 5,grip.y - 6); ctx.lineTo(grip.x + this.face * 5,grip.y + 6); ctx.stroke();
+    }
+    ctx.restore();
+  }
   draw(ctx) {
     const nudge = this.drawNudgeX();
     if (nudge) ctx.translate(nudge, 0);
@@ -1267,6 +1309,7 @@ class Fighter {
     chain([b.hip, b.llJ, b.ll]);
     chain([b.hip, b.rlJ, b.rl]);
     ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.hr, 0, Math.PI * 2); ctx.fill();
+    this.drawWeapon(ctx,b);
     if (this.blocking || this.blockFlash > 0) {
       const cx = this.x + nudge + this.face * 28, cy = b.sh.y + 10;
       const a0 = -1.2 + (this.face > 0 ? 0 : Math.PI), a1 = 1.2 + (this.face > 0 ? 0 : Math.PI);
@@ -2258,14 +2301,14 @@ class Game {
   static levels = ['easy', 'normal', 'hard'];
   static levelLabels = {easy:'Easy', normal:'Normal', hard:'Hard'};
   static titleBtns = [];
-  static selectedClass = 'kickboxing';
+  static selectedClass = 'freehand';
   static init() {
     Game.canvas = document.getElementById('game'); Game.ctx = Game.canvas.getContext('2d');
     try {
       const saved = localStorage.getItem('stickman-level');
       if (saved && Diff[saved]) Game.level = saved;
       const savedClass = localStorage.getItem('stickman-beatemup-class');
-      const legacyClass = {boxer:'kickboxing', ninja:'taekwondo', brawler:'sumo', guardian:'wingchun'}[savedClass];
+      const legacyClass = {boxer:'freehand', kickboxing:'freehand', ninja:'blade', taekwondo:'blade', brawler:'staff', guardian:'freehand', muaythai:'staff', sumo:'staff', wingchun:'freehand'}[savedClass];
       if (FighterClasses[savedClass]) Game.selectedClass = savedClass;
       else if (FighterClasses[legacyClass]) Game.selectedClass = legacyClass;
     } catch (e) {}
@@ -2351,8 +2394,10 @@ class Game {
     const inset = 16 / sc + Math.max(safeL, safeR) / sc;
     const tabs = Game.modeTabs();
     if (Game.mode === 'beatemup') {
-      const gap = 10 / sc, cardW = Math.min(148 / sc, (Game.W - 32 / sc - gap * 4) / 5);
-      const cardH = (compact ? 132 : 166) / sc, total = cardW * 5 + gap * 4, x0 = (Game.W - total) / 2;
+      const classCount = Object.keys(FighterClasses).length;
+      const gap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
+      const cardH = (compact ? 132 : 166) / sc;
+      const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
       const y = Game.H * (compact ? .61 : .51) - cardH / 2;
       const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
       const bw = 174 / sc, bh = 48 / sc;
