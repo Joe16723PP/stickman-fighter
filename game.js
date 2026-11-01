@@ -874,6 +874,10 @@ class Fighter {
   }
   /** Exact main limb tip geometry — strike + clamp only; draw uses bones(). */
   combatBones() {
+    // Arcade class weapons must use the rendered hand/foot points. The legacy
+    // reconstruction below places its shoulder above bones(), which is enough
+    // to make a long staff sweep look connected while its collision line floats.
+    if (this.classProfile) return this.bones();
     const s = Fighter.S, g = Game.GROUND + this.y, f = this.face, p = this.combatPose(), hr = Game.hr, hw = Game.lw / 2;
     const hip = {x:this.x, y:g - 40 * s}, sh = {x:this.x + p.torso * 6 * s * f, y:hip.y - 36 * s};
     const head = {x:sh.x, y:sh.y - hr}, pts = [hip, sh, head];
