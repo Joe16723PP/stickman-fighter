@@ -389,7 +389,7 @@ class Pose {
   static punchWind(profile = null) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return {chest:d(-10),neck:d(2),head:d(1),la:d(-98),le:d(-42),ra:d(-72),re:d(-78),ll:d(32),lk:d(24),rl:d(-42),rk:d(20),hipBob:0,shPull:5};
+    if (profile?.weapon === 'staff') return {chest:d(8),neck:d(1),head:d(1),la:d(-104),le:d(-42),ra:d(-76),re:d(-78),ll:d(30),lk:d(24),rl:d(-40),rk:d(22),hipBob:0,shPull:3};
     if (profile?.weapon === 'blade') return {chest:d(9),neck:d(2),head:d(1),la:d(-68),le:d(-38),ra:d(-142),re:d(-34),ll:d(30),lk:d(20),rl:d(-34),rk:d(26),hipBob:0,shPull:4};
     if (style === 'flame') return {chest:d(5),neck:d(-1),head:d(2),la:d(-104),le:d(-108),ra:d(12),re:d(142),ll:d(22),lk:d(12),rl:d(-18),rk:d(20),hipBob:0,shPull:5};
     if (style === 'flash') return {chest:d(3),neck:d(1),head:d(1),la:d(-84),le:d(-68),ra:d(48),re:d(128),ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0,shPull:4};
@@ -403,7 +403,7 @@ class Pose {
   static punchStrike(over, profile = null) {
     const d = Pose.deg, o = over ? d(10) : 0;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return {chest:d(-16),neck:d(1),head:0,la:d(-90),le:d(-44),ra:d(-102) - o,re:d(-18),ll:d(34),lk:d(20),rl:d(-42),rk:d(18),hipBob:0};
+    if (profile?.weapon === 'staff') return {chest:d(-13),neck:d(1),head:0,la:d(-96),le:d(-30),ra:d(-96) - o,re:d(-8),ll:d(34),lk:d(20),rl:d(-42),rk:d(18),hipBob:0};
     if (profile?.weapon === 'blade') return {chest:d(-18),neck:d(-1),head:0,la:d(-48),le:d(-28),ra:d(-78) - o,re:d(-18),ll:d(42),lk:d(24),rl:d(-42),rk:d(24),hipBob:0};
     if (style === 'flame') return {chest:d(-3),neck:d(2),head:d(2),la:d(-102),le:d(-108),ra:d(-82),re:d(42),ll:d(20),lk:d(12),rl:d(-20),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(-10),neck:d(1),head:d(0),la:d(-82),le:d(-66),ra:d(-92),re:d(-22),ll:d(14),lk:d(12),rl:d(-16),rk:d(16),hipBob:0};
@@ -418,7 +418,7 @@ class Pose {
   static kickWind(profile = null) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return {chest:d(-2),neck:d(1),head:d(1),la:d(-100),le:d(-48),ra:d(-76),re:d(-82),ll:d(86),lk:d(-78),rl:d(-48),rk:d(24),hipBob:-1};
+    if (profile?.weapon === 'staff') return {chest:d(12),neck:d(-2),head:d(1),la:d(-132),le:d(-46),ra:d(-88),re:d(-44),ll:d(48),lk:d(26),rl:d(-42),rk:d(30),hipBob:-2};
     if (profile?.weapon === 'blade') return {chest:d(-4),neck:d(1),head:d(1),la:d(-58),le:d(-34),ra:d(-112),re:d(-24),ll:d(86),lk:d(-88),rl:d(-36),rk:d(26),hipBob:-1};
     if (style === 'rush') return {chest:d(5),neck:d(1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(102),lk:d(-70),rl:d(-20),rk:d(20),hipBob:-1};
     if (style === 'flash') return {chest:d(5),neck:d(1),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),ll:d(72),lk:d(-82),rl:d(-22),rk:d(20),hipBob:-1};
@@ -431,7 +431,7 @@ class Pose {
   static kickStrike(profile = null) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return {chest:d(8),neck:d(-1),head:d(1),la:d(-102),le:d(-44),ra:d(-72),re:d(-80),ll:d(92),lk:d(-18),rl:d(-46),rk:d(20),hipBob:0};
+    if (profile?.weapon === 'staff') return {chest:d(-18),neck:d(-2),head:d(1),la:d(-124),le:d(-34),ra:d(-94),re:d(-12),ll:d(34),lk:d(22),rl:d(-40),rk:d(26),hipBob:-2};
     if (profile?.weapon === 'blade') return {chest:d(7),neck:d(-1),head:d(1),la:d(-56),le:d(-32),ra:d(-106),re:d(-22),ll:d(92),lk:d(-14),rl:d(-34),rk:d(24),hipBob:0};
     if (style === 'rush') return {chest:d(5),neck:d(-1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(105),lk:d(-8),rl:d(-18),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(10),neck:d(-1),head:d(1),la:d(-86),le:d(-64),ra:d(-62),re:d(-98),ll:d(78),lk:d(-18),rl:d(-18),rk:d(16),hipBob:0};
@@ -1183,7 +1183,7 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     const weapon = this.classProfile?.weapon;
-    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch');
+    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (weapon === 'staff' && this.state === 'kick'));
     if (weaponAttack) {
       const geometry = this.weaponGeometry(this.combatBones(), true);
       if (geometry) {
@@ -1318,14 +1318,23 @@ class Fighter {
     }
     return dx;
   }
-  weaponGeometry(b, active = !!(this.atk && this.atkT > this.atk.su)) {
+  weaponGeometry(b, active = !!(this.atk && this.atkT > this.atk.su &&
+    (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.classProfile?.weapon === 'staff' && this.state === 'kick')))) {
     const weapon = this.classProfile?.weapon;
     if (!weapon) return null;
     const hand = b.ra, face = this.face;
     if (weapon === 'staff') {
-      return active
-        ? {start:{x:hand.x - face * 34,y:hand.y + 16},tip:{x:hand.x + face * 112,y:hand.y - 18}}
-        : {start:{x:hand.x - face * 54,y:hand.y + 55},tip:{x:hand.x + face * 38,y:hand.y - 82}};
+      const resting = {start:{x:hand.x - face * 54,y:hand.y + 55},tip:{x:hand.x + face * 38,y:hand.y - 82}};
+      const thrust = {start:{x:hand.x - face * 34,y:hand.y + 16},tip:{x:hand.x + face * 112,y:hand.y - 18}};
+      const sweep = {start:{x:hand.x - face * 52,y:hand.y - 62},tip:{x:hand.x + face * 82,y:hand.y + 38}};
+      const target = this.state === 'kick' ? sweep : thrust;
+      if (active) return target;
+      if (this.atk && (this.state === 'punch' || this.state === 'kick') && this.atk.su > 0) {
+        const t = Pose.easeOut(this.atkT / this.atk.su);
+        return {start:{x:resting.start.x + (target.start.x - resting.start.x) * t,y:resting.start.y + (target.start.y - resting.start.y) * t},
+          tip:{x:resting.tip.x + (target.tip.x - resting.tip.x) * t,y:resting.tip.y + (target.tip.y - resting.tip.y) * t}};
+      }
+      return resting;
     }
     return active
       ? {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}}
