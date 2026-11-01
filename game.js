@@ -169,11 +169,12 @@ class Pose {
       la:d(-70), le:d(-95), ra:d(55), re:d(-100),
       ll:d(12), lk:d(18), rl:d(-14), rk:d(16), hipBob:0};
   }
-  /** Legs ±28°, opposite arms ±18°, hip dip applied by caller via step phase. */
-  static walk(t) {
+  /** Speed-scaled gait; hip dip follows the step phase. */
+  static walk(t, speed = 1) {
     const d = Pose.deg, phase = t * Math.PI * 2 / .45;
-    const leg = Math.sin(phase) * d(28), arm = Math.sin(phase) * d(18);
-    const dip = (1 - Math.cos(phase * 2)) * 1; // 0..2px hip dip per step
+    const stride = Math.max(0, Math.min(1, speed));
+    const leg = Math.sin(phase) * d(22 + 12 * stride), arm = Math.sin(phase) * d(14 + 10 * stride);
+    const dip = (1 - Math.cos(phase * 2)) * (1 + 1.5 * stride);
     const id = Pose.idle();
     return {chest:id.chest, neck:id.neck, head:0,
       la:id.la - arm, le:id.le + d(10), ra:id.ra - arm, re:id.re - d(8),
@@ -441,6 +442,10 @@ class Fighter {
   static LEG = 20 * 1.5;
   static TORSO = 22 * 1.5;
   static NECK = 8 * 1.5;
+  static RUN_SPEED = 220;
+  static GROUND_ACCEL = 1300;
+  static GROUND_BRAKE = 1800;
+  static TURN_ACCEL = 1700;
   constructor(x, color, side, tag) {
     this.color = color; this.tag = tag; this.meter = 0; this.reset(x, side);
   }
@@ -738,9 +743,19 @@ class Fighter {
     let ax = 0;
     if (Input.held(slot, 'left')) ax -= 1;
     if (Input.held(slot, 'right')) ax += 1;
-    this.vx = ax * 220;
-    if (ax && this.grounded) { this.walkT += dt; this.state = 'walk'; }
-    else if (this.grounded && this.state !== 'jump') { this.walkT = 0; this.state = 'idle'; }
+    const targetVx = ax * Fighter.RUN_SPEED;
+    const reversing = ax !== 0 && this.vx * ax < 0;
+    const accel = ax === 0 ? Fighter.GROUND_BRAKE : reversing ? Fighter.TURN_ACCEL : Fighter.GROUND_ACCEL;
+    const deltaV = targetVx - this.vx;
+    this.vx += Math.sign(deltaV) * Math.min(Math.abs(deltaV), accel * dt);
+    if (Math.abs(this.vx) < 4 && ax === 0) this.vx = 0;
+    const speedRatio = Math.min(1, Math.abs(this.vx) / Fighter.RUN_SPEED);
+    if (this.grounded && (ax !== 0 || speedRatio > .04)) {
+      this.walkT += dt * speedRatio;
+      this.state = 'walk';
+    } else if (this.grounded && this.state !== 'jump') {
+      this.walkT = 0; this.state = 'idle';
+    }
     if (Input.edge(slot, 'jump') && this.grounded) { this.vy = -520; this.grounded = false; this.state = 'jump'; }
     if (this.grounded && Input.edge(slot, 'special')) this.startAtk('special');
     else if (this.grounded && Input.edge(slot, 'punch')) this.startAtk('punch');
@@ -755,11 +770,7 @@ class Fighter {
       const apex = Math.abs(this.vy) < 80;
       this.aim('jump', Pose.jump(apex), .1);
     } else if (this.state === 'walk') {
-      this.poseKey = 'walk';
-      this.poseFrom = Pose.walk(this.walkT);
-      this.poseTo = this.poseFrom;
-      this.blendT = this.blendDur;
-      this.pose = Pose.copy(this.poseFrom);
+      this.aim('walk', Pose.walk(this.walkT, speedRatio), .12);
     } else if (this.landSquash <= 0) {
       const bob = Pose.copy(Pose.idle());
       bob.hipBob = Math.sin(this.animT * Math.PI * 2 / .9) * 2;
