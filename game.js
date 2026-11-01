@@ -283,7 +283,7 @@ class Pose {
   static idle(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-4),neck:d(2),head:d(1),la:d(-60),le:d(-120),ra:d(0),re:d(-60),shPull:0,ll:d(34),lk:d(24),rl:d(-32),rk:d(26),hipBob:0};
-    if (profile?.weapon === 'blade') return {chest:d(-7),neck:d(2),head:d(1),la:d(-58),le:d(-34),ra:d(-120),re:d(-24),shPull:0,ll:d(34),lk:d(22),rl:d(-38),rk:d(28),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-5),neck:d(2),head:d(1),la:d(-120),le:d(80),ra:d(-60),re:d(-80),shPull:0,ll:d(32),lk:d(22),rl:d(-36),rk:d(28),hipBob:0};
     const stances = {
       rush: {chest:d(-4),neck:d(2),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),shPull:7,ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
       flame:{chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-104),ra:d(-62),re:d(-98),shPull:3,ll:d(24),lk:d(10),rl:d(-22),rk:d(24),hipBob:0},
@@ -526,7 +526,7 @@ class Pose {
   static block(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return {chest:d(-8),neck:d(2),head:d(1),la:d(-60),le:d(-120),ra:d(0),re:d(-60),shPull:0,ll:d(38),lk:d(28),rl:d(-40),rk:d(24),hipBob:0};
-    if (profile?.weapon === 'blade') return {chest:d(-8),neck:d(2),head:d(1),la:d(-54),le:d(-30),ra:d(-112),re:d(-24),shPull:0,ll:d(32),lk:d(20),rl:d(-36),rk:d(26),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-8),neck:d(2),head:d(1),la:d(-120),le:d(80),ra:d(-60),re:d(-80),shPull:0,ll:d(34),lk:d(24),rl:d(-34),rk:d(26),hipBob:0};
     if (profile?.style === 'flame') return {chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-112),ra:d(-62),re:d(-104),shPull:3,ll:d(22),lk:d(12),rl:d(-20),rk:d(22),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-7),neck:d(2),head:d(1),la:d(-78),le:d(-62),ra:d(-66),re:d(-98),shPull:0,ll:d(16),lk:d(14),rl:d(-18),rk:d(18),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(7),neck:d(-2),head:d(4),la:d(-108),le:d(-62),ra:d(-56),re:d(-68),shPull:0,ll:d(24),lk:d(18),rl:d(-20),rk:d(24),hipBob:0};
@@ -1346,6 +1346,11 @@ class Fighter {
       const ux = face * dx / length, uy = dy / length;
       const back = 44, front = 74;
       return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
+    }
+    if (weapon === 'blade') {
+      if (active) return {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}};
+      const grip = {x:(b.la.x + b.ra.x) / 2,y:(b.la.y + b.ra.y) / 2};
+      return {start:grip,tip:{x:grip.x + face * 22,y:grip.y - 82}};
     }
     return active
       ? {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}}
