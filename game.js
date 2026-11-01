@@ -9,7 +9,7 @@ const Diff = {
 const FighterClasses = {
   freehand: { name: 'FREE HAND', role: 'CENTERLINE COMBOS', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'IRON FIST FLURRY', color: '#3B82F6', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, punch: 1.12, kick: 1, superPower: 1.08, superHits: 5, criticalChance: .13, criticalDamage: 1.55, meter: 1.08, dash: .13 },
   staff: { name: 'STAFF', role: 'LONG REACH CONTROL', punchMove: 'BO STAFF THRUST', kickMove: 'LOW SWEEP', super: 'DRAGON STAFF SPIN', color: '#22C55E', accent: '#FBBF24', style: 'quake', weapon: 'staff', pitch: .92, speed: .98, punch: .95, kick: 1.06, superPower: 1.18, superHits: 3, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
-  blade: { name: 'BLADE', role: 'FAST PRECISE CUTS', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#EF4444', accent: '#FCA5A5', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, punch: 1.04, kick: .96, superPower: 1.16, superHits: 2, criticalChance: .16, criticalDamage: 1.6, meter: 1.1, dash: .18 },
+  blade: { name: 'BLADE', role: 'FAST PRECISE CUTS', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#CBD5E1', accent: '#38BDF8', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, punch: 1.04, kick: .96, superPower: 1.16, superHits: 2, criticalChance: .16, criticalDamage: 1.6, meter: 1.1, dash: .18 },
 };
 
 class Sfx {
