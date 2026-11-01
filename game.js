@@ -2113,7 +2113,7 @@ class Game {
     const tabs = Game.modeTabs();
     if (Game.mode === 'beatemup') {
       const gap = 10 / sc, cardW = Math.min(148 / sc, (Game.W - 32 / sc - gap * 4) / 5);
-      const cardH = 112 / sc, total = cardW * 5 + gap * 4, x0 = (Game.W - total) / 2;
+      const cardH = 150 / sc, total = cardW * 5 + gap * 4, x0 = (Game.W - total) / 2;
       const y = Game.H * .51 - cardH / 2;
       const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
       const bw = 174 / sc, bh = 48 / sc;
@@ -2442,13 +2442,17 @@ class Game {
       ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min(14 / sc, card.w * .11) + 'px system-ui,sans-serif';
       ctx.fillText(p.name, card.x + card.w / 2, card.y + 44 / sc);
       ctx.fillStyle = '#C4C9D8'; ctx.font = Math.min(9.5 / sc, card.w * .074) + 'px system-ui,sans-serif';
-      ctx.fillText(p.role, card.x + card.w / 2, card.y + 64 / sc);
+      ctx.fillText(p.role, card.x + card.w / 2, card.y + 59 / sc);
       ctx.fillStyle = p.accent; ctx.font = 'bold ' + Math.min(9 / sc, card.w * .07) + 'px system-ui,sans-serif';
-      ctx.fillText(p.super, card.x + card.w / 2, card.y + 86 / sc);
+      ctx.fillText(p.super, card.x + card.w / 2, card.y + 76 / sc);
+      ctx.fillStyle = '#D7DCE9'; ctx.font = Math.min(8 / sc, card.w * .065) + 'px system-ui,sans-serif';
+      ctx.fillText('MOVE ' + Math.round(p.speed * 100) + '%   PUNCH ' + Math.round(p.punch * 100) + '%', card.x + card.w / 2, card.y + 96 / sc);
+      ctx.fillText('KICK ' + Math.round(p.kick * 100) + '%   METER ' + Math.round(p.meter * 100) + '%', card.x + card.w / 2, card.y + 111 / sc);
+      ctx.fillText('SUPER ' + Math.round(p.superPower * 100) + '%   DASH ' + Math.round(p.dash / .14 * 100) + '%', card.x + card.w / 2, card.y + 126 / sc);
     }
     ctx.globalAlpha = .8; ctx.fillStyle = '#FFFFFF';
     ctx.font = 16 / sc + 'px system-ui,sans-serif';
-    ctx.fillText(Game.mode === 'beatemup' ? 'Choose a fighter • Tap START RUN' : 'Tap to fight', Game.W / 2, Game.H * .87);
+    ctx.fillText(Game.mode === 'beatemup' ? 'Stats are % of base • Choose a fighter • Tap START RUN' : 'Tap to fight', Game.W / 2, Game.H * .87);
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
