@@ -2863,14 +2863,14 @@ class Game {
       const gap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
       const cardH = (compact ? 118 : 166) / sc;
       const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
-      const y = Game.H * (compact ? .68 : .67) - cardH / 2;
+      const y = Game.H * (compact ? .59 : .67) - cardH / 2;
       const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
       const levelGap = 8 / sc, levelW = Math.min(140 / sc, (Game.W - 48 / sc - levelGap * 2) / 3), levelH = 40 / sc;
       const levelTotal = levelW * 3 + levelGap * 2, levelX = (Game.W - levelTotal) / 2;
-      const levelY = Game.H * (compact ? .39 : .49) - levelH / 2;
+      const levelY = Game.H * (compact ? .39 : .48) - levelH / 2;
       const levels = Game.levels.map((id, i) => ({id, x:levelX + i * (levelW + levelGap), y:levelY, w:levelW, h:levelH, label:Game.levelLabels[id]}));
       const bw = 174 / sc, bh = (compact ? 42 : 52) / sc;
-      return { tabs, classes, levels, start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .93 : .88) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
+      return { tabs, classes, levels, start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .86 : .88) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
     }
     if (Game.mode === 'practice') {
       const classCount = Object.keys(FighterClasses).length;
