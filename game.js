@@ -419,7 +419,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(12),neck:d(-2),head:d(1),la:d(-132),le:d(-46),ra:d(-88),re:d(-44),ll:d(48),lk:d(26),rl:d(-42),rk:d(30),hipBob:-2};
-    if (profile?.weapon === 'blade') return {chest:d(-4),neck:d(1),head:d(1),la:d(-58),le:d(-34),ra:d(-112),re:d(-24),ll:d(86),lk:d(-88),rl:d(-36),rk:d(26),hipBob:-1};
+    if (profile?.weapon === 'blade') return {chest:d(11),neck:d(-1),head:d(2),la:d(-110),le:d(-160),ra:d(-100),re:d(-150),ll:d(30),lk:d(22),rl:d(-34),rk:d(26),hipBob:-1};
     if (style === 'rush') return {chest:d(5),neck:d(1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(102),lk:d(-70),rl:d(-20),rk:d(20),hipBob:-1};
     if (style === 'flash') return {chest:d(5),neck:d(1),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),ll:d(72),lk:d(-82),rl:d(-22),rk:d(20),hipBob:-1};
     if (style === 'quake') return {chest:d(14),neck:d(-3),head:d(5),la:d(-110),le:d(-56),ra:d(-56),re:d(-64),ll:d(128),lk:d(-112),rl:d(-20),rk:d(24),hipBob:-2};
@@ -432,7 +432,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') return {chest:d(-18),neck:d(-2),head:d(1),la:d(-124),le:d(-34),ra:d(-94),re:d(-12),ll:d(34),lk:d(22),rl:d(-40),rk:d(26),hipBob:-2};
-    if (profile?.weapon === 'blade') return {chest:d(7),neck:d(-1),head:d(1),la:d(-56),le:d(-32),ra:d(-106),re:d(-22),ll:d(92),lk:d(-14),rl:d(-34),rk:d(24),hipBob:0};
+    if (profile?.weapon === 'blade') return {chest:d(-16),neck:d(-2),head:d(1),la:d(-60),le:d(-120),ra:d(-90),re:d(-60),ll:d(34),lk:d(22),rl:d(-36),rk:d(28),hipBob:-2};
     if (style === 'rush') return {chest:d(5),neck:d(-1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(105),lk:d(-8),rl:d(-18),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(10),neck:d(-1),head:d(1),la:d(-86),le:d(-64),ra:d(-62),re:d(-98),ll:d(78),lk:d(-18),rl:d(-18),rk:d(16),hipBob:0};
     if (style === 'quake') return {chest:d(20),neck:d(-4),head:d(5),la:d(-112),le:d(-56),ra:d(-56),re:d(-64),ll:d(130),lk:d(-12),rl:d(-22),rk:d(24),hipBob:0};
@@ -1189,7 +1189,7 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     const weapon = this.classProfile?.weapon;
-    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (weapon === 'staff' && this.state === 'kick'));
+    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade')));
     if (weaponAttack) {
       const geometry = this.weaponGeometry(this.combatBones(), true);
       if (geometry) {
@@ -1327,7 +1327,7 @@ class Fighter {
     return dx;
   }
   weaponGeometry(b, active = !!(this.atk && this.atkT > this.atk.su &&
-    (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.classProfile?.weapon === 'staff' && this.state === 'kick')))) {
+    (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.state === 'kick' && (this.classProfile?.weapon === 'staff' || this.classProfile?.weapon === 'blade'))))) {
     const weapon = this.classProfile?.weapon;
     if (!weapon) return null;
     const hand = b.ra, face = this.face;
@@ -1348,8 +1348,16 @@ class Fighter {
       return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
     }
     if (weapon === 'blade') {
-      if (active) return {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}};
       const grip = {x:(b.la.x + b.ra.x) / 2,y:(b.la.y + b.ra.y) / 2};
+      if (this.state === 'kick' && this.atk) {
+        const rest = {x:face * 22,y:-82}, slash = {x:face * 78,y:46};
+        const t = this.atkT <= this.atk.su
+          ? Pose.easeOut(this.atkT / Math.max(1,this.atk.su))
+          : this.atkT <= this.atk.su + this.atk.ac ? 1
+            : 1 - Pose.easeOut((this.atkT - this.atk.su - this.atk.ac) / Math.max(1,this.atk.re));
+        return {start:grip,tip:{x:grip.x + rest.x + (slash.x - rest.x) * t,y:grip.y + rest.y + (slash.y - rest.y) * t}};
+      }
+      if (active) return {start:{x:hand.x - face * 10,y:hand.y + 8},tip:{x:hand.x + face * 82,y:hand.y - 18}};
       return {start:grip,tip:{x:grip.x + face * 22,y:grip.y - 82}};
     }
     return active
