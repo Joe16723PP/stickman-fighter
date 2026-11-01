@@ -7,11 +7,11 @@ const Diff = {
 };
 
 const FighterClasses = {
-  boxer: { name: 'BOXER', role: 'FAST COMBOS', punchMove: 'JAB-CROSS', kickMove: 'BODY CHECK', super: 'ONE-TWO RUSH', color: '#3B82F6', accent: '#FBBF24', style: 'rush', pitch: 1.05, speed: 1.08, punch: 1.12, kick: .94, superPower: 1.02, meter: 1, dash: .14 },
-  muaythai: { name: 'MUAY THAI', role: 'KNEE RANGE', punchMove: 'ELBOW COMBO', kickMove: 'ROUNDHOUSE', super: 'EIGHT LIMBS', color: '#22C55E', accent: '#FB923C', style: 'flame', pitch: .9, speed: .98, punch: .94, kick: 1.22, superPower: 1.12, meter: 1, dash: .12 },
-  ninja: { name: 'NINJA', role: 'HIGH SPEED', punchMove: 'SHADOW PALM', kickMove: 'SPIN KICK', super: 'SHADOW DASH', color: '#22D3EE', accent: '#A78BFA', style: 'flash', pitch: 1.3, speed: 1.22, punch: .96, kick: 1.04, superPower: 1, meter: 1.12, dash: .22 },
-  brawler: { name: 'BRAWLER', role: 'HEAVY HITS', punchMove: 'HAMMERFIST', kickMove: 'HEAVY STOMP', super: 'GROUND BREAKER', color: '#F97316', accent: '#FBBF24', style: 'quake', pitch: .76, speed: .87, punch: 1.08, kick: 1.16, superPower: 1.28, meter: .92, dash: .1 },
-  guardian: { name: 'GUARDIAN', role: 'BURST DEFENSE', punchMove: 'OPEN PALM', kickMove: 'PUSH KICK', super: 'WARD BURST', color: '#A78BFA', accent: '#F5F3FF', style: 'ward', pitch: .96, speed: .96, punch: .98, kick: 1, superPower: 1.08, meter: 1.14, dash: .12 },
+  kickboxing: { name: 'KICKBOXING', role: 'BALANCED COMBOS', punchMove: 'JAB · CROSS', kickMove: 'ROUND KICK', super: 'COMBINATION FINISHER', color: '#3B82F6', accent: '#FBBF24', style: 'rush', pitch: 1.05, speed: 1.08, punch: 1.12, kick: .98, superPower: 1.05, meter: 1, dash: .14 },
+  muaythai: { name: 'MUAY THAI', role: 'CLOSE RANGE POWER', punchMove: 'ELBOW · KNEE', kickMove: 'ROUNDHOUSE', super: 'EIGHT LIMBS BARRAGE', color: '#22C55E', accent: '#FB923C', style: 'flame', pitch: .9, speed: .98, punch: 1, kick: 1.2, superPower: 1.12, meter: 1, dash: .12 },
+  taekwondo: { name: 'TAE KWON DO', role: 'FAST LONG KICKS', punchMove: 'LEAD BACKFIST', kickMove: 'SPINNING HEEL', super: 'TORNADO KICK', color: '#22D3EE', accent: '#A78BFA', style: 'flash', pitch: 1.3, speed: 1.16, punch: .98, kick: 1.18, superPower: 1.12, meter: 1.08, dash: .2 },
+  wingchun: { name: 'WING CHUN', role: 'CENTERLINE PRESSURE', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'CENTERLINE FLURRY', color: '#A78BFA', accent: '#F5F3FF', style: 'ward', pitch: 1.12, speed: 1.04, punch: 1.08, kick: .96, superPower: 1.08, meter: 1.12, dash: .13 },
+  sumo: { name: 'SUMO', role: 'HEAVY IMPACT', punchMove: 'PALM STRIKE', kickMove: 'PUSH KICK', super: 'YOKOZUNA CHARGE', color: '#F97316', accent: '#FBBF24', style: 'quake', pitch: .76, speed: .86, punch: 1.12, kick: 1.18, superPower: 1.3, meter: .92, dash: .1 },
 };
 
 class Sfx {
@@ -281,7 +281,7 @@ class Pose {
       rush: {chest:d(-4),neck:d(2),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),shPull:7,ll:d(18),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
       flame:{chest:d(-1),neck:d(1),head:d(1),la:d(-100),le:d(-104),ra:d(-62),re:d(-98),shPull:3,ll:d(24),lk:d(10),rl:d(-22),rk:d(24),hipBob:0},
       // Ninja: narrow, low guard with the hands close to the face and elbows tucked.
-      flash:{chest:d(-5),neck:d(2),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),shPull:0,ll:d(18),lk:d(16),rl:d(-18),rk:d(18),hipBob:0},
+      flash:{chest:d(-1),neck:d(1),head:d(1),la:d(-94),le:d(-72),ra:d(-72),re:d(-112),shPull:0,ll:d(28),lk:d(18),rl:d(-22),rk:d(22),hipBob:0},
       quake:{chest:d(7),neck:d(-2),head:d(4),la:d(-112),le:d(-56),ra:d(-56),re:d(-64),shPull:0,ll:d(24),lk:d(18),rl:d(-20),rk:d(24),hipBob:0},
       ward: {chest:d(-2),neck:d(2),head:d(1),la:d(-42),le:d(-18),ra:d(-80),re:d(-112),shPull:0,ll:d(16),lk:d(14),rl:d(-16),rk:d(18),hipBob:0},
     };
@@ -393,6 +393,8 @@ class Pose {
   static kickRec(profile = null) { return Pose.idle(profile); }
   static airPunchWind(profile = null) {
     const d = Pose.deg;
+    if (profile?.style === 'rush') return {chest:d(-7),neck:d(2),head:d(2),la:d(-92),le:d(-78),ra:d(46),re:d(118),ll:d(66),lk:d(-42),rl:d(-44),rk:d(34),hipBob:0};
+    if (profile?.style === 'flame') return {chest:d(2),neck:d(1),head:d(2),la:d(-104),le:d(-98),ra:d(26),re:d(132),ll:d(78),lk:d(-62),rl:d(-38),rk:d(28),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-8),neck:d(2),head:d(1),la:d(-78),le:d(-64),ra:d(44),re:d(126),ll:d(72),lk:d(-48),rl:d(-48),rk:d(38),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(12),neck:d(-3),head:d(4),la:d(-110),le:d(-56),ra:d(66),re:d(0),ll:d(100),lk:d(-58),rl:d(-70),rk:d(62),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-8),neck:d(2),head:d(2),la:d(-38),le:d(-10),ra:d(78),re:d(112),ll:d(82),lk:d(-50),rl:d(-74),rk:d(60),hipBob:0};
@@ -402,6 +404,8 @@ class Pose {
   }
   static airPunchStrike(profile = null) {
     const d = Pose.deg;
+    if (profile?.style === 'rush') return {chest:d(-19),neck:d(-2),head:d(-2),la:d(-90),le:d(-76),ra:d(-88),re:d(-12),ll:d(-58),lk:d(6),rl:d(-42),rk:d(-8),hipBob:0};
+    if (profile?.style === 'flame') return {chest:d(-12),neck:d(-2),head:d(-1),la:d(-104),le:d(-98),ra:d(-78),re:d(34),ll:d(-44),lk:d(-8),rl:d(-36),rk:d(-2),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-22),neck:d(-3),head:d(-3),la:d(62),le:d(28),ra:d(-86),re:d(-12),ll:d(-70),lk:d(8),rl:d(-48),rk:d(-8),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(-18),neck:d(-4),head:d(-2),la:d(-105),le:d(60),ra:d(-100),re:d(54),ll:d(-92),lk:d(10),rl:d(-72),rk:d(-14),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-20),neck:d(-3),head:d(-2),la:d(-38),le:d(-10),ra:d(-100),re:d(8),ll:d(-102),lk:d(12),rl:d(-75),rk:d(-14),hipBob:0};
@@ -413,6 +417,8 @@ class Pose {
   }
   static airKickWind(profile = null) {
     const d = Pose.deg;
+    if (profile?.style === 'rush') return {chest:d(-1),neck:d(1),head:d(2),la:d(-92),le:d(-78),ra:d(-68),re:d(-104),ll:d(76),lk:d(-84),rl:d(-48),rk:d(38),hipBob:0};
+    if (profile?.style === 'flame') return {chest:d(8),neck:d(-1),head:d(2),la:d(-104),le:d(-98),ra:d(-60),re:d(-96),ll:d(96),lk:d(-102),rl:d(-32),rk:d(24),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(-4),neck:d(1),head:d(1),la:d(-78),le:d(-64),ra:d(-70),re:d(-100),ll:d(82),lk:d(-92),rl:d(-50),rk:d(40),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(15),neck:d(-2),head:d(3),la:d(-108),le:d(-56),ra:d(-56),re:d(-64),ll:d(130),lk:d(-112),rl:d(-70),rk:d(60),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-2),neck:d(1),head:d(1),la:d(-38),le:d(-10),ra:d(-78),re:d(-108),ll:d(105),lk:d(-100),rl:d(-66),rk:d(58),hipBob:0};
@@ -422,6 +428,8 @@ class Pose {
   }
   static airKickStrike(profile = null) {
     const d = Pose.deg;
+    if (profile?.style === 'rush') return {chest:d(6),neck:d(0),head:d(2),la:d(-92),le:d(-78),ra:d(-68),re:d(-104),ll:d(82),lk:d(-18),rl:d(-44),rk:d(34),hipBob:0};
+    if (profile?.style === 'flame') return {chest:d(16),neck:d(-2),head:d(2),la:d(-104),le:d(-98),ra:d(-60),re:d(-96),ll:d(98),lk:d(-12),rl:d(-32),rk:d(24),hipBob:0};
     if (profile?.style === 'flash') return {chest:d(8),neck:d(-1),head:d(1),la:d(-82),le:d(-62),ra:d(-68),re:d(-98),ll:d(84),lk:d(-16),rl:d(-46),rk:d(38),hipBob:0};
     if (profile?.style === 'quake') return {chest:d(20),neck:d(-3),head:d(4),la:d(-108),le:d(-56),ra:d(-56),re:d(-64),ll:d(132),lk:d(-12),rl:d(-70),rk:d(58),hipBob:0};
     if (profile?.style === 'ward') return {chest:d(-2),neck:d(1),head:d(1),la:d(-38),le:d(-10),ra:d(-78),re:d(-108),ll:d(105),lk:d(-14),rl:d(-66),rk:d(58),hipBob:0};
@@ -433,7 +441,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'flame') return {chest:d(17),neck:d(-3),head:d(3),la:d(-110),le:d(-100),ra:d(28),re:d(150),ll:d(115),lk:d(-104),rl:d(-24),rk:d(20),hipBob:-2};
-    if (style === 'flash') return {chest:d(-10),neck:d(3),head:d(1),la:d(-70),le:d(-56),ra:d(42),re:d(112),ll:d(44),lk:d(-36),rl:d(-28),rk:d(24),hipBob:0};
+    if (style === 'flash') return {chest:d(8),neck:d(1),head:d(1),la:d(-84),le:d(-72),ra:d(-36),re:d(112),ll:d(68),lk:d(-76),rl:d(-24),rk:d(20),hipBob:0};
     if (style === 'quake') return {chest:d(22),neck:d(-6),head:d(7),la:d(25),le:d(30),ra:d(-110),re:d(-65),ll:d(130),lk:d(-100),rl:d(-24),rk:d(24),hipBob:-3};
     if (style === 'ward') return {chest:d(-8),neck:d(2),head:d(1),la:d(-30),le:d(-8),ra:d(-90),re:d(-112),ll:d(16),lk:d(14),rl:d(-16),rk:d(18),hipBob:0};
     return {chest:d(10), neck:d(-4), head:d(-6),
@@ -444,7 +452,7 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (style === 'flame') return {chest:d(22),neck:d(-5),head:d(-3),la:d(80),le:d(32),ra:d(-90),re:d(60),ll:d(125),lk:d(-15),rl:d(-28),rk:d(36),hipBob:0};
-    if (style === 'flash') return {chest:d(-14),neck:d(3),head:d(1),la:d(58),le:d(24),ra:d(-82),re:d(-12),ll:d(82),lk:d(-42),rl:d(-48),rk:d(34),hipBob:0};
+    if (style === 'flash') return {chest:d(15),neck:d(1),head:d(0),la:d(68),le:d(24),ra:d(-38),re:d(102),ll:d(86),lk:d(-14),rl:d(-34),rk:d(28),hipBob:0};
     if (style === 'quake') return {chest:d(28),neck:d(-8),head:d(8),la:d(35),le:d(40),ra:d(-105),re:d(-62),ll:d(145),lk:d(-14),rl:d(-18),rk:d(25),hipBob:0};
     if (style === 'ward') return {chest:d(3),neck:d(1),head:d(1),la:d(-28),le:d(-6),ra:d(-78),re:d(-110),ll:d(18),lk:d(14),rl:d(-18),rk:d(18),hipBob:0};
     return {chest:d(18), neck:d(-6), head:d(-4),
@@ -828,7 +836,7 @@ class Fighter {
       const timings = {
         rush: {punch:[6,3,10],kick:[9,4,15]}, flame:{punch:[8,3,13],kick:[11,5,18]},
         flash:{punch:[5,3,9],kick:[8,4,12]}, quake:{punch:[10,3,17],kick:[14,5,22]},
-        ward:{punch:[7,3,12],kick:[10,4,16]},
+        ward:{punch:[4,3,9],kick:[9,4,15]},
       }[style];
       if (timings && (kind === 'punch' || kind === 'kick')) {
         const timing = timings[kind];
@@ -840,11 +848,10 @@ class Fighter {
       this.atk.dmg *= multiplier;
       if (kind === 'special') this.atk.kb *= multiplier;
       if (kind === 'special' && this.classProfile) {
-        const hitCount = style === 'rush' ? 2 : style === 'flame' ? 4 : 1;
+        const hitCount = style === 'rush' ? 2 : style === 'flame' ? 4 : style === 'ward' ? 5 : 1;
         this.atk.hitCount = hitCount;
         this.atk.dmg /= hitCount;
         this.atk.chip /= hitCount;
-        if (style === 'ward') this.wardShieldT = 2.1;
       }
     }
     this.atkT = 0; this.hitDone = 0; this.state = kind; this.blocking = 0;
@@ -2140,14 +2147,16 @@ class Game {
   static levels = ['easy', 'normal', 'hard'];
   static levelLabels = {easy:'Easy', normal:'Normal', hard:'Hard'};
   static titleBtns = [];
-  static selectedClass = 'boxer';
+  static selectedClass = 'kickboxing';
   static init() {
     Game.canvas = document.getElementById('game'); Game.ctx = Game.canvas.getContext('2d');
     try {
       const saved = localStorage.getItem('stickman-level');
       if (saved && Diff[saved]) Game.level = saved;
       const savedClass = localStorage.getItem('stickman-beatemup-class');
+      const legacyClass = {boxer:'kickboxing', ninja:'taekwondo', brawler:'sumo', guardian:'wingchun'}[savedClass];
       if (FighterClasses[savedClass]) Game.selectedClass = savedClass;
+      else if (FighterClasses[legacyClass]) Game.selectedClass = legacyClass;
     } catch (e) {}
     Input.bind(); Game.mode = '1v1'; Input.syncMode(); Game.goTitle(); Game.fit(); addEventListener('resize', () => Game.fit());
     Game.last = performance.now(); requestAnimationFrame(Game.frame);
