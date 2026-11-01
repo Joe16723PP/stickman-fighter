@@ -2531,29 +2531,29 @@ class Game {
     if (Game.mode === 'beatemup') {
       const classCount = Object.keys(FighterClasses).length;
       const gap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
-      const cardH = (compact ? 132 : 166) / sc;
+      const cardH = (compact ? 118 : 166) / sc;
       const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
-      const y = Game.H * (compact ? .61 : .51) - cardH / 2;
+      const y = Game.H * (compact ? .59 : .51) - cardH / 2;
       const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
       const bw = 174 / sc, bh = 52 / sc;
-      return { tabs, classes, levels: [], start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .88 : .76) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
+      return { tabs, classes, levels: [], start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .86 : .76) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
     }
     const bw = 120 / sc, bh = 57 / sc, gap = 12 / sc;
     const total = 3 * bw + 2 * gap;
     let x0 = (Game.W - total) / 2;
     x0 = Math.max(inset, Math.min(Game.W - inset - total, x0));
-    const y = Game.H * .49 - bh / 2;
+    const y = Game.H * (compact ? .42 : .49) - bh / 2;
     const startW = 190 / sc, startH = 52 / sc;
     const classCount = Object.keys(FighterClasses).length;
     const classGap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - classGap * (classCount - 1)) / classCount);
-    const cardH = 112 / sc, cardTotal = cardW * classCount + classGap * (classCount - 1);
+    const cardH = (compact ? 104 : 112) / sc, cardTotal = cardW * classCount + classGap * (classCount - 1);
     const classes = Object.entries(FighterClasses).map(([id,profile],i) => ({id,profile,menuCompact:true,
-      x:(Game.W-cardTotal)/2 + i*(cardW+classGap),y:Game.H*.66-cardH/2,w:cardW,h:cardH}));
+      x:(Game.W-cardTotal)/2 + i*(cardW+classGap),y:Game.H*(compact ? .64 : .66)-cardH/2,w:cardW,h:cardH}));
     return {
       tabs,
       classes,
       levels: Game.levels.map((id, i) => ({id, x: x0 + i * (bw + gap), y, w: bw, h: bh, label: Game.levelLabels[id]})),
-      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * .87 - startH / 2,w:startW,h:startH,label:'START FIGHT'},
+      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * (compact ? .85 : .87) - startH / 2,w:startW,h:startH,label:'START FIGHT'},
     };
   }
   static modeTabs() {
@@ -2562,7 +2562,7 @@ class Game {
     const tw = 140 / sc, th = 44 / sc, tgap = 10 / sc;
     const tTotal = 2 * tw + tgap;
     const tx0 = (Game.W - tTotal) / 2;
-    const ty = Game.H * (compact ? .30 : .38) - th / 2;
+    const ty = Game.H * (compact ? .24 : .38) - th / 2;
     return [
       { id: '1v1', label: '1v1', x: tx0, y: ty, w: tw, h: th },
       { id: 'beatemup', label: "Beat 'em up", x: tx0 + tw + tgap, y: ty, w: tw, h: th },
@@ -2867,7 +2867,7 @@ class Game {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = 'bold ' + (compact ? 26 : 40) / sc + 'px system-ui,sans-serif';
     ctx.lineJoin = 'round'; ctx.lineWidth = 3 / sc; ctx.strokeStyle = '#0E0F12';
-    const titleY = Game.H * (compact ? .13 : .22);
+    const titleY = Game.H * (compact ? .08 : .22);
     ctx.strokeText('STICKMAN FIGHTER', Game.W / 2, titleY);
     ctx.fillStyle = '#FFFFFF'; ctx.fillText('STICKMAN FIGHTER', Game.W / 2, titleY);
 
@@ -2918,16 +2918,17 @@ class Game {
       ctx.strokeStyle = selected ? p.accent : 'rgba(220,228,255,.32)'; ctx.lineWidth = (selected ? 3 : 1.5) / sc;
       ctx.strokeRect(card.x, card.y, card.w, card.h);
       if (card.menuCompact) {
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(card.x + card.w / 2, card.y + 15 / sc, 6 / sc, 0, Math.PI * 2); ctx.fill();
+        const menuAt = (small,large) => card.y + (compact ? small : large) / sc;
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(card.x + card.w / 2, menuAt(10,15), (compact ? 5 : 6) / sc, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min(12 / sc, card.w * .11) + 'px system-ui,sans-serif';
-        ctx.fillText(p.name, card.x + card.w / 2, card.y + 34 / sc);
+        ctx.fillText(p.name, card.x + card.w / 2, menuAt(25,34));
         ctx.fillStyle = '#D7DCE9'; ctx.font = Math.min(8 / sc, card.w * .075) + 'px system-ui,sans-serif';
-        ctx.fillText(p.role, card.x + card.w / 2, card.y + 51 / sc);
+        ctx.fillText(p.role, card.x + card.w / 2, menuAt(38,51));
         ctx.fillStyle = '#E7EAF2'; ctx.font = 'bold ' + Math.min(8 / sc, card.w * .075) + 'px system-ui,sans-serif';
-        ctx.fillText('NORMAL  ' + p.punchMove, card.x + card.w / 2, card.y + 73 / sc);
-        ctx.fillText('HEAVY  ' + p.kickMove, card.x + card.w / 2, card.y + 91 / sc);
+        ctx.fillText('NORMAL  ' + p.punchMove, card.x + card.w / 2, menuAt(57,73));
+        ctx.fillText('HEAVY  ' + p.kickMove, card.x + card.w / 2, menuAt(73,91));
         ctx.fillStyle = selected ? p.accent : '#9AA3B7'; ctx.font = 'bold ' + 7 / sc + 'px system-ui,sans-serif';
-        ctx.fillText(selected ? 'SELECTED' : 'CHOOSE', card.x + card.w / 2, card.y + 105 / sc);
+        ctx.fillText(selected ? 'SELECTED' : 'CHOOSE', card.x + card.w / 2, menuAt(95,105));
         continue;
       }
       const at = (normal, small) => card.y + (compact ? small : normal) / sc;
