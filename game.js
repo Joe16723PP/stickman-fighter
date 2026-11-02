@@ -178,9 +178,9 @@ const Moves = {
     su: 7, ac: 3, re: 11,          // first hit lands ~117ms (~110ms); recovery ~183ms (~180ms)
     dmg: 5, kb: 160, stun: 10,
     chainMax: 3,
-    chainDmg: [5, 5, 7],           // hit 1..3
-    chainKb: [160, 180, 320],
-    chainStun: [10, 12, 18],
+    chainDmg: [5, 7, 9],           // confirmed links reward the second and third hits
+    chainKb: [160, 220, 380],
+    chainStun: [10, 15, 24],
     chainSu: 3, chainAc: 3, chainRe: 8,
     chainWindow: 10,               // frames into recovery when a follow-up is allowed
     reach: 95,
@@ -417,16 +417,18 @@ class Pose {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') {
-      if (combo === 1) return Pose.staffGrip(12,[-132,-46,-88,-44],[42,26,-40,28],0);
-      if (combo === 2) return Pose.staffGrip(16,[-148,-28,-110,-52],[52,28,-48,30],-1);
+      if (combo === 1) return Pose.staffGrip(17,[-146,-38,-94,-34],[48,30,-48,34],-3);
+      if (combo === 2) return Pose.staffGrip(24,[-158,-24,-108,-42],[62,38,-60,42],-5);
       // Draw the rear hand back, keeping both hands spaced along the shaft.
       return Pose.staffGrip(8,[-130,20,-60,100],[30,22,-34,22],0);
     }
     if (profile?.weapon === 'blade') {
-      if (combo === 1) return {chest:d(15),neck:d(-2),head:d(2),la:d(-114),le:d(-22),ra:d(-154),re:d(-52),ll:d(34),lk:d(24),rl:d(-38),rk:d(28),hipBob:0,shPull:7};
-      if (combo === 2) return {chest:d(18),neck:d(-3),head:d(2),la:d(-52),le:d(-54),ra:d(-132),re:d(-22),ll:d(48),lk:d(28),rl:d(-44),rk:d(30),hipBob:-1,shPull:8};
+      if (combo === 1) return {chest:d(22),neck:d(-3),head:d(4),la:d(-118),le:d(-34),ra:d(-164),re:d(-48),ll:d(48),lk:d(28),rl:d(-56),rk:d(38),hipBob:-3,shPull:12};
+      if (combo === 2) return {chest:d(28),neck:d(-5),head:d(5),la:d(-62),le:d(-72),ra:d(-148),re:d(-34),ll:d(60),lk:d(36),rl:d(-64),rk:d(44),hipBob:-5,shPull:14};
       return {chest:d(9),neck:d(2),head:d(1),la:d(-68),le:d(-38),ra:d(-142),re:d(-34),ll:d(30),lk:d(20),rl:d(-34),rk:d(26),hipBob:0,shPull:4};
     }
+    if (style === 'ward' && combo === 1) return {chest:d(21),neck:d(-3),head:d(3),la:d(-134),le:d(-64),ra:d(70),re:d(132),ll:d(46),lk:d(26),rl:d(-52),rk:d(34),hipBob:-3,shPull:11};
+    if (style === 'ward' && combo === 2) return {chest:d(27),neck:d(-5),head:d(5),la:d(-132),le:d(-62),ra:d(52),re:d(118),ll:d(58),lk:d(34),rl:d(-62),rk:d(42),hipBob:-5,shPull:13};
     if (combo === 1) return {chest:d(15),neck:d(-2),head:d(2),la:d(-112),le:d(-98),ra:d(52),re:d(118),ll:d(34),lk:d(25),rl:d(-38),rk:d(26),hipBob:0,shPull:7};
     if (combo === 2) return {chest:d(19),neck:d(-3),head:d(2),la:d(-126),le:d(-62),ra:d(26),re:d(28),ll:d(50),lk:d(34),rl:d(-46),rk:d(30),hipBob:-2,shPull:8};
     if (style === 'flame') return {chest:d(5),neck:d(-1),head:d(2),la:d(-104),le:d(-108),ra:d(12),re:d(142),ll:d(22),lk:d(12),rl:d(-18),rk:d(20),hipBob:0,shPull:5};
@@ -442,16 +444,18 @@ class Pose {
     const d = Pose.deg, o = over ? d(10) : 0;
     const style = profile?.style;
     if (profile?.weapon === 'staff') {
-      if (combo === 1) return Pose.staffGrip(-16,[-92,8,-34,-118],[40,20,-42,22],0);
-      if (combo === 2) return Pose.staffGrip(-22,[-74,16,-38,-112],[54,28,-50,26],-2);
+      if (combo === 1) return Pose.staffGrip(-22,[-82,16,-28,-126],[48,24,-50,30],-3);
+      if (combo === 2) return Pose.staffGrip(-31,[-68,20,-18,-136],[62,32,-64,38],-5);
       // Drive both hands forward together for a clear two-hand thrust.
       return Pose.staffGrip(-13,[-90,0,-30,-120],[34,18,-38,18],0);
     }
     if (profile?.weapon === 'blade') {
-      if (combo === 1) return {chest:d(-20),neck:d(-2),head:d(-1),la:d(-108),le:d(-14),ra:d(-62),re:d(-28),ll:d(44),lk:d(22),rl:d(-44),rk:d(24),hipBob:0};
-      if (combo === 2) return {chest:d(-24),neck:d(-3),head:d(-2),la:d(-46),le:d(-56),ra:d(-116),re:d(-10),ll:d(52),lk:d(28),rl:d(-50),rk:d(28),hipBob:-2};
+      if (combo === 1) return {chest:d(-28),neck:d(3),head:d(-2),la:d(-130),le:d(-60),ra:d(-84)-o,re:d(68),ll:d(54),lk:d(30),rl:d(-58),rk:d(38),hipBob:-4};
+      if (combo === 2) return {chest:d(-34),neck:d(-4),head:d(4),la:d(-54),le:d(-46),ra:d(-128)-o,re:d(30),ll:d(68),lk:d(38),rl:d(-68),rk:d(44),hipBob:-6};
       return {chest:d(-18),neck:d(-1),head:0,la:d(-48),le:d(-28),ra:d(-78) - o,re:d(-18),ll:d(42),lk:d(24),rl:d(-42),rk:d(24),hipBob:0};
     }
+    if (style === 'ward' && combo === 1) return {chest:d(-28),neck:d(3),head:d(-2),la:d(-132),le:d(-70),ra:d(-88)-o,re:d(74),ll:d(52),lk:d(28),rl:d(-58),rk:d(36),hipBob:-3,shPull:0};
+    if (style === 'ward' && combo === 2) return {chest:d(-34),neck:d(4),head:d(4),la:d(-138),le:d(-68),ra:d(-100)-o,re:d(88),ll:d(64),lk:d(36),rl:d(-66),rk:d(42),hipBob:-6,shPull:0};
     if (combo === 1) return {chest:d(-16),neck:d(2),head:d(1),la:d(-118),le:d(-96),ra:d(-72),re:d(54),ll:d(42),lk:d(22),rl:d(-44),rk:d(22),hipBob:0};
     if (combo === 2) return {chest:d(-24),neck:d(-3),head:d(-2),la:d(-128),le:d(-60),ra:d(-94),re:d(64),ll:d(56),lk:d(28),rl:d(-52),rk:d(28),hipBob:-2};
     if (style === 'flame') return {chest:d(-3),neck:d(2),head:d(2),la:d(-102),le:d(-108),ra:d(-82),re:d(42),ll:d(20),lk:d(12),rl:d(-20),rk:d(20),hipBob:0};
@@ -463,44 +467,70 @@ class Pose {
       ll:d(18), lk:d(16), rl:d(-22), rk:d(20), hipBob:0};
   }
   static punchRec(profile = null, combo = 0) {
+    const d = Pose.deg;
     const idle = Pose.idle(profile);
+    if (profile?.weapon === 'staff' && combo === 1) return Pose.staffGrip(12,[-124,-28,-76,-48],[40,26,-42,30],-2);
+    if (profile?.weapon === 'staff' && combo === 2) return Pose.staffGrip(-8,[-108,-18,30,58],[50,30,-46,28],-3);
+    if (profile?.weapon === 'blade' && combo === 1) return {chest:d(12),neck:d(2),head:d(2),la:d(-120),le:d(72),ra:d(-106),re:d(-66),ll:d(38),lk:d(26),rl:d(-38),rk:d(30),hipBob:-2};
+    if (profile?.weapon === 'blade' && combo === 2) return {chest:d(-11),neck:d(2),head:d(1),la:d(-116),le:d(64),ra:d(-84),re:d(-50),ll:d(50),lk:d(32),rl:d(-46),rk:d(34),hipBob:-3};
+    if (profile?.style === 'ward' && combo === 1) return {...idle,chest:idle.chest + Pose.deg(10),head:idle.head + Pose.deg(2),ra:Pose.deg(-122),re:Pose.deg(-62),ll:Pose.deg(38),rl:Pose.deg(-34),hipBob:-2};
+    if (profile?.style === 'ward' && combo === 2) return {...idle,chest:idle.chest + Pose.deg(13),head:idle.head + Pose.deg(3),la:Pose.deg(-138),le:Pose.deg(-68),ra:Pose.deg(-102),re:Pose.deg(-38),ll:Pose.deg(50),lk:Pose.deg(32),rl:Pose.deg(-44),rk:Pose.deg(34),hipBob:-3};
     if (combo === 1) return {...idle, chest: idle.chest + Pose.deg(3), hipBob: -1};
     if (combo === 2) return {...idle, chest: idle.chest + Pose.deg(5), hipBob: -2};
     return idle;
   }
   /** Muay Thai knee chamber with both hands protecting the head. */
-  static kickWind(profile = null) {
+  static kickWind(profile = null, linked = false) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return Pose.staffGrip(12,[-132,-46,-88,-44],[48,26,-42,30],-2);
-    if (profile?.weapon === 'blade') return {chest:d(11),neck:d(-1),head:d(2),la:d(-110),le:d(-160),ra:d(-100),re:d(-150),ll:d(30),lk:d(22),rl:d(-34),rk:d(26),hipBob:-1};
+    if (profile?.weapon === 'staff') {
+      if (linked) return Pose.staffGrip(19,[-148,-40,-82,-54],[58,34,-54,38],-4);
+      return Pose.staffGrip(12,[-132,-46,-88,-44],[48,26,-42,30],-2);
+    }
+    if (profile?.weapon === 'blade') {
+      if (linked) return {chest:d(18),neck:d(-4),head:d(4),la:d(-104),le:d(-132),ra:d(-152),re:d(-42),ll:d(50),lk:d(30),rl:d(-52),rk:d(38),hipBob:-4,shPull:10};
+      return {chest:d(11),neck:d(-1),head:d(2),la:d(-110),le:d(-160),ra:d(-100),re:d(-150),ll:d(30),lk:d(22),rl:d(-34),rk:d(26),hipBob:-1};
+    }
     if (style === 'rush') return {chest:d(5),neck:d(1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(102),lk:d(-70),rl:d(-20),rk:d(20),hipBob:-1};
     if (style === 'flash') return {chest:d(5),neck:d(1),head:d(1),la:d(-82),le:d(-66),ra:d(-68),re:d(-102),ll:d(72),lk:d(-82),rl:d(-22),rk:d(20),hipBob:-1};
     if (style === 'quake') return {chest:d(14),neck:d(-3),head:d(5),la:d(-110),le:d(-56),ra:d(-56),re:d(-64),ll:d(128),lk:d(-112),rl:d(-20),rk:d(24),hipBob:-2};
+    if (style === 'ward' && linked) return {chest:d(16),neck:d(-4),head:d(4),la:d(-140),le:d(-66),ra:d(-118),re:d(-62),ll:d(122),lk:d(-98),rl:d(-42),rk:d(34),hipBob:-5,shPull:9};
     if (style === 'ward') return {chest:d(-9),neck:d(2),head:d(1),la:d(-136),le:d(-66),ra:d(-122),re:d(-58),ll:d(104),lk:d(-82),rl:d(-28),rk:d(26),hipBob:-2};
     return {chest:d(10), neck:d(-2), head:d(3),
       la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
       ll:d(115), lk:d(-105), rl:d(-16), rk:d(20), hipBob:-2};
   }
-  static kickStrike(profile = null) {
+  static kickStrike(profile = null, linked = false) {
     const d = Pose.deg;
     const style = profile?.style;
     if (profile?.weapon === 'staff') {
       // Plant the feet and rotate through a two-hand staff sweep; the active
       // weapon segment is derived from these grip points in weaponGeometry().
+      if (linked) return Pose.staffGrip(-25,[-84,18,-30,-130],[50,26,-54,34],-4);
       return Pose.staffGrip(-18,[-95,10,-35,-115],[36,22,-38,24],-2);
     }
-    if (profile?.weapon === 'blade') return {chest:d(-16),neck:d(-2),head:d(1),la:d(-60),le:d(-120),ra:d(-90),re:d(-60),ll:d(34),lk:d(22),rl:d(-36),rk:d(28),hipBob:-2};
+    if (profile?.weapon === 'blade') {
+      if (linked) return {chest:d(-27),neck:d(4),head:d(-2),la:d(-72),le:d(-108),ra:d(-116),re:d(-42),ll:d(50),lk:d(28),rl:d(-56),rk:d(40),hipBob:-5};
+      return {chest:d(-16),neck:d(-2),head:d(1),la:d(-60),le:d(-120),ra:d(-90),re:d(-60),ll:d(34),lk:d(22),rl:d(-36),rk:d(28),hipBob:-2};
+    }
     if (style === 'rush') return {chest:d(5),neck:d(-1),head:d(2),la:d(-92),le:d(-82),ra:d(-68),re:d(-108),ll:d(105),lk:d(-8),rl:d(-18),rk:d(20),hipBob:0};
     if (style === 'flash') return {chest:d(10),neck:d(-1),head:d(1),la:d(-86),le:d(-64),ra:d(-62),re:d(-98),ll:d(78),lk:d(-18),rl:d(-18),rk:d(16),hipBob:0};
     if (style === 'quake') return {chest:d(20),neck:d(-4),head:d(5),la:d(-112),le:d(-56),ra:d(-56),re:d(-64),ll:d(130),lk:d(-12),rl:d(-22),rk:d(24),hipBob:0};
+    if (style === 'ward' && linked) return {chest:d(-16),neck:d(3),head:d(2),la:d(-130),le:d(-62),ra:d(-34),re:d(-24),ll:d(116),lk:d(-2),rl:d(-50),rk:d(42),hipBob:-4,shPull:0};
     if (style === 'ward') return {chest:d(2),neck:d(1),head:d(1),la:d(-136),le:d(-66),ra:d(-126),re:d(-48),ll:d(78),lk:d(-8),rl:d(-28),rk:d(26),hipBob:0};
     // Turn the hip through and extend the chambered shin across at waist height.
     return {chest:d(16), neck:d(-2), head:d(3),
       la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
       ll:d(110), lk:d(-20), rl:d(-18), rk:d(22), hipBob:0};
   }
-  static kickRec(profile = null) { return Pose.idle(profile); }
+  static kickRec(profile = null, linked = false) {
+    const d = Pose.deg;
+    const idle = Pose.idle(profile);
+    if (profile?.weapon === 'staff' && linked) return Pose.staffGrip(-7,[-112,-26,18,50],[48,30,-46,30],-2);
+    if (profile?.weapon === 'blade' && linked) return {chest:d(-8),neck:d(2),head:d(1),la:d(-120),le:d(74),ra:d(-94),re:d(-58),ll:d(42),lk:d(28),rl:d(-42),rk:d(32),hipBob:-2};
+    if (profile?.style === 'ward' && linked) return {...idle,chest:idle.chest + Pose.deg(9),head:idle.head + Pose.deg(2),la:Pose.deg(-138),le:Pose.deg(-68),ra:Pose.deg(-112),re:Pose.deg(-54),ll:Pose.deg(56),lk:Pose.deg(34),rl:Pose.deg(-42),rk:Pose.deg(32),hipBob:-2};
+    return idle;
+  }
   static airPunchWind(profile = null) {
     const d = Pose.deg;
     if (profile?.weapon === 'staff') return Pose.staffGrip(-14,[-108,-28,18,50],[72,-48,-48,36],0);
@@ -555,27 +585,41 @@ class Pose {
       la:d(-92), le:d(-82), ra:d(-68), re:d(-108),
       ll:d(108), lk:d(-18), rl:d(-65), rk:d(55), hipBob:0};
   }
-  static specialWind(profile = null) {
+  static specialWind(profile = null, comboFinisher = false) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return Pose.staffGrip(-10,[-126,-26,18,48],[38,22,-40,22],0);
-    if (profile?.weapon === 'blade') return {chest:d(-12),neck:d(2),head:d(1),la:d(-48),le:d(-30),ra:d(-150),re:d(-28),ll:d(34),lk:d(22),rl:d(-40),rk:d(28),hipBob:0};
+    if (profile?.weapon === 'staff') {
+      if (comboFinisher) return Pose.staffGrip(21,[-150,-34,-104,-42],[64,36,-62,40],-5);
+      return Pose.staffGrip(-10,[-126,-26,18,48],[38,22,-40,22],0);
+    }
+    if (profile?.weapon === 'blade') {
+      if (comboFinisher) return {chest:d(24),neck:d(-5),head:d(4),la:d(-118),le:d(-146),ra:d(-160),re:d(-42),ll:d(62),lk:d(38),rl:d(-64),rk:d(44),hipBob:-5,shPull:13};
+      return {chest:d(-12),neck:d(2),head:d(1),la:d(-48),le:d(-30),ra:d(-150),re:d(-28),ll:d(34),lk:d(22),rl:d(-40),rk:d(28),hipBob:0};
+    }
     if (style === 'flame') return {chest:d(17),neck:d(-3),head:d(3),la:d(-110),le:d(-100),ra:d(28),re:d(150),ll:d(115),lk:d(-104),rl:d(-24),rk:d(20),hipBob:-2};
     if (style === 'flash') return {chest:d(8),neck:d(1),head:d(1),la:d(-84),le:d(-72),ra:d(-36),re:d(112),ll:d(68),lk:d(-76),rl:d(-24),rk:d(20),hipBob:0};
     if (style === 'quake') return {chest:d(22),neck:d(-6),head:d(7),la:d(25),le:d(30),ra:d(-110),re:d(-65),ll:d(130),lk:d(-100),rl:d(-24),rk:d(24),hipBob:-3};
+    if (style === 'ward' && comboFinisher) return {chest:d(23),neck:d(-5),head:d(5),la:d(-142),le:d(-76),ra:d(52),re:d(126),ll:d(52),lk:d(34),rl:d(-58),rk:d(40),hipBob:-5,shPull:12};
     if (style === 'ward') return {chest:d(-9),neck:d(2),head:d(1),la:d(-140),le:d(-68),ra:d(-112),re:d(-68),ll:d(30),lk:d(24),rl:d(-28),rk:d(26),hipBob:0};
     return {chest:d(10), neck:d(-4), head:d(-6),
       la:d(-90), le:d(-50), ra:d(30), re:d(-100),
       ll:d(-40), lk:d(95), rl:d(20), rk:d(25), hipBob:0};
   }
-  static specialDash(profile = null) {
+  static specialDash(profile = null, comboFinisher = false) {
     const d = Pose.deg;
     const style = profile?.style;
-    if (profile?.weapon === 'staff') return Pose.staffGrip(-20,[-140,-18,-8,48],[76,-46,-48,34],0);
-    if (profile?.weapon === 'blade') return {chest:d(-18),neck:d(2),head:0,la:d(-38),le:d(-22),ra:d(-86),re:d(-12),ll:d(78),lk:d(-44),rl:d(-48),rk:d(32),hipBob:0};
+    if (profile?.weapon === 'staff') {
+      if (comboFinisher) return Pose.staffGrip(-29,[-74,18,-20,-136],[74,-36,-62,40],-5);
+      return Pose.staffGrip(-20,[-140,-18,-8,48],[76,-46,-48,34],0);
+    }
+    if (profile?.weapon === 'blade') {
+      if (comboFinisher) return {chest:d(-34),neck:d(5),head:d(3),la:d(-86),le:d(-112),ra:d(-126),re:d(18),ll:d(74),lk:d(-36),rl:d(-66),rk:d(44),hipBob:-6};
+      return {chest:d(-18),neck:d(2),head:0,la:d(-38),le:d(-22),ra:d(-86),re:d(-12),ll:d(78),lk:d(-44),rl:d(-48),rk:d(32),hipBob:0};
+    }
     if (style === 'flame') return {chest:d(22),neck:d(-5),head:d(-3),la:d(80),le:d(32),ra:d(-90),re:d(60),ll:d(125),lk:d(-15),rl:d(-28),rk:d(36),hipBob:0};
     if (style === 'flash') return {chest:d(15),neck:d(1),head:d(0),la:d(68),le:d(24),ra:d(-38),re:d(102),ll:d(86),lk:d(-14),rl:d(-34),rk:d(28),hipBob:0};
     if (style === 'quake') return {chest:d(28),neck:d(-8),head:d(8),la:d(35),le:d(40),ra:d(-105),re:d(-62),ll:d(145),lk:d(-14),rl:d(-18),rk:d(25),hipBob:0};
+    if (style === 'ward' && comboFinisher) return {chest:d(-32),neck:d(5),head:d(3),la:d(-138),le:d(-66),ra:d(-102),re:d(72),ll:d(54),lk:d(30),rl:d(-62),rk:d(42),hipBob:-5};
     if (style === 'ward') return {chest:d(-10),neck:d(1),head:d(1),la:d(-138),le:d(-64),ra:d(-92),re:d(-8),ll:d(30),lk:d(22),rl:d(-28),rk:d(26),hipBob:0};
     return {chest:d(18), neck:d(-6), head:d(-4),
       la:d(100), le:d(35), ra:d(-70), re:d(40),
@@ -830,6 +874,20 @@ class Fighter {
     if (this.classProfile) this.color = this.classProfile.color;
   }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1)); }
+  static comboMessage(hit, state, comboHits) {
+    if (hit.comboFinisher) return 'SUPER FINISHER +25%';
+    if (hit.comboLink && state === 'kick') return 'HEAVY LINK +25%';
+    if (hit.comboLink && state === 'punch') return hit.chain >= 2 ? 'RISING FINISHER +80%' : 'HOOK LINK +40%';
+    return comboHits + ' HIT COMBO!';
+  }
+  confirmHit(kind, damage) {
+    if ((kind !== 'hit' && kind !== 'armored') || damage <= 0) return false;
+    this.hitConfirmed = 1;
+    if (this.comboTimer <= 0) this.comboHits = 0;
+    this.comboHits++;
+    this.comboTimer = 1.35;
+    return true;
+  }
   aim(key, target, dur) {
     if (this.poseKey === key && this.blendT >= this.blendDur) {
       this.poseTo = target; return;
@@ -956,6 +1014,7 @@ class Fighter {
     return {hip, sh, head, hr, la, ra, ll, rl, x0, x1, y0, y1};
   }
   startAtk(kind) {
+    let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
       this.meter = 0; this.dashLeft = Game.W * (this.classProfile?.dash || .14);
@@ -965,10 +1024,13 @@ class Fighter {
       let n = 0;
       const heavyLink = this.state === 'kick' && this.canChainPunch();
       const linking = (this.chainArmed > 0) || this.canChainPunch();
-      if (linking && !heavyLink) n = Math.min(this.chain + 1, m.chainMax - 1);
+      linked = linking;
+      if (heavyLink) n = 1;
+      else if (linking) n = Math.min(this.chain + 1, m.chainMax - 1);
       this.chain = n;
       this.chainArmed = 0;
     } else {
+      linked = kind === 'kick' && this.canChainHeavy();
       this.chain = 0; this.chainArmed = 0;
     }
     this.atk = Atk.of(kind, kind === 'punch' ? this.chain : 0);
@@ -989,6 +1051,8 @@ class Fighter {
         : kind === 'kick' || kind === 'airKick' ? (this.classProfile?.kick || 1)
           : (this.classProfile?.punch || 1);
       this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1);
+      if (linked && kind === 'kick') this.atk.dmg *= 1.25;
+      this.atk.linked = linked;
       if (kind === 'special' && this.comboHits >= 2 && this.comboTimer > 0) {
         this.atk.dmg *= 1.25;
         this.atk.chip *= 1.25;
@@ -1041,10 +1105,10 @@ class Fighter {
     // Visual phases read su/ac/re from this.atk (Moves via Atk.of) — chain hits use chainSu/Ac/Re
     if (this.state === 'special') {
       if (t <= a.su) {
-        if (this.atkPhase !== 'sw') { this.aim('sw', Pose.specialWind(this.classProfile), a.su * Game.STEP); this.atkPhase = 'sw'; }
+        if (this.atkPhase !== 'sw') { this.aim('sw', Pose.specialWind(this.classProfile, a.comboFinisher), a.su * Game.STEP); this.atkPhase = 'sw'; }
       } else if (t <= a.su + a.ac) {
         if (this.atkPhase !== 'ss') {
-          this.aim('ss', Pose.specialDash(this.classProfile), .05); this.atkPhase = 'ss';
+          this.aim('ss', Pose.specialDash(this.classProfile, a.comboFinisher), .05); this.atkPhase = 'ss';
           Sfx.play('super-dash', this.classProfile);
         }
       } else if (this.atkPhase !== 'sr') { this.aim('sr', Pose.idle(this.classProfile), a.re * Game.STEP); this.atkPhase = 'sr'; }
@@ -1052,12 +1116,12 @@ class Fighter {
     }
     if (this.state === 'kick') {
       if (t <= a.su) {
-        if (this.atkPhase !== 'kw') { this.aim('kw', Pose.kickWind(this.classProfile), a.su * Game.STEP); this.atkPhase = 'kw'; }
+        if (this.atkPhase !== 'kw') { this.aim('kw', Pose.kickWind(this.classProfile, a.linked), a.su * Game.STEP); this.atkPhase = 'kw'; }
       } else if (t <= a.su + a.ac) {
         if (this.atkPhase !== 'ks') {
-          this.aim('ks', Pose.kickStrike(this.classProfile), .04); this.atkPhase = 'ks';
+          this.aim('ks', Pose.kickStrike(this.classProfile, a.linked), .04); this.atkPhase = 'ks';
         }
-      } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.kickRec(this.classProfile), a.re * Game.STEP); this.atkPhase = 'kr'; }
+      } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.kickRec(this.classProfile, a.linked), a.re * Game.STEP); this.atkPhase = 'kr'; }
       return;
     }
     if (this.state === 'airPunch' || this.state === 'airKick') {
@@ -1316,7 +1380,7 @@ class Fighter {
         const segment = {x1:start.x,y1:start.y,x2:end.x,y2:end.y,r};
         const x = Math.min(start.x,end.x) - r, y = Math.min(start.y,end.y) - r;
         const w = Math.abs(end.x - start.x) + r * 2, h = Math.abs(end.y - start.y) + r * 2;
-        const common = {x,y,w,h,segment,dmg:a.dmg,kb:a.kb,stun:a.stun,chip:a.chip || 0,special:this.state === 'special',critical:!!a.critical,comboFinisher:!!a.comboFinisher};
+        const common = {x,y,w,h,segment,dmg:a.dmg,kb:a.kb,stun:a.stun,chip:a.chip || 0,special:this.state === 'special',critical:!!a.critical,comboFinisher:!!a.comboFinisher,comboLink:!!a.linked,chain:a.chain || 0};
         if (this.state === 'special') {
           const hitCount = a.hitCount || 1;
           common.pulse = Math.min(hitCount - 1, Math.floor((this.atkT - a.su - 1) / Math.max(1, a.ac / hitCount)));
@@ -1342,14 +1406,14 @@ class Fighter {
       return {
         x: this.face > 0 ? this.x + lead : this.x - w - lead,
         y: Game.GROUND + this.y - h,
-        w, h, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:true, pulse, critical:!!a.critical, comboFinisher:!!a.comboFinisher,
+        w, h, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:true, pulse, critical:!!a.critical, comboFinisher:!!a.comboFinisher, comboLink:!!a.linked, chain:a.chain || 0,
       };
     }
     const b = this.combatBones(), tip = (this.state === 'kick' || this.state === 'airKick' || this.state === 'special') ? b.ll : b.ra;
     const r = this.state === 'special' ? 22 : 18;
     const heavyLead = this.state === 'kick' ? 30 * Fighter.S : 0;
     const endX = tip.x + this.face * heavyLead;
-    return {x:Math.min(tip.x, endX) - r, y:tip.y - r, w:Math.abs(endX - tip.x) + r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical, comboFinisher:!!a.comboFinisher};
+    return {x:Math.min(tip.x, endX) - r, y:tip.y - r, w:Math.abs(endX - tip.x) + r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical, comboFinisher:!!a.comboFinisher, comboLink:!!a.linked, chain:a.chain || 0};
   }
   takeHit(atk, from) {
     if (this.playerControlled && this.invincibleT > 0) return 'invulnerable';
@@ -1441,15 +1505,18 @@ class Fighter {
   drawNudgeX() {
     const b = this.bones();
     const sc = Game.scale, ox = Game.ox, oy = Game.oy, c = 8;
+    const cameraX = Game.mode === 'beatemup' && Game.phase !== 'title' ? BeatEmUp.cameraX : 0;
+    const x0 = ox + (b.x0 - cameraX) * sc;
+    const x1 = ox + (b.x1 - cameraX) * sc;
     let dx = 0;
     for (const btn of Game.btns) {
       const y0 = oy + b.y0 * sc, y1 = oy + b.y1 * sc;
       if (y0 >= btn.y + btn.h + c || y1 <= btn.y - c) continue;
       if (btn.x + btn.w / 2 < innerWidth / 2) {
-        const gap = (ox + b.x0 * sc) - (btn.x + btn.w);
+        const gap = x0 - (btn.x + btn.w);
         if (gap < c) dx = Math.max(dx, (c - gap) / sc);
       } else {
-        const gap = btn.x - (ox + b.x1 * sc);
+        const gap = btn.x - x1;
         if (gap < c) dx = Math.min(dx, (gap - c) / sc);
       }
     }
@@ -1688,6 +1755,10 @@ class Fx {
     const value = Math.round(amount * 10) / 10;
     Fx.list.push({kind:'damage', text:(critical ? 'CRITICAL!  ' : '') + '-' + value, x, y, life:critical ? .95 : .7, max:critical ? .95 : .7, color:critical ? '#FFE16B' : blocked ? '#FBBF24' : '#FFFFFF', critical});
   }
+  static combo(x, y, text, profile) {
+    if (!Fx.allowed(x, y)) return;
+    Fx.list.push({kind:'combo', text, x, y, life:.82, max:.82, color:profile?.accent || '#FBBF24'});
+  }
   static critical(x, y, profile) {
     const color = profile?.accent || '#FFE16B', sc = Game.scale || 1;
     if (Fx.allowed(x, y)) Fx.list.push({kind:'ring',x,y,r0:5 / sc,r1:34 / sc,life:.2,max:.2,color,width:3 / sc});
@@ -1705,6 +1776,7 @@ class Fx {
     for (const e of Fx.list) {
       e.life -= dt;
       if (e.kind === 'damage') e.y -= 30 * dt;
+      if (e.kind === 'combo') e.y -= 42 * dt;
       if (e.kind === 'ring') e.radius = e.r0 + (e.r1 - e.r0) * (1 - e.life / e.max);
     }
     Fx.list = Fx.list.filter(e => e.life > 0);
@@ -1738,6 +1810,15 @@ class Fx {
         ctx.font = 'bold ' + (e.critical ? 22 : 18) / sc + 'px system-ui,sans-serif';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round'; ctx.lineWidth = (e.critical ? 5 : 4) / sc; ctx.strokeStyle = '#11131A';
+        ctx.strokeText(e.text, e.x, e.y);
+        ctx.fillStyle = e.color; ctx.fillText(e.text, e.x, e.y);
+        ctx.textBaseline = 'alphabetic';
+      } else if (e.kind === 'combo') {
+        if (!Fx.allowed(e.x, e.y)) continue;
+        ctx.globalAlpha = Math.min(1, e.life / .18);
+        ctx.font = '900 ' + 18 / sc + 'px system-ui,sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round'; ctx.lineWidth = 4 / sc; ctx.strokeStyle = '#11131A';
         ctx.strokeText(e.text, e.x, e.y);
         ctx.fillStyle = e.color; ctx.fillText(e.text, e.x, e.y);
         ctx.textBaseline = 'alphabetic';
@@ -2377,11 +2458,16 @@ class BeatEmUp {
         let kind = 'hit';
         BeatEmUp.withDepth(target, () => { kind = target.f.takeHit(hit, attacker.f); });
         const damage = Math.round((hpBefore - target.f.hp) * 10) / 10;
+        const confirmed = attacker.f.confirmHit(kind, damage);
         const specialFirst = hit.special && !attacker.f.specialEffectDone;
         attacker.f.gainMeter(hit.special ? 0 : hit.dmg * 2.5);
         if (!hit.special || !attacker.f.specialMeterTargets.has(target)) target.f.gainMeter(hit.special ? 12 : hit.dmg * 1.5);
         if (hit.special) attacker.f.specialMeterTargets.add(target);
         const cx = hit.x + hit.w / 2, cy = hit.y + hit.h / 2;
+        if (attacker.role === 'player') {
+          if (hit.comboFinisher && specialFirst) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits), attacker.f.classProfile);
+          else if (confirmed && attacker.f.comboHits >= 2) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits), attacker.f.classProfile);
+        }
         const criticalHit = !!hit.critical && kind !== 'block';
         Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block', criticalHit);
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
@@ -2784,10 +2870,10 @@ class Game {
     const player = fighters[0], dummy = fighters[1];
     player.setClass(Game.selectedClass);
     player.color = FighterClasses[Game.selectedClass].color;
-    player.tag = 'YOU'; player.reset(Game.W * .34, 1); player.meter = 0;
-    Game.practiceDummyX = Game.W * .64;
+    player.tag = 'YOU'; player.meter = 0;
     dummy.setClass(null); dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
-    dummy.reset(Game.practiceDummyX, -1); dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
+    Game.placePracticeFighters(true);
+    dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
     Game.timer = Infinity; Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceComboT = 0; Game.practiceLastMove = '';
     Game.stop = 0; Game.shake = 0; Game.fighting = 0; Game.matchOver = 0;
     Input.pad[1] = {}; Input.was[1] = {};
@@ -2850,6 +2936,21 @@ class Game {
     if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
     const reset = document.getElementById('practice-reset');
     if (reset) reset.style.display = Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
+    Game.btns = [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
+      const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
+    }).filter(btn => btn.w > 0 && btn.h > 0);
+  }
+  static placePracticeFighters(reset = false) {
+    const span = Math.max(0, Game.maxX - Game.minX);
+    const playerX = Game.minX + span * .24;
+    Game.practiceDummyX = Game.minX + span * .76;
+    if (reset) {
+      fighters[0].reset(playerX, 1);
+      fighters[1].reset(Game.practiceDummyX, -1);
+    } else {
+      fighters[0].x = playerX; fighters[0].vx = 0; fighters[0].clamp();
+      fighters[1].x = Game.practiceDummyX; fighters[1].vx = 0; fighters[1].clamp();
+    }
   }
   static titleLayout() {
     const sc = Game.scale;
@@ -2999,8 +3100,7 @@ class Game {
     } else if (Game.phase !== 'matchEnd') {
       fighters[0].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[0].x || Game.W * .35));
       if (Game.mode === 'practice') {
-        Game.practiceDummyX = Math.max(Game.minX, Math.min(Game.maxX, Game.W * .64));
-        fighters[1].x = Game.practiceDummyX;
+        Game.placePracticeFighters();
       } else fighters[1].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[1].x || Game.W * .65));
     }
     Game.btns = Game.phase === 'title' ? [] : [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
@@ -3038,13 +3138,8 @@ class Game {
       const hpBefore = foe.hp;
       const kind = foe.takeHit(box, me);
       const damage = Math.round((hpBefore - foe.hp) * 10) / 10;
-      if ((kind === 'hit' || kind === 'armored') && damage > 0) {
-        me.hitConfirmed = 1;
-        if (me.comboTimer <= 0) me.comboHits = 0;
-        me.comboHits++;
-        me.comboTimer = 1.35;
-      }
-      if (Game.mode === 'practice' && i === 0 && damage > 0) {
+      const confirmed = me.confirmHit(kind, damage);
+      if (Game.mode === 'practice' && i === 0 && confirmed) {
         if (Game.practiceComboT <= 0) { Game.practiceComboHits = 0; Game.practiceComboDamage = 0; }
         Game.practiceComboHits++;
         Game.practiceComboDamage += damage;
@@ -3058,6 +3153,10 @@ class Game {
       if (!box.special || !me.specialMeterTargets.has(foe)) foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       if (box.special) me.specialMeterTargets.add(foe);
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      if (i === 0) {
+        if (box.comboFinisher && box.special && !me.specialEffectDone) Fx.combo(cx, cy - 34, Fighter.comboMessage(box, me.state, me.comboHits), me.classProfile);
+        else if (confirmed && me.comboHits >= 2) Fx.combo(cx, cy - 34, Fighter.comboMessage(box, me.state, me.comboHits), me.classProfile);
+      }
       const criticalHit = !!box.critical && kind !== 'block';
       Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
       if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
