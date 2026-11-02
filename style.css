@@ -10,6 +10,7 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 #game-action-menu[hidden]{display:none!important}
 #game-action-menu button{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:6px 10px;border:1px solid #657792;border-radius:2px;background:linear-gradient(180deg,#26364c,#121a28);color:#ffe6a7;font:700 12px/1 ui-monospace,monospace;letter-spacing:.04em;text-align:left;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 #game-action-menu button span{color:#fff}
+#game-action-menu button .ui-icon{display:block;width:18px;height:18px;flex:0 0 18px;color:#7bdcff;pointer-events:none}
 #game-action-menu button:active{filter:brightness(1.35);transform:translateY(1px)}
 #game-action-menu button:disabled{opacity:.42}
 #practice-reset{display:none;position:fixed;top:calc(42px + env(safe-area-inset-top,0px));right:calc(12px + env(safe-area-inset-right,0px));z-index:3;width:54px;min-width:54px;height:54px;padding:7px;border:2px solid #63d9ff;border-radius:4px;background:linear-gradient(180deg,rgba(23,48,65,.96),rgba(8,15,23,.96));color:#c8f4ff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.08),0 4px 0 rgba(0,0,0,.55);touch-action:manipulation;-webkit-tap-highlight-color:transparent}
