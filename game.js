@@ -7,15 +7,35 @@ const Diff = {
 };
 
 const ArcadeDiff = {
-  easy:   { damage: .7, health: .8, extraEnemies: -1, details: 'DAMAGE 70% · ENEMY HP 80% · 1 FEWER PER WAVE' },
-  normal: { damage: 1, health: 1, extraEnemies: 0, details: 'DAMAGE 100% · ENEMY HP 100% · STANDARD WAVES' },
-  hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, details: 'DAMAGE 140% · ENEMY HP 150% · 1 EXTRA PER WAVE' },
+  easy:   { damage: .7, health: .8, extraEnemies: -1, details: 'DAMAGE 70% · ENEMY HP 80% · 4 PER WAVE' },
+  normal: { damage: 1, health: 1, extraEnemies: 0, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
+  hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
 };
 
 const FighterClasses = {
-  freehand: { name: 'FREE HAND', role: 'CENTERLINE COMBOS', punchMove: 'CHAIN PUNCHES', kickMove: 'SIDE KICK', super: 'IRON FIST FLURRY', color: '#3B82F6', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, punch: 1.12, kick: 1, superPower: 1.08, superHits: 5, criticalChance: .13, criticalDamage: 1.55, meter: 1.08, dash: .13 },
-  staff: { name: 'STAFF', role: 'LONG REACH CONTROL', punchMove: 'BO STAFF THRUST', kickMove: 'LOW SWEEP', super: 'DRAGON STAFF SPIN', color: '#22C55E', accent: '#FBBF24', style: 'quake', weapon: 'staff', pitch: .92, speed: .98, punch: .95, kick: 1.06, superPower: 1.18, superHits: 3, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
-  blade: { name: 'BLADE', role: 'FAST PRECISE CUTS', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#CBD5E1', accent: '#38BDF8', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, punch: 1.04, kick: .96, superPower: 1.16, superHits: 2, criticalChance: .16, criticalDamage: 1.6, meter: 1.1, dash: .18 },
+  freehand: { name: 'KARATE', role: 'FAST · 1.75× METER', punchMove: 'KARATE PUNCH', kickMove: 'KARATE KICK', super: 'IRON FIST FLURRY', color: '#52B8FF', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, attackSpeed: 1.28, punch: 1, kick: .95, superPower: 1, superHits: 5, criticalChance: .13, criticalDamage: 1.55, meter: 1.75, dash: .13 },
+  staff: { name: 'STAFF', role: 'SLOW · HEAVY · LONGEST RANGE', punchMove: 'BO STAFF THRUST', kickMove: 'LOW SWEEP', super: 'DRAGON STAFF SPIN', color: '#3BD6B3', accent: '#FBBF24', style: 'quake', weapon: 'staff', pitch: .92, speed: .98, attackSpeed: .78, punch: 1.22, kick: 1.55, superPower: 1.3, superHits: 3, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
+  blade: { name: 'BLADE', role: 'BALANCED · 1.35× METER', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#B8D7FF', accent: '#38BDF8', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, attackSpeed: 1, punch: 1.08, kick: 1.08, superPower: 1.12, superHits: 2, criticalChance: .16, criticalDamage: 1.6, meter: 1.35, dash: .18 },
+};
+const PlayerCoolColor = '#52B8FF';
+const CpuHotColors = {
+  '1v1': '#FF4F5E',
+  enemy: { regular: '#FF4F5E', runner: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', boss: '#F04458' },
+  bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
+};
+
+// Weapon loadouts trade attack speed for damage. Archetypes determine whether they carry one.
+const EnemyWeaponProfiles = {
+  freehand: { weapon: null, attackSpeed: 1, damage: .85 },
+  stick: { weapon: 'stick', attackSpeed: .82, damage: 1.3 },
+  knife: { weapon: 'knife', attackSpeed: 1.22, damage: 1 },
+};
+const EnemyArchetypes = {
+  regular: { health: 100, weaponChance: 0, specialDamage: 0, specialGain: 0 },
+  runner: { health: 75, weaponChance: .2, specialDamage: .25, specialGain: .25 },
+  tough: { health: 125, weaponChance: .2, specialDamage: .25, specialGain: .25 },
+  heavy: { health: 145, weaponChance: .5, specialDamage: .45, specialGain: .45 },
+  boss: { health: 220, weaponChance: 1, specialDamage: 1, specialGain: 1 },
 };
 
 class Sfx {
@@ -56,6 +76,8 @@ class Sfx {
     else if (name === 'super-dash') Sfx.tone(620 * pitch, 130 * pitch, .16, 'sawtooth', .075);
     else if (name === 'super-hit') { Sfx.tone(105 * pitch, 32 * pitch, .26, 'sawtooth', .1); setTimeout(() => Sfx.tone(390 * pitch, 80 * pitch, .18, 'triangle', .06), 55); }
     else if (name === 'critical') { Sfx.tone(520 * pitch, 170 * pitch, .15, 'square', .07); setTimeout(() => Sfx.tone(760 * pitch, 320 * pitch, .12, 'triangle', .055), 45); }
+    else if (name === 'heal') { Sfx.tone(540 * pitch, 780 * pitch, .12, 'sine', .055); setTimeout(() => Sfx.tone(760 * pitch, 1040 * pitch, .14, 'sine', .045), 75); }
+    else if (name === 'powerup') { Sfx.tone(300 * pitch, 680 * pitch, .16, 'square', .06); setTimeout(() => Sfx.tone(620 * pitch, 980 * pitch, .18, 'triangle', .05), 80); }
   }
 }
 
@@ -76,6 +98,8 @@ class Input {
     const on = (e, down) => {
       if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
       if (down) Sfx.unlock();
+      if (down && (e.key === 'Escape' || e.key === 'p' || e.key === 'P')
+        && (Game.paused || Game.canPause())) { e.preventDefault(); Game.togglePause(); return; }
       down ? Input.keys.add(e.key) : Input.keys.delete(e.key);
       if (down && Game.phase === 'title') { Game.tryTitleKey(e.key); return; }
       if (down && Game.mode === 'practice' && (e.key === 'r' || e.key === 'R')) { Game.resetPracticeDummy(); return; }
@@ -107,10 +131,28 @@ class Input {
     });
     const menuBtn = document.getElementById('main-menu-button');
     if (menuBtn) {
-      // Keep the menu tap from being interpreted as a retry on the Beat 'em up results screen.
       menuBtn.addEventListener('pointerdown', e => { e.stopPropagation(); Sfx.unlock(); });
-      menuBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); Game.goTitle(); });
+      menuBtn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); Game.toggleActionMenu(); });
     }
+    const actionMenu = document.getElementById('game-action-menu');
+    const pauseBtn = document.getElementById('pause-game-button');
+    const titleBtn = document.getElementById('return-main-menu-button');
+    [actionMenu, pauseBtn, titleBtn].filter(Boolean).forEach(el => {
+      el.addEventListener('pointerdown', e => { e.stopPropagation(); Sfx.unlock(); });
+    });
+    if (pauseBtn) pauseBtn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation(); Game.togglePause();
+    });
+    if (titleBtn) titleBtn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation(); Game.goTitle();
+    });
+    if (actionMenu) actionMenu.addEventListener('click', e => e.stopPropagation());
+    document.addEventListener('pointerdown', e => {
+      if (!e.target.closest('#main-menu-button, #game-action-menu')) Game.closeActionMenu();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && Game.actionMenuOpen && !Game.paused) Game.closeActionMenu();
+    });
     const practiceReset = document.getElementById('practice-reset');
     if (practiceReset) {
       practiceReset.addEventListener('pointerdown', e => { e.stopPropagation(); Sfx.unlock(); });
@@ -837,17 +879,20 @@ class Bot {
 }
 
 class Fighter {
-  static S = 1.5;
-  static ARM = 18 * 1.5;
-  static LEG = 20 * 1.5;
-  static TORSO = 22 * 1.5;
-  static NECK = 8 * 1.5;
+  static S = 1.2;
+  static ARM = 18 * 1.2;
+  static LEG = 20 * 1.2;
+  static TORSO = 22 * 1.2;
+  static NECK = 8 * 1.2;
   static RUN_SPEED = 220;
   static GROUND_ACCEL = 1300;
   static GROUND_BRAKE = 1800;
   static TURN_ACCEL = 1700;
   constructor(x, color, side, tag) {
-    this.color = color; this.tag = tag; this.playerControlled = tag === 'YOU'; this.meter = 0; this.reset(x, side);
+    this.color = color; this.tag = tag; this.playerControlled = tag === 'YOU';
+    this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
+    this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
+    this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
     this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side;
@@ -857,13 +902,14 @@ class Fighter {
     this.hp = 100; this.chip = 100; this.stun = 0; this.flash = 0; this.blocking = 0;
     this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0;
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0; this.wardShieldT = 0;
-    this.hitConfirmed = 0; this.comboHits = 0; this.comboTimer = 0;
+    this.hitConfirmed = 0; this.comboHits = 0; this.comboTimer = 0; this.comboStunEffectT = 0;
     this.dodgeT = 0; this.dodgeCooldown = 0; this.rollVx = 0;
     this.chain = 0; this.chainArmed = 0;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
     this.landSquash = 0; this.koT = 0; this.atkPhase = '';
     this.damageBurst = 0; this.damageBurstT = 0;
     this.invincibleT = 0;
+    this.attackBoostT = 0;
     this.ragdollActive = false; this.ragdollKO = false; this.ragdollElapsed = 0;
     this.ragdollDirection = 0; this.ragdollAngle = 0; this.ragdollFrom = null;
     this.punchSoft = 0;
@@ -873,7 +919,7 @@ class Fighter {
     this.classProfile = this.classId ? FighterClasses[this.classId] : null;
     if (this.classProfile) this.color = this.classProfile.color;
   }
-  gainMeter(n) { this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1)); }
+  gainMeter(n) { this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1) * this.meterGainMultiplier); }
   static comboMessage(hit, state, comboHits) {
     if (hit.comboFinisher) return 'SUPER FINISHER +25%';
     if (hit.comboLink && state === 'kick') return 'HEAVY LINK +25%';
@@ -1035,8 +1081,8 @@ class Fighter {
     }
     this.atk = Atk.of(kind, kind === 'punch' ? this.chain : 0);
     if (this.atk) {
-      // Give every fighter a full anime-style charge before the special actually strikes.
-      if (kind === 'special') this.atk.su = Math.round(1 / Game.STEP);
+      // Player specials release quickly; CPU specials telegraph longer to give players a dodge window.
+      if (kind === 'special') this.atk.su = Math.round((this.playerControlled ? .5 : 1.25) / Game.STEP);
       const style = this.classProfile?.style;
       const timings = {
         rush: {punch:[6,3,10],kick:[9,4,15]}, flame:{punch:[8,3,13],kick:[11,5,18]},
@@ -1047,10 +1093,20 @@ class Fighter {
         const timing = timings[kind];
         if (kind !== 'punch' || !this.chain) [this.atk.su,this.atk.ac,this.atk.re] = timing;
       }
+      const attackSpeed = this.attackSpeed * (this.classProfile?.attackSpeed || 1);
+      if (kind !== 'special' && attackSpeed !== 1) {
+        this.atk.su = Math.max(1, Math.round(this.atk.su / attackSpeed));
+        this.atk.ac = Math.max(1, Math.round(this.atk.ac / attackSpeed));
+        this.atk.re = Math.max(1, Math.round(this.atk.re / attackSpeed));
+      }
       const multiplier = kind === 'special' ? (this.classProfile?.superPower || 1)
         : kind === 'kick' || kind === 'airKick' ? (this.classProfile?.kick || 1)
           : (this.classProfile?.punch || 1);
-      this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1);
+      this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1) * this.damageMultiplier;
+      const attackBoost = this.playerControlled && this.attackBoostT > 0 ? BeatEmUp.energyDrinkDamageMultiplier : 1;
+      this.atk.dmg *= attackBoost;
+      if (this.atk.chip != null) this.atk.chip *= attackBoost;
+      if (kind === 'special' && !this.playerControlled) this.atk.dmg *= this.specialDamageMultiplier;
       if (linked && kind === 'kick') this.atk.dmg *= 1.25;
       this.atk.linked = linked;
       if (kind === 'special' && this.comboHits >= 2 && this.comboTimer > 0) {
@@ -1195,6 +1251,8 @@ class Fighter {
   }
   update(dt, other, slot) {
     this.comboTimer = Math.max(0, this.comboTimer - dt);
+    this.attackBoostT = Math.max(0, this.attackBoostT - dt);
+    this.comboStunEffectT = Math.max(0, this.comboStunEffectT - dt);
     if (this.comboTimer <= 0) this.comboHits = 0;
     this.wardShieldT = Math.max(0, this.wardShieldT - dt);
     this.invincibleT = Math.max(0, this.invincibleT - dt);
@@ -1364,18 +1422,20 @@ class Fighter {
     // Lane only — button clearance is guaranteed by ending the lane early enough
     // that drawNudgeX stays 0 for every visual pose (controls stay screen-edge pinned).
     this.x = Math.max(Game.minX, Math.min(Game.maxX, this.x));
-    this.hitbox.x = this.x - 21; this.hitbox.y = Game.GROUND + this.y - 135; this.hitbox.w = 42; this.hitbox.h = 135;
+    const arcadeSize = Game.mode === 'beatemup' ? BeatEmUp.baseS / 1.5 : 1;
+    const hitW = 42 * arcadeSize, hitH = 135 * arcadeSize;
+    this.hitbox.x = this.x - hitW / 2; this.hitbox.y = Game.GROUND + this.y - hitH; this.hitbox.w = hitW; this.hitbox.h = hitH;
   }
   strike() {
     if (!this.atk || (this.hitDone && this.state !== 'special')) return null;
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
-    const weapon = this.classProfile?.weapon;
-    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade')));
+    const weapon = this.classProfile?.weapon || this.weaponType;
+    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade' || weapon === 'stick' || weapon === 'knife')));
     if (weaponAttack) {
       const geometry = this.weaponGeometry(this.combatBones(), true);
       if (geometry) {
-        const r = (weapon === 'staff' ? 8 : 7) * Fighter.S;
+        const r = (weapon === 'staff' || weapon === 'stick' ? 8 : 7) * Fighter.S;
         const {start,end} = {start:geometry.start,end:geometry.tip};
         const segment = {x1:start.x,y1:start.y,x2:end.x,y2:end.y,r};
         const x = Math.min(start.x,end.x) - r, y = Math.min(start.y,end.y) - r;
@@ -1501,10 +1561,10 @@ class Fighter {
       this.aim('idle', Pose.idle(this.classProfile), .16);
     }
   }
-  /** Draw-only X nudge so visual bones() stay ≥8px from buttons. Does not move this.x / combat. */
+  /** Draw-only X nudge keeps visual bones clear of overlapping touch controls. */
   drawNudgeX() {
     const b = this.bones();
-    const sc = Game.scale, ox = Game.ox, oy = Game.oy, c = 8;
+    const sc = Game.scale, ox = Game.ox, oy = Game.oy, c = 4;
     const cameraX = Game.mode === 'beatemup' && Game.phase !== 'title' ? BeatEmUp.cameraX : 0;
     const x0 = ox + (b.x0 - cameraX) * sc;
     const x1 = ox + (b.x1 - cameraX) * sc;
@@ -1523,10 +1583,22 @@ class Fighter {
     return dx;
   }
   weaponGeometry(b, active = !!(this.atk && this.atkT > this.atk.su &&
-    (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || (this.state === 'kick' && (this.classProfile?.weapon === 'staff' || this.classProfile?.weapon === 'blade'))))) {
-    const weapon = this.classProfile?.weapon;
+    (this.state === 'special' || this.state === 'punch' || this.state === 'airPunch' || this.state === 'kick'))) {
+    const weapon = this.classProfile?.weapon || this.weaponType;
     if (!weapon) return null;
     const hand = b.ra, face = this.face;
+    if (weapon === 'stick') {
+      const start = {x:hand.x - face * 5,y:hand.y + 12};
+      return {start,tip:active
+        ? {x:hand.x + face * (this.state === 'kick' ? 94 : 106),y:hand.y - 22}
+        : {x:hand.x + face * 18,y:hand.y - 66}};
+    }
+    if (weapon === 'knife') {
+      const start = {x:hand.x + face * 4,y:hand.y + 2};
+      return {start,tip:active
+        ? {x:hand.x + face * (this.state === 'kick' ? 50 : 56),y:hand.y - 18}
+        : {x:hand.x + face * 27,y:hand.y - 9}};
+    }
     if (weapon === 'staff') {
       // Build the staff shaft through both hands, then extend it past each grip.
       // This keeps idle, thrust, and heavy sweep collision on the drawn weapon.
@@ -1540,7 +1612,8 @@ class Fighter {
         length = 1;
       }
       const ux = face * dx / length, uy = dy / length;
-      const back = 44, front = this.state === 'kick' && active ? 104 : 74;
+      const arcadeSize = Game.mode === 'beatemup' ? .8 : 1;
+      const back = 50 * arcadeSize, front = (this.state === 'kick' && active ? 138 : 98) * arcadeSize;
       return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
     }
     if (weapon === 'blade') {
@@ -1565,17 +1638,43 @@ class Fighter {
       : {start:{x:hand.x - face * 8,y:hand.y + 12},tip:{x:hand.x + face * 24,y:hand.y - 82}};
   }
   drawWeapon(ctx, b) {
-    const weapon = this.classProfile?.weapon;
+    const weapon = this.classProfile?.weapon || this.weaponType;
     if (!weapon) return;
     const {start,tip} = this.weaponGeometry(b);
-    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    if (weapon === 'staff') {
-      ctx.strokeStyle = '#25202A'; ctx.lineWidth = 11;
+    ctx.save(); ctx.lineCap = 'square'; ctx.lineJoin = 'bevel';
+    if (weapon === 'stick') {
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#211A16'; ctx.lineWidth = 10;
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
-      ctx.strokeStyle = '#A96937'; ctx.lineWidth = 7;
+      ctx.strokeStyle = '#A96D3F'; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
-      ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 3;
-      for (const p of [start,tip]) { ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.stroke(); }
+      ctx.strokeStyle = '#D2A16E'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+    } else if (weapon === 'knife') {
+      const dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx,dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const handleEnd = {x:start.x - this.face * 9,y:start.y + 2};
+      const bladeBase = {x:start.x + this.face * 2,y:start.y - 1};
+      ctx.strokeStyle = '#29232A'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.moveTo(handleEnd.x,handleEnd.y); ctx.lineTo(start.x,start.y); ctx.stroke();
+      ctx.fillStyle = '#B9C5D4'; ctx.strokeStyle = '#20232C'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(bladeBase.x + nx * 4,bladeBase.y + ny * 4);
+      ctx.lineTo(tip.x + nx * 2,tip.y + ny * 2);
+      ctx.lineTo(tip.x + this.face * 4,tip.y);
+      ctx.lineTo(tip.x - nx * 2,tip.y - ny * 2);
+      ctx.lineTo(bladeBase.x - nx * 4,bladeBase.y - ny * 4);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (weapon === 'staff') {
+      const arcadeSize = Game.mode === 'beatemup' ? .8 : 1;
+      ctx.strokeStyle = '#171D27'; ctx.lineWidth = 11 * arcadeSize;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#8998AA'; ctx.lineWidth = 7 * arcadeSize;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#DCE6F2'; ctx.lineWidth = 1.5 * arcadeSize;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.strokeStyle = '#CBD5E1'; ctx.lineWidth = 2.5 * arcadeSize;
+      for (const p of [start,tip]) { ctx.beginPath(); ctx.arc(p.x,p.y,4 * arcadeSize,0,Math.PI*2); ctx.stroke(); }
     } else {
       const grip = {x:start.x - this.face * 13,y:start.y + 3};
       const dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx,dy) || 1;
@@ -1585,39 +1684,111 @@ class Fighter {
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
       ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x - this.face * 8,tip.y + 2); ctx.stroke();
-      ctx.strokeStyle = this.classProfile.accent; ctx.lineWidth = 5;
+      ctx.strokeStyle = this.classProfile?.accent || '#FBBF24'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(start.x - dy / len * 9,start.y + dx / len * 9); ctx.lineTo(start.x + dy / len * 9,start.y - dx / len * 9); ctx.stroke();
     }
     ctx.restore();
   }
-  drawReadyHandAura(ctx, b) {
-    if (this.meter < 100 || this.hp <= 0 || this.ragdollActive) return;
-    const color = this.classProfile?.accent || '#FBBF24';
-    const weapon = this.classProfile?.weapon;
-    const hands = weapon ? [{x:(b.la.x + b.ra.x) / 2,y:(b.la.y + b.ra.y) / 2}] : [b.ra,b.la];
-    const pulse = .76 + .2 * Math.sin(this.animT * 8);
-    const radius = 15 * Fighter.S;
+  drawAttackBoostAura(ctx, b) {
+    if (!this.playerControlled || this.attackBoostT <= 0 || this.hp <= 0 || this.ragdollActive) return;
+    const weapon = this.classProfile?.weapon || this.weaponType;
+    const pulse = .82 + .18 * Math.sin(this.animT * 9);
     ctx.save();
-    for (const hand of hands) {
-      ctx.globalAlpha = .18 * pulse;
-      ctx.fillStyle = color;
-      ctx.beginPath(); ctx.arc(hand.x,hand.y,radius * 1.7,0,Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = .72 * pulse;
-      ctx.strokeStyle = color; ctx.lineWidth = 2 * Fighter.S;
-      ctx.setLineDash([4 * Fighter.S,5 * Fighter.S]); ctx.lineDashOffset = -this.animT * 24 * Fighter.S;
-      ctx.beginPath(); ctx.arc(hand.x,hand.y,radius,0,Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = .9 * pulse;
-      for (let i = 0; i < 3; i++) {
-        const angle = this.animT * 3 + i * Math.PI * 2 / 3;
-        ctx.beginPath();
-        ctx.arc(hand.x + Math.cos(angle) * radius * 1.25, hand.y + Math.sin(angle) * radius * 1.25, 2.2 * Fighter.S, 0, Math.PI * 2);
-        ctx.fill();
+    ctx.globalAlpha = .2 * pulse;
+    ctx.strokeStyle = '#FF354F';
+    ctx.shadowColor = '#FF354F';
+    ctx.shadowBlur = 12 / (Game.scale || 1);
+    ctx.lineCap = 'round';
+    if (weapon) {
+      const {start,tip} = this.weaponGeometry(b);
+      ctx.lineWidth = (weapon === 'knife' ? 13 : 17) * Fighter.S;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+      ctx.globalAlpha = .42 * pulse;
+      ctx.shadowBlur = 4 / (Game.scale || 1);
+      ctx.lineWidth = 2.5 * Fighter.S;
+      ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+    } else {
+      for (const hand of [b.la,b.ra]) {
+        ctx.fillStyle = '#FF354F';
+        ctx.beginPath(); ctx.arc(hand.x,hand.y,12 * Fighter.S,0,Math.PI * 2); ctx.fill();
       }
     }
     ctx.restore();
   }
+  drawReadyLightning(ctx, b) {
+    if (this.meter < 100 || this.hp <= 0 || this.ragdollActive) return;
+    if (!this.playerControlled) {
+      const color = this.color || '#FF5264';
+      const pulse = .16 + .1 * (Math.sin(this.animT * 5) + 1) / 2;
+      const radius = Math.max(10 * Fighter.S, 10 / Game.scale);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = color; ctx.fillStyle = color;
+      ctx.shadowColor = color; ctx.shadowBlur = 5 / Game.scale;
+      ctx.lineWidth = 2 / Game.scale;
+      ctx.beginPath(); ctx.arc(b.chest.x, b.chest.y, radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = pulse * .28;
+      ctx.beginPath(); ctx.arc(b.chest.x, b.chest.y, radius * .72, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    const color = this.playerControlled
+      ? (this.classProfile?.accent || '#55D8FF')
+      : (this.color || '#FF5264');
+    const pulse = .72 + .28 * Math.sin(this.animT * 12);
+    const unit = 1 / Game.scale;
+    const pad = Math.max(5 * Fighter.S, 5 * unit);
+    const top = b.y0 + 5 * unit, bottom = b.y1 - 3 * unit;
+    const left = b.x0 - pad, right = b.x1 + pad;
+    const mid = (top + bottom) / 2;
+    const flicker = Math.sin(this.animT * 29) * 2.5 * unit;
+    ctx.save();
+    ctx.globalAlpha = .76 * pulse;
+    ctx.strokeStyle = color;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.shadowColor = color; ctx.shadowBlur = 9 * unit;
+    const bolt = (x, sign, phase) => {
+      const shift = Math.sin(this.animT * 19 + phase) * 3.5 * unit;
+      const points = [
+        [x, top],
+        [x + sign * (4 * unit + shift), top + (bottom - top) * .18],
+        [x - sign * (3 * unit + flicker), top + (bottom - top) * .34],
+        [x + sign * (5 * unit - shift), mid],
+        [x - sign * (4 * unit + shift), top + (bottom - top) * .7],
+        [x + sign * (3 * unit + flicker), top + (bottom - top) * .86],
+        [x, bottom]
+      ];
+      ctx.lineWidth = 2.4 * unit;
+      ctx.beginPath(); ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+      ctx.stroke();
+      // Short forks make the charge read as electricity without filling the body.
+      for (const i of [2, 4]) {
+        ctx.beginPath(); ctx.moveTo(points[i][0], points[i][1]);
+        ctx.lineTo(points[i][0] + sign * 5 * unit, points[i][1] - 3 * unit);
+        ctx.lineTo(points[i][0] + sign * 7 * unit, points[i][1] + 2 * unit);
+        ctx.stroke();
+      }
+    };
+    bolt(left, -1, 0); bolt(right, 1, 1.8);
+    // Small crown arcs emphasize that the special is ready.
+    ctx.globalAlpha = .55 * pulse;
+    ctx.lineWidth = 1.8 * unit;
+    for (let i = 0; i < 2; i++) {
+      const x = b.head.x + (i ? 1 : -1) * (b.hr + 2 * unit);
+      ctx.beginPath(); ctx.moveTo(x, b.head.y - b.hr * .8);
+      ctx.lineTo(x + (i ? 3 : -3) * unit, b.head.y - b.hr - 5 * unit);
+      ctx.lineTo(x + (i ? 6 : -6) * unit, b.head.y - b.hr * .9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   draw(ctx) {
+    ctx.save();
+    this.drawVector(ctx);
+    ctx.restore();
+  }
+  drawVector(ctx) {
     const nudge = this.drawNudgeX();
     if (nudge) ctx.translate(nudge, 0);
     if (this.ragdollActive) {
@@ -1630,14 +1801,22 @@ class Fighter {
     const invulnTime = Math.max(this.invincibleT, this.dodgeT);
     const invulnBlink = this.playerControlled && invulnTime > 0 && Math.floor(invulnTime * 14) % 2 === 0;
     const col = this.flash > 0 || invulnBlink ? '#FFFFFF' : this.color;
-    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Game.lw;
+    const spriteStroke = Math.max(Game.lw, 8 / Game.scale);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = spriteStroke;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const chain = (pts) => {
       ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.stroke();
+      ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = spriteStroke + 5 / Game.scale; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = spriteStroke;
+      ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale; ctx.stroke(); ctx.restore();
       for (let i = 0; i < pts.length - 1; i++) {
-        ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, Game.lw * .35, 0, Math.PI * 2); ctx.fill();
+        const joint = pts[i], jointRadius = spriteStroke * .72;
+        ctx.fillStyle = 'rgba(3,8,18,.96)'; ctx.beginPath(); ctx.arc(joint.x, joint.y, jointRadius, 0, Math.PI * 2); ctx.fill();
+        ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale;
+        ctx.beginPath(); ctx.arc(joint.x, joint.y, jointRadius * .68, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       }
     };
     chain([b.hip, b.chest, b.neck]);
@@ -1646,9 +1825,32 @@ class Fighter {
     chain([b.shR || b.sh, b.raJ, b.ra]);
     chain([b.hip, b.llJ, b.ll]);
     chain([b.hip, b.rlJ, b.rl]);
-    ctx.beginPath(); ctx.arc(b.head.x, b.head.y, b.hr, 0, Math.PI * 2); ctx.fill();
-    this.drawReadyHandAura(ctx,b);
+    const headX = b.head.x, headY = b.head.y, headRadius = b.hr;
+    ctx.fillStyle = 'rgba(3,8,18,.98)'; ctx.beginPath(); ctx.arc(headX, headY, headRadius + 3 / Game.scale, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 10 / Game.scale;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(headX, headY, headRadius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,.32)';
+    ctx.beginPath(); ctx.ellipse(headX - headRadius * .3, headY - headRadius * .34, headRadius * .28, headRadius * .16, -.5, 0, Math.PI * 2); ctx.fill();
     this.drawWeapon(ctx,b);
+    this.drawReadyLightning(ctx,b);
+    this.drawAttackBoostAura(ctx,b);
+    if (!this.playerControlled && this.comboStunEffectT > 0 && this.hp > 0 && !this.ragdollActive) {
+      const centerY = b.head.y - b.hr - 8 / Game.scale;
+      const pulse = .72 + .28 * Math.sin(this.animT * 17), colors = ['#FFE16B', '#7CEBFF', '#FF7AD9'];
+      ctx.save(); ctx.globalAlpha = pulse;
+      for (let i = 0; i < 3; i++) {
+        const angle = this.animT * 9 + i * Math.PI * 2 / 3;
+        const x = b.head.x + Math.cos(angle) * (b.hr + 9 / Game.scale);
+        const y = centerY + Math.sin(angle) * (4 / Game.scale), size = 7 / Game.scale;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(angle + this.animT * 2);
+        ctx.beginPath(); ctx.moveTo(0, -size); ctx.lineTo(size * .26, -size * .26);
+        ctx.lineTo(size, 0); ctx.lineTo(size * .26, size * .26); ctx.lineTo(0, size);
+        ctx.lineTo(-size * .26, size * .26); ctx.lineTo(-size, 0); ctx.lineTo(-size * .26, -size * .26); ctx.closePath();
+        ctx.fillStyle = colors[i]; ctx.shadowColor = colors[i]; ctx.shadowBlur = 8 / Game.scale; ctx.fill();
+        ctx.strokeStyle = '#111521'; ctx.lineWidth = 1.5 / Game.scale; ctx.stroke(); ctx.restore();
+      }
+      ctx.restore();
+    }
     if (this.blocking || this.blockFlash > 0) {
       const cx = this.x + nudge + this.face * 28, cy = b.sh.y + 10;
       const a0 = -1.2 + (this.face > 0 ? 0 : Math.PI), a1 = 1.2 + (this.face > 0 ? 0 : Math.PI);
@@ -1660,7 +1862,7 @@ class Fighter {
         ctx.strokeStyle = '#FFFFFF'; ctx.globalAlpha = Math.min(1, this.blockFlash / .12); ctx.lineWidth = 1 / Game.scale;
         ctx.beginPath(); ctx.arc(cx, cy, 26, a0, a1); ctx.stroke();
       }
-      ctx.globalAlpha = 1; ctx.lineWidth = Game.lw;
+      ctx.globalAlpha = 1; ctx.lineWidth = spriteStroke;
     }
     if (!this.ragdollActive && !Game.banner && Game.phase !== 'title') {
       ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
@@ -1755,9 +1957,24 @@ class Fx {
     const value = Math.round(amount * 10) / 10;
     Fx.list.push({kind:'damage', text:(critical ? 'CRITICAL!  ' : '') + '-' + value, x, y, life:critical ? .95 : .7, max:critical ? .95 : .7, color:critical ? '#FFE16B' : blocked ? '#FBBF24' : '#FFFFFF', critical});
   }
+  static heal(x, y, amount) {
+    if (Fx.allowed(x, y)) Fx.list.push({kind:'damage', text:'+' + amount + ' HP', x, y, life:.95, max:.95, color:'#76FFAE'});
+    Fx.sparks(x, y, 8, '#76FFAE', .9, .24);
+  }
+  static powerup(x, y) {
+    if (!Fx.allowed(x, y)) return;
+    Fx.list.push({kind:'combo', text:'ATTACK UP ×1.5', x, y, life:1.05, max:1.05, color:'#FF5264'});
+    Fx.list.push({kind:'ring', x, y, r0:8, r1:34, life:.3, max:.3, color:'#FF5264', width:3});
+    Fx.sparks(x, y, 10, '#FF5264', .9, .2);
+  }
   static combo(x, y, text, profile) {
     if (!Fx.allowed(x, y)) return;
     Fx.list.push({kind:'combo', text, x, y, life:.82, max:.82, color:profile?.accent || '#FBBF24'});
+  }
+  static stun(x, y, chance) {
+    if (!Fx.allowed(x, y)) return;
+    Fx.list.push({kind:'stun', text:'STUN! ' + Math.round(chance * 100) + '%', x, y, life:.72, max:.72, color:'#FFE16B'});
+    Fx.list.push({kind:'ring', x, y:y + 10, r0:6, r1:25, life:.24, max:.24, color:'#FFE16B', width:2});
   }
   static critical(x, y, profile) {
     const color = profile?.accent || '#FFE16B', sc = Game.scale || 1;
@@ -1777,6 +1994,7 @@ class Fx {
       e.life -= dt;
       if (e.kind === 'damage') e.y -= 30 * dt;
       if (e.kind === 'combo') e.y -= 42 * dt;
+      if (e.kind === 'stun') e.y -= 24 * dt;
       if (e.kind === 'ring') e.radius = e.r0 + (e.r1 - e.r0) * (1 - e.life / e.max);
     }
     Fx.list = Fx.list.filter(e => e.life > 0);
@@ -1807,7 +2025,7 @@ class Fx {
         const fade = e.life / e.max;
         if (!Fx.allowed(e.x, e.y)) continue;
         ctx.globalAlpha = fade;
-        ctx.font = 'bold ' + (e.critical ? 22 : 18) / sc + 'px system-ui,sans-serif';
+        ctx.font = 'bold ' + (e.critical ? 22 : 18) / sc + 'px ui-monospace,monospace';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round'; ctx.lineWidth = (e.critical ? 5 : 4) / sc; ctx.strokeStyle = '#11131A';
         ctx.strokeText(e.text, e.x, e.y);
@@ -1816,9 +2034,18 @@ class Fx {
       } else if (e.kind === 'combo') {
         if (!Fx.allowed(e.x, e.y)) continue;
         ctx.globalAlpha = Math.min(1, e.life / .18);
-        ctx.font = '900 ' + 18 / sc + 'px system-ui,sans-serif';
+        ctx.font = '900 ' + 18 / sc + 'px ui-monospace,monospace';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.lineJoin = 'round'; ctx.lineWidth = 4 / sc; ctx.strokeStyle = '#11131A';
+        ctx.strokeText(e.text, e.x, e.y);
+        ctx.fillStyle = e.color; ctx.fillText(e.text, e.x, e.y);
+        ctx.textBaseline = 'alphabetic';
+      } else if (e.kind === 'stun') {
+        if (!Fx.allowed(e.x, e.y)) continue;
+        ctx.globalAlpha = Math.min(1, e.life / .14);
+        ctx.font = '900 ' + 17 / sc + 'px ui-monospace,monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'bevel'; ctx.lineWidth = 4 / sc; ctx.strokeStyle = '#11131A';
         ctx.strokeText(e.text, e.x, e.y);
         ctx.fillStyle = e.color; ctx.fillText(e.text, e.x, e.y);
         ctx.textBaseline = 'alphabetic';
@@ -1840,26 +2067,44 @@ class Fx {
 class BeatEmUp {
   static RUN_SECONDS = 210;
   static START_LIVES = 3;
-  static BAND_TOP = 0.62;
-  static BAND_BOT = 0.80;
+  static BAND_TOP = 0.56;
+  static BAND_BOT = 0.88;
   static DEPTH_HIT_PX = 14;
   static cameraX = 0;
   static skyOffset = 0;
   static cast = [];
+  static items = [];
+  static medkitDropChance = .25;
+  static energyDrinkDropChance = .12;
+  static energyDrinkDamageMultiplier = 1.5;
+  static energyDrinkDuration = 20;
   static stage = 1;
   static stageTotal = 10;
-  static chapters = [
-    {title:'BACKSTREET AWAKENING', intro:'A street crew has taken over the old arcade district. Find out who is giving the orders.', boss:'BLOCK CAPTAIN', clear:'The captain drops a crest marked with the docks.' , sky:['#14151C','#1F2230','#262A38']},
-    {title:'DOCKSIDE AMBUSH', intro:'The crest leads to the harbor, where a shipment is guarded by a crew of runners and bruisers.', boss:'DOCKMASTER', clear:'The shipment ledger points to the night market.', sky:['#0D1B24','#18313D','#23414D']},
-    {title:'NIGHT MARKET', intro:'Fight through the crowded stalls and recover the syndicate route map.', boss:'MARKET KING', clear:'The route map leads straight to the ironworks.', sky:['#241827','#39223D','#4A3150']},
-    {title:'IRONWORKS BREAK-IN', intro:'The foundry is building weapons for the syndicate. Shut down the line and find its foreman.', boss:'IRON JACK', clear:'The foreman reveals a hideout beneath the city.', sky:['#241B17','#3B2A22','#4B382D']},
-    {title:'UNDERCITY RUN', intro:'The tunnels are crawling with guards. Push through before the syndicate seals the exits.', boss:'TUNNEL WARDEN', clear:'A captured radio gives up the rooftop signal code.', sky:['#111925','#202B3A','#2D394A']},
-    {title:'ROOFTOP SIGNAL', intro:'Climb above the skyline and trace the signal to its source.', boss:'SKYLINE SNIPER', clear:'The signal names an old martial arts dojo.', sky:['#101922','#1A2C3A','#294353']},
-    {title:'THE OLD DOJO', intro:'The dojo master refuses to let the syndicate pass without a fight.', boss:'MASTER KAGE', clear:'Kage joins the fight and points to the skybridge.', sky:['#211D16','#3B3021','#51432D']},
-    {title:'SKYBRIDGE SHOWDOWN', intro:'The syndicate is moving its final operation across the bridge. Stop the convoy.', boss:'BRIDGE BREAKER', clear:'The convoy carries an invite to the broadcast tower.', sky:['#111A2B','#1E2C48','#2E3E60']},
-    {title:'BROADCAST TOWER', intro:'Take control of the tower and expose the syndicate leader’s final plan.', boss:'THE DIRECTOR', clear:'The leader is waiting at the coliseum. The whole city is watching.', sky:['#1E1422','#34203B','#4A2E52']},
-    {title:'COLISEUM FINALE', intro:'The syndicate leader has nowhere left to run. End the takeover in front of the city.', boss:'SYNDICATE CHIEF', clear:'The streets are free again. The arcade district belongs to its people.', sky:['#201416','#3B2023','#582B2E']},
-  ];
+  static stageSettings = window.ARCADE_STAGE_SETTINGS;
+  static chapters = BeatEmUp.stageSettings.map((stage, index) => ({
+    ...stage,
+    intro: stage.storyIntro,
+    clear: stage.boss.clear,
+    sky: [
+      ['#14151C','#1F2230','#262A38'], ['#0D1B24','#18313D','#23414D'],
+      ['#241827','#39223D','#4A3150'], ['#241B17','#3B2A22','#4B382D'],
+      ['#111925','#202B3A','#2D394A'], ['#101922','#1A2C3A','#294353'],
+      ['#211D16','#3B3021','#51432D'], ['#111A2B','#1E2C48','#2E3E60'],
+      ['#1E1422','#34203B','#4A2E52'], ['#201416','#3B2023','#582B2E'],
+    ][index],
+  }));
+  static backgrounds = [
+    'assets/backgrounds/stage-01-backstreet.webp',
+    'assets/backgrounds/stage-02-docks.webp',
+    'assets/backgrounds/stage-03-night-market.webp',
+    'assets/backgrounds/stage-04-ironworks.webp',
+    'assets/backgrounds/stage-05-undercity.webp',
+    'assets/backgrounds/stage-06-rooftop.webp',
+    'assets/backgrounds/stage-07-dojo.webp',
+    'assets/backgrounds/stage-08-skybridge.webp',
+    'assets/backgrounds/stage-09-broadcast-tower.webp',
+    'assets/backgrounds/stage-10-coliseum.webp',
+  ].map(src => { const image = new Image(); image.src = src; return image; });
   static wave = 0;
   static waveTotal = 3;
   static locked = 1;
@@ -1879,6 +2124,8 @@ class BeatEmUp {
   static waveTravelNext = 0;
   static downPending = 0;
   static downTimer = 0;
+  static downX = 0;
+  static downDepth = .55;
   static lives = BeatEmUp.START_LIVES;
   static score = 0;
   static combo = 0;
@@ -1886,7 +2133,12 @@ class BeatEmUp {
   static bestScore = 0;
   static waveEvent = '';
   static storyText = '';
+  static storySubText = '';
   static eventT = 0;
+  static stageIntroT = 0;
+  static resultNextBtn = null;
+  static visualCue = '';
+  static visualCueT = 0;
   static get difficulty() { return ArcadeDiff[Game.arcadeLevel] || ArcadeDiff.normal; }
   static lockL = 0;
   static lockR = 0;
@@ -1906,39 +2158,32 @@ class BeatEmUp {
   static depthClose(a, b) {
     return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= BeatEmUp.DEPTH_HIT_PX;
   }
-  static clusterLeftCss() {
-    const el = document.querySelector('#controls .cluster');
-    if (el) return el.getBoundingClientRect().left;
-    return innerWidth - 16 - (64 + 10 + 64);
+  /** Horizontal screen bounds that avoid only controls which overlap this fighter vertically. */
+  static horizontalScreenBounds(entry) {
+    const sc = Game.scale || 1, ox = Game.ox || 0, oy = Game.oy || 0;
+    const b = entry.f.bones();
+    const top = oy + b.y0 * sc, bottom = oy + b.y1 * sc;
+    const mid = ox + Game.W * sc * .5;
+    let left = ox + 4, right = ox + Game.W * sc - 4;
+    for (const btn of Game.btns) {
+      if (top >= btn.y + btn.h + 4 || bottom <= btn.y - 4) continue;
+      if (btn.x + btn.w * .5 < mid) left = Math.max(left, btn.x + btn.w + 4);
+      else right = Math.min(right, btn.x - 4);
+    }
+    return { left, right };
   }
-  /** Right edge of the L/R move pad in CSS px. */
-  static movePadRightCss() {
-    const el = document.querySelector('#controls .pad.left .move') || document.querySelector('#controls .pad.left');
-    if (el) return el.getBoundingClientRect().right;
-    return 16 + (64 + 10 + 64);
-  }
-  /** Hard right limit for drawn bones in CSS px: 8px left of the P/K/B/S cluster. */
-  static bonesRightLimitCss() {
-    return BeatEmUp.clusterLeftCss() - 8;
-  }
-  /** Hard left limit for drawn bones in CSS px: 8px right of the move pad. */
-  static bonesLeftLimitCss() {
-    return BeatEmUp.movePadRightCss() + 8;
-  }
-  /** Pull fighter left so bones().x1 stays ≤ cluster−8.
-   *  Caller must already be inside withDepth (update/draw). Do not nest —
-   *  a second depth scale under-measures bones at depth < 1 and leaves a sub-8px gap. */
+  /** Pull fighter left so bones().x1 stays inside the active screen bound. */
   static clampFighterRight(entry) {
     const b = entry.f.bones();
-    const screenX1 = (b.x1 - BeatEmUp.cameraX) * Game.scale;
-    const limit = BeatEmUp.bonesRightLimitCss();
+    const screenX1 = Game.ox + (b.x1 - BeatEmUp.cameraX) * Game.scale;
+    const limit = BeatEmUp.horizontalScreenBounds(entry).right;
     if (screenX1 > limit) entry.f.x -= (screenX1 - limit) / Game.scale;
   }
-  /** Pull fighter right so bones().x0 stays ≥ movePad+8. Same depth-once rule as clampFighterRight. */
+  /** Pull fighter right so bones().x0 stays inside the active screen bound. */
   static clampFighterLeft(entry) {
     const b = entry.f.bones();
-    const screenX0 = (b.x0 - BeatEmUp.cameraX) * Game.scale;
-    const limit = BeatEmUp.bonesLeftLimitCss();
+    const screenX0 = Game.ox + (b.x0 - BeatEmUp.cameraX) * Game.scale;
+    const limit = BeatEmUp.horizontalScreenBounds(entry).left;
     if (screenX0 < limit) entry.f.x += (limit - screenX0) / Game.scale;
   }
   /** Soft + hard limb clamps for current pose (left then right). */
@@ -1946,30 +2191,46 @@ class BeatEmUp {
     BeatEmUp.clampFighterLeft(entry);
     BeatEmUp.clampFighterRight(entry);
   }
-  /** Soft lane max for body centre. Hard limb rule is clampFighterBones. */
-  static softMaxX() {
-    return BeatEmUp.cameraX + BeatEmUp.bonesRightLimitCss() / Game.scale;
+  /** Soft lane max for body centre, adjusted for the current pose's limb reach. */
+  static softMaxX(entry) {
+    const b = entry.f.bones(), bounds = BeatEmUp.horizontalScreenBounds(entry);
+    return BeatEmUp.cameraX + (bounds.right - Game.ox) / Game.scale - (b.x1 - entry.f.x);
   }
   /** Soft lane min for body centre (mirrors softMaxX). */
-  static softMinX() {
-    return BeatEmUp.cameraX + BeatEmUp.bonesLeftLimitCss() / Game.scale;
+  static softMinX(entry) {
+    const b = entry.f.bones(), bounds = BeatEmUp.horizontalScreenBounds(entry);
+    return BeatEmUp.cameraX + (bounds.left - Game.ox) / Game.scale + (entry.f.x - b.x0);
   }
   static withDepth(entry, fn) {
     const savedGround = Game.GROUND;
     const savedS = Fighter.S;
     const savedHr = Game.hr;
     const savedLw = Game.lw;
+    const savedArm = Fighter.ARM;
+    const savedLeg = Fighter.LEG;
+    const savedTorso = Fighter.TORSO;
+    const savedNeck = Fighter.NECK;
     const savedRunSpeed = Fighter.RUN_SPEED;
     const scDepth = BeatEmUp.depthToScale(entry.depth) * (entry.scaleMul || 1);
+    const arcadeSize = BeatEmUp.baseS / savedS;
+    const actorSize = arcadeSize * (entry.scaleMul || 1);
     Game.GROUND = BeatEmUp.depthToY(entry.depth);
     Fighter.S = BeatEmUp.baseS * scDepth;
-    Game.hr = savedHr * scDepth;
-    Game.lw = Math.max(3.5, savedLw * scDepth);
+    Fighter.ARM = savedArm * actorSize;
+    Fighter.LEG = savedLeg * actorSize;
+    Fighter.TORSO = savedTorso * actorSize;
+    Fighter.NECK = savedNeck * actorSize;
+    Game.hr = savedHr * scDepth * arcadeSize;
+    Game.lw = Math.max(3.5, savedLw * scDepth * arcadeSize);
     if (entry.speedMul) Fighter.RUN_SPEED = 220 * entry.speedMul;
     try { return fn(); }
     finally {
       Game.GROUND = savedGround;
       Fighter.S = savedS;
+      Fighter.ARM = savedArm;
+      Fighter.LEG = savedLeg;
+      Fighter.TORSO = savedTorso;
+      Fighter.NECK = savedNeck;
       Game.hr = savedHr;
       Game.lw = savedLw;
       Fighter.RUN_SPEED = savedRunSpeed;
@@ -1999,12 +2260,14 @@ class BeatEmUp {
     BeatEmUp.comboT = 0;
     BeatEmUp.waveEvent = '';
     BeatEmUp.storyText = '';
+    BeatEmUp.storySubText = '';
     BeatEmUp.eventT = 0;
     try { BeatEmUp.bestScore = Number(localStorage.getItem('stickman-beatemup-best')) || 0; }
     catch (e) { BeatEmUp.bestScore = 0; }
     Game.timer = BeatEmUp.RUN_SECONDS;
     BeatEmUp.cast = [];
-    BeatEmUp.baseS = Fighter.S;
+    BeatEmUp.items = [];
+    BeatEmUp.baseS = Fighter.S * .8;
     BeatEmUp.lockL = 0;
     BeatEmUp.lockR = Game.W * 0.92;
     BeatEmUp.spawnX = Game.W * 0.7;
@@ -2014,7 +2277,7 @@ class BeatEmUp {
     p.setClass(Game.selectedClass);
     p.tag = 'YOU';
     p.meter = 0;
-    BeatEmUp.cast.push({ f: p, depth: 0.55, role: 'player', kind: 'player', scaleMul: 1, speedMul: p.classProfile?.speed || 1, ai: null });
+    BeatEmUp.cast.push({ f: p, depth: 0.55, role: 'player', kind: 'player', scaleMul: Game.selectedClass === 'staff' ? .8 : 1, speedMul: p.classProfile?.speed || 1, ai: null });
     // Hide unused 1v1 foe
     fighters[1].reset(-9999, -1);
     fighters[1].hp = 0;
@@ -2028,37 +2291,44 @@ class BeatEmUp {
     BeatEmUp.spawnX = Game.W * .7; BeatEmUp.worldMax = Game.W * 4.2;
     BeatEmUp.locked = 1; BeatEmUp.showGo = 0; BeatEmUp.goArmed = 0;
     BeatEmUp.boss = null; BeatEmUp.stageOver = 0;
+    BeatEmUp.items = [];
     BeatEmUp.downPending = 0; BeatEmUp.downTimer = 0;
     BeatEmUp.lives = BeatEmUp.START_LIVES;
     BeatEmUp.combo = 0; BeatEmUp.comboT = 0;
-    BeatEmUp.waveEvent = ''; BeatEmUp.storyText = ''; BeatEmUp.eventT = 0;
+    BeatEmUp.waveEvent = ''; BeatEmUp.storyText = ''; BeatEmUp.storySubText = ''; BeatEmUp.eventT = 0;
     Game.timer = BeatEmUp.RUN_SECONDS; Game.matchOver = 0; Game.winner = ''; Game.stop = 0; Game.shake = 0;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
     const player = BeatEmUp.playerEntry();
     if (player) {
       player.f.reset(Game.W * .28, 1);
       player.f.setClass(Game.selectedClass);
-      player.f.color = FighterClasses[Game.selectedClass]?.color || '#3B82F6';
+      player.f.color = FighterClasses[Game.selectedClass]?.color || PlayerCoolColor;
       player.f.tag = 'YOU'; player.f.meter = 0; player.depth = .55;
+      player.scaleMul = Game.selectedClass === 'staff' ? .8 : 1;
     }
     BeatEmUp.startWave(1, false, true);
     Game.syncControls();
   }
 
   static makeEnemy(kind, x, depth) {
-    const colors = { regular: '#EF4444', tough: '#F97316', runner: '#22D3EE', heavy: '#F97316', boss: '#EF4444' };
-    const f = new Fighter(x, colors[kind] || '#EF4444', -1, '');
+    const f = new Fighter(x, CpuHotColors.enemy[kind] || CpuHotColors.enemy.regular, -1, '');
+    const archetype = EnemyArchetypes[kind] || EnemyArchetypes.regular;
+    const armed = Math.random() < archetype.weaponChance;
+    const weaponKey = armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand';
+    const loadout = EnemyWeaponProfiles[weaponKey];
+    f.weaponType = loadout.weapon;
+    f.attackSpeed = loadout.attackSpeed;
+    f.damageMultiplier = loadout.damage;
+    f.specialDamageMultiplier = archetype.specialDamage;
+    f.meterGainMultiplier = archetype.specialGain;
     f.tag = kind === 'regular' ? 'ROOKIE' : kind.toUpperCase();
     f.y = 0;
-    if (kind === 'heavy' || kind === 'tough') { f.hp = 150; f.chip = 150; }
-    else if (kind === 'runner') { f.hp = 75; f.chip = 75; }
-    else if (kind === 'boss') { f.hp = 220; f.chip = 220; }
-    else { f.hp = 100; f.chip = 100; }
+    f.hp = archetype.health; f.chip = archetype.health;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
     const scaleMul = kind === 'boss' ? 1.25 : kind === 'heavy' ? 1.12 : 1;
-    const speedMul = kind === 'runner' ? 1.32 : kind === 'heavy' || kind === 'tough' ? .74 : kind === 'boss' ? .92 : 1;
+    const speedMul = kind === 'runner' || kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1;
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
       ai: { mode: 'circle', atkSlot: 0, cool: kind === 'boss' ? .65 : .3 + Math.random() * .4, orbit: Math.random() * Math.PI * 2, preferDepth: depth, tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0 },
@@ -2066,38 +2336,32 @@ class BeatEmUp {
   }
 
   static waveDefs(n) {
-    const stage = BeatEmUp.stage;
-    const scout = stage >= 8 ? 'tough' : 'runner';
-    const bruiser = stage >= 7 ? 'heavy' : stage >= 4 ? 'tough' : 'heavy';
-    const rookie = stage >= 5 ? 'runner' : 'regular';
-    // relative spawn layouts (world x offsets from lockL + W*0.55)
-    if (n === 1) return [
-      { kind: stage < 3 ? 'regular' : rookie, ox: 0.55, depth: 0.15 },
-      { kind: stage < 4 ? 'regular' : bruiser, ox: 0.62, depth: 0.55 },
-      { kind: stage < 6 ? 'regular' : scout, ox: 0.48, depth: 0.95 },
+    const wave = BeatEmUp.chapters[BeatEmUp.stage - 1]?.waves?.[n - 1];
+    if (!wave) return [];
+    // Use authored enemy compositions with staggered lanes and entry positions.
+    const layouts = n === 2 ? [
+      { ox: .16, depth: .18 }, { ox: .60, depth: .72 }, { ox: .72, depth: .40 },
+      { ox: .28, depth: .54 }, { ox: .82, depth: .84 },
+    ] : [
+      { ox: .55, depth: .15 }, { ox: .62, depth: .55 }, { ox: .48, depth: .95 },
+      { ox: .70, depth: .34 }, { ox: .40, depth: .76 },
     ];
-    if (n === 2) return [
-      { kind: scout, ox: 0.18, depth: 0.18 },
-      { kind: bruiser, ox: 0.60, depth: 0.72 },
-      { kind: rookie, ox: 0.70, depth: 0.4 },
-    ];
-    if (n === 3) return [
-      { kind: bruiser, ox: 0.50, depth: 0.25 },
-      { kind: scout, ox: 0.20, depth: 0.84 },
-      { kind: bruiser, ox: 0.67, depth: 0.82 },
-      { kind: rookie, ox: 0.74, depth: 0.48 },
-    ];
-    return [];
+    return wave.enemyFocus.map((kind, index) => ({ kind, ...layouts[index % layouts.length] }));
   }
 
   static startWave(n, retry = false, chapterIntro = false) {
     BeatEmUp.wave = n;
+    BeatEmUp.stageIntroT = !retry && chapterIntro ? 5 : 0;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
+    const wave = chapter.waves[n - 1];
     BeatEmUp.waveEvent = chapterIntro
       ? 'STAGE ' + BeatEmUp.stage + ' / ' + BeatEmUp.stageTotal + ' · ' + chapter.title
-      : n === 2 ? 'FLANK AMBUSH' : n === 3 ? 'HEAVY RUSH' : 'STREET BRAWL';
-    BeatEmUp.storyText = chapterIntro ? chapter.intro : '';
-    BeatEmUp.eventT = retry ? 0 : chapterIntro ? 5.2 : 2.2;
+      : wave.title;
+    BeatEmUp.storyText = chapterIntro ? chapter.intro : wave.storyBeat;
+    BeatEmUp.storySubText = chapterIntro ? wave.title + ' · ' + wave.storyBeat : '';
+    BeatEmUp.visualCue = retry ? '' : wave.visualCue;
+    BeatEmUp.visualCueT = retry ? 0 : 2.8;
+    BeatEmUp.eventT = retry ? 0 : chapterIntro ? 5 : 3.4;
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
     BeatEmUp.goArmed = 0;
@@ -2113,18 +2377,27 @@ class BeatEmUp {
       const source = defs[(BeatEmUp.stage + n) % defs.length];
       defs.push({ kind: source.kind, ox: .84, depth: n === 2 ? .48 : .35 });
     }
+    // Double each difficulty's final authored lineup while preserving its
+    // enemy mix. Put the second group across the lane to reduce spawn overlap.
+    const reinforcements = defs.map((d, index) => ({
+      kind: d.kind,
+      ox: index % 2 ? .9 : .46,
+      depth: Math.max(.12, Math.min(.9, 1 - d.depth)),
+    }));
+    defs.push(...reinforcements);
     for (const d of defs) {
       // Keep reinforcements in the newly revealed area instead of popping in behind the player.
-      const x = BeatEmUp.lockL + Game.W * Math.max(.42, d.ox);
+      const x = BeatEmUp.lockL + Game.W * Math.max(n === 2 ? .12 : .42, d.ox);
       BeatEmUp.cast.push(BeatEmUp.makeEnemy(d.kind, x, d.depth));
     }
     Game.phase = 'intro';
     Game.banner = retry ? 'LIFE LOST' : 'WAVE ' + n;
-    Game.bannerT = 1.1;
+    Game.bannerT = BeatEmUp.stageIntroT || 1.1;
     Game.fighting = 0;
   }
 
   static startBoss(retry = false) {
+    BeatEmUp.stageIntroT = 0;
     BeatEmUp.wave = 4;
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
@@ -2134,16 +2407,19 @@ class BeatEmUp {
     const boss = BeatEmUp.makeEnemy('boss', BeatEmUp.lockL + Game.W * 0.62, 0.55);
     BeatEmUp.bossMaxHp = boss.f.hp;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
-    boss.f.tag = chapter.boss;
-    boss.f.color = ['#F87171','#38BDF8','#E879F9','#FB923C','#A78BFA','#22D3EE','#FBBF24','#60A5FA','#F472B6','#EF4444'][BeatEmUp.stage - 1];
+    boss.f.tag = chapter.boss.name;
+    boss.f.color = CpuHotColors.bosses[BeatEmUp.stage - 1];
     boss.f.meter = 100;
     BeatEmUp.boss = boss;
     BeatEmUp.cast.push(boss);
     Game.phase = 'intro';
     Game.banner = retry ? 'LIFE LOST' : 'BOSS';
-    BeatEmUp.waveEvent = 'BOSS · ' + chapter.boss;
-    BeatEmUp.storyText = '';
-    BeatEmUp.eventT = retry ? 0 : 2.2;
+    BeatEmUp.waveEvent = 'BOSS · ' + chapter.boss.name;
+    BeatEmUp.storyText = retry ? '' : chapter.boss.intro;
+    BeatEmUp.storySubText = '';
+    BeatEmUp.visualCue = '';
+    BeatEmUp.visualCueT = 0;
+    BeatEmUp.eventT = retry ? 0 : 3.4;
     Game.bannerT = 1.2;
     Game.fighting = 0;
   }
@@ -2171,6 +2447,11 @@ class BeatEmUp {
 
   static playerDown() {
     if (BeatEmUp.downPending) return;
+    const player = BeatEmUp.playerEntry();
+    if (player) {
+      BeatEmUp.downX = player.f.x;
+      BeatEmUp.downDepth = player.depth;
+    }
     BeatEmUp.lives = Math.max(0, BeatEmUp.lives - 1);
     BeatEmUp.combo = 0;
     BeatEmUp.comboT = 0;
@@ -2182,13 +2463,17 @@ class BeatEmUp {
   static respawnPlayer() {
     const p = BeatEmUp.playerEntry();
     if (p) {
-      p.f.reset(BeatEmUp.cameraX + Game.W * .28, 1);
-      p.f.color = p.f.classProfile?.color || '#3B82F6'; p.f.tag = 'YOU'; p.f.meter = 0;
+      p.f.reset(BeatEmUp.downX, 1);
+      p.f.color = p.f.classProfile?.color || PlayerCoolColor; p.f.tag = 'YOU'; p.f.meter = 0;
       p.f.invincibleT = 1.5;
-      p.depth = .55;
+      p.depth = BeatEmUp.downDepth;
     }
-    if (BeatEmUp.wave === 4) BeatEmUp.startBoss(true);
-    else BeatEmUp.startWave(BeatEmUp.wave, true);
+    // Keep the remaining wave (and a boss's current health) intact after spending a life.
+    Game.phase = 'intro';
+    Game.fighting = 0;
+    Game.banner = 'LIFE LOST';
+    Game.bannerT = .85;
+    Game.syncControls();
   }
 
   static formatTime(seconds) {
@@ -2204,23 +2489,69 @@ class BeatEmUp {
     return BeatEmUp.cast.find(e => e.role === 'player');
   }
 
+  static dropItem(enemy) {
+    if (!enemy || enemy.kind === 'boss') return;
+    const roll = Math.random();
+    const kind = roll < BeatEmUp.medkitDropChance ? 'medkit'
+      : roll < BeatEmUp.medkitDropChance + BeatEmUp.energyDrinkDropChance ? 'energyDrink' : null;
+    if (!kind) return;
+    BeatEmUp.items.push({
+      kind, x: enemy.f.x, depth: enemy.depth,
+      life: 18, bob: Math.random() * Math.PI * 2,
+    });
+  }
+
+  static updateItems(dt, player) {
+    for (let i = BeatEmUp.items.length - 1; i >= 0; i--) {
+      const item = BeatEmUp.items[i];
+      item.life -= dt;
+      item.bob += dt * 4;
+      if (item.life <= 0) { BeatEmUp.items.splice(i, 1); continue; }
+      const laneGap = Math.abs(BeatEmUp.floorDepthPx(item.depth) - BeatEmUp.floorDepthPx(player.depth));
+      if (Math.abs(item.x - player.f.x) > 42 || laneGap > 22) continue;
+      if (item.kind === 'medkit') {
+        const healed = Math.min(25, 100 - player.f.hp);
+        if (healed <= 0) continue;
+        player.f.hp += healed;
+        player.f.chip = player.f.hp;
+        Fx.heal(item.x - BeatEmUp.cameraX, BeatEmUp.floorDepthPx(item.depth) - 34, healed);
+        Sfx.play('heal', player.f.classProfile);
+      } else if (item.kind === 'energyDrink') {
+        player.f.attackBoostT = BeatEmUp.energyDrinkDuration;
+        Fx.powerup(item.x - BeatEmUp.cameraX, BeatEmUp.floorDepthPx(item.depth) - 38);
+        Sfx.play('powerup', player.f.classProfile);
+      }
+      BeatEmUp.items.splice(i, 1);
+    }
+  }
+
   static onMatchOverKey() {
     // Retry on Enter/Space/j when lose/win in beatemup
     BeatEmUp.retryOrTitle(true);
     return true;
   }
   static onMatchOverTap(e) {
+    if (BeatEmUp.stageOver === 1 && BeatEmUp.stage < BeatEmUp.stageTotal) {
+      const btn = BeatEmUp.resultNextBtn;
+      if (btn) {
+        const x = (e.clientX - Game.ox) / Game.scale;
+        const y = (e.clientY - Game.oy) / Game.scale;
+        if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) BeatEmUp.goNextStage();
+      }
+      return true;
+    }
     BeatEmUp.retryOrTitle(false);
     return true;
   }
+  static goNextStage() {
+    if (BeatEmUp.stageOver !== 1 || BeatEmUp.stage >= BeatEmUp.stageTotal || BeatEmUp.stageTransitionT > 0) return;
+    BeatEmUp.stageTransitionT = BeatEmUp.stageTransitionDuration;
+    BeatEmUp.stageTransitionStage = BeatEmUp.stage + 1;
+    BeatEmUp.stageTransitionSwitched = 0;
+  }
   static retryOrTitle(fromKey) {
     if (BeatEmUp.stageOver === -1) BeatEmUp.startCampaignStage(BeatEmUp.stage, true);
-    else if (BeatEmUp.stageOver === 1 && BeatEmUp.stage < BeatEmUp.stageTotal) {
-      if (BeatEmUp.stageTransitionT > 0) return;
-      BeatEmUp.stageTransitionT = BeatEmUp.stageTransitionDuration;
-      BeatEmUp.stageTransitionStage = BeatEmUp.stage + 1;
-      BeatEmUp.stageTransitionSwitched = 0;
-    }
+    else if (BeatEmUp.stageOver === 1 && BeatEmUp.stage < BeatEmUp.stageTotal) BeatEmUp.goNextStage();
     else if (BeatEmUp.stageOver === 1) BeatEmUp.begin();
   }
 
@@ -2264,9 +2595,11 @@ class BeatEmUp {
       if (BeatEmUp.downTimer <= 0) { BeatEmUp.downPending = 0; BeatEmUp.respawnPlayer(); }
       return;
     }
+    BeatEmUp.updateItems(dt, player);
     BeatEmUp.comboT = Math.max(0, BeatEmUp.comboT - dt);
     if (BeatEmUp.comboT <= 0) BeatEmUp.combo = 0;
     BeatEmUp.eventT = Math.max(0, BeatEmUp.eventT - dt);
+    BeatEmUp.visualCueT = Math.max(0, BeatEmUp.visualCueT - dt);
 
     // Camera follow player (only unlock scroll when GO)
     const targetCam = Math.max(0, Math.min(BeatEmUp.worldMax - Game.W, player.f.x - Game.W * 0.35));
@@ -2303,8 +2636,8 @@ class BeatEmUp {
 
     // Update player with temporary ground + against dummy other for facing
     BeatEmUp.withDepth(player, () => {
-      Game.minX = BeatEmUp.softMinX();
-      Game.maxX = BeatEmUp.softMaxX();
+      Game.minX = BeatEmUp.softMinX(player);
+      Game.maxX = BeatEmUp.softMaxX(player);
       player.f.update(dt, faceOther, 0);
       BeatEmUp.clampFighterBones(player);
     });
@@ -2320,13 +2653,13 @@ class BeatEmUp {
       const pad = e._pad || {};
       Input.acts.forEach(a => { Input.pad[1][a] = pad[a] || 0; Input.was[1][a] = 0; });
       BeatEmUp.withDepth(e, () => {
-        Game.minX = BeatEmUp.softMinX();
-        Game.maxX = BeatEmUp.softMaxX();
+        Game.minX = BeatEmUp.softMinX(e);
+        Game.maxX = BeatEmUp.softMaxX(e);
         e.f.update(dt, player.f, 1);
         if (e.f.atk && e.f.atk !== e._tunedAtk) {
           e._tunedAtk = e.f.atk;
-          if (e.kind === 'heavy' || e.kind === 'tough') { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
-          if (e.kind === 'runner') { e.f.atk.dmg *= .8; }
+          if (e.kind === 'heavy') { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
+          if (e.kind === 'runner' || e.kind === 'tough') { e.f.atk.dmg *= .8; }
           e.f.atk.dmg *= BeatEmUp.difficulty.damage;
         }
         BeatEmUp.clampFighterBones(e);
@@ -2372,9 +2705,8 @@ class BeatEmUp {
       if (ai.tellT > 0) {
         ai.tellT = Math.max(0, ai.tellT - dt);
         if (ai.tellT <= 0) {
-          if (ai.tellMove === 'special' && e.f.meter < 100) e.f.meter = 100;
           Input.pad[1][ai.tellMove] = 1;
-          ai.cool = e.kind === 'boss' ? Math.max(.42, .8 - ai.phase * .12) : e.kind === 'runner' ? .52 : e.kind === 'heavy' ? .95 : .7;
+          ai.cool = e.kind === 'boss' ? Math.max(.42, .8 - ai.phase * .12) : e.kind === 'runner' || e.kind === 'tough' ? .52 : e.kind === 'heavy' ? .95 : .7;
           ai.tellMove = ''; ai.tellKind = '';
         }
         BeatEmUp._driveEnemyPad(e, player, dt);
@@ -2406,13 +2738,16 @@ class BeatEmUp {
         else Input.pad[1].left = 1;
       } else if (ai.cool <= 0 && depthGap < 0.2) {
         let move;
-        if (e.kind === 'boss' && ai.phase >= 2 && Math.random() < .24) move = 'special';
-        else if (e.kind === 'heavy' || e.kind === 'tough') move = Math.random() < .7 ? 'kick' : 'punch';
-        else if (e.kind === 'runner') move = Math.random() < .62 ? 'kick' : 'punch';
+        const canSpecial = e.f.specialDamageMultiplier > 0 && e.f.meter >= 100
+          && (e.kind !== 'boss' || ai.phase >= 2);
+        const specialChance = e.kind === 'boss' ? .24 : .12;
+        if (canSpecial && Math.random() < specialChance) move = 'special';
+        else if (e.kind === 'heavy') move = Math.random() < .7 ? 'kick' : 'punch';
+        else if (e.kind === 'runner' || e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
         else move = Math.random() < .72 ? 'punch' : 'kick';
         ai.tellMove = move;
         ai.tellKind = move === 'special' ? 'CHARGE' : move.toUpperCase();
-        ai.tellT = e.kind === 'boss' ? .72 : e.kind === 'heavy' || e.kind === 'tough' ? .48 : .34;
+        ai.tellT = e.kind === 'boss' ? .72 : e.kind === 'heavy' ? .48 : .34;
       }
       BeatEmUp._driveEnemyPad(e, player, dt);
     }
@@ -2438,7 +2773,7 @@ class BeatEmUp {
     const living = BeatEmUp.cast.filter(e => e.f.hp > 0);
     for (const attacker of living) {
       for (const target of living) {
-        if (attacker === target) continue;
+        if (attacker === target || target.f.hp <= 0) continue;
         if (attacker.role === 'enemy' && target.role === 'enemy') continue;
         const atk = attacker.f.atk;
         const pulse = atk ? Math.min((atk.hitCount || 1) - 1, Math.floor((attacker.f.atkT - atk.su - 1) / Math.max(1, atk.ac / (atk.hitCount || 1)))) : 0;
@@ -2464,6 +2799,9 @@ class BeatEmUp {
         if (!hit.special || !attacker.f.specialMeterTargets.has(target)) target.f.gainMeter(hit.special ? 12 : hit.dmg * 1.5);
         if (hit.special) attacker.f.specialMeterTargets.add(target);
         const cx = hit.x + hit.w / 2, cy = hit.y + hit.h / 2;
+        if (attacker.role === 'player') Game.tryComboStun(
+          attacker.f, target.f, hit, kind, confirmed, cx - BeatEmUp.cameraX, cy - 58
+        );
         if (attacker.role === 'player') {
           if (hit.comboFinisher && specialFirst) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits), attacker.f.classProfile);
           else if (confirmed && attacker.f.comboHits >= 2) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits), attacker.f.classProfile);
@@ -2484,7 +2822,10 @@ class BeatEmUp {
           BeatEmUp.combo = BeatEmUp.comboT > 0 ? BeatEmUp.combo + 1 : 1;
           BeatEmUp.comboT = 2.4;
           BeatEmUp.awardScore(damage * (kind === 'block' ? 35 : 100) + BeatEmUp.combo * 25 + (specialFirst ? 300 : 0));
-          if (hpBefore > 0 && target.f.hp <= 0) BeatEmUp.awardScore(target.kind === 'boss' ? 2500 : 300);
+          if (hpBefore > 0 && target.f.hp <= 0) {
+            BeatEmUp.awardScore(target.kind === 'boss' ? 2500 : 300);
+            BeatEmUp.dropItem(target);
+          }
         }
       }
     }
@@ -2519,44 +2860,152 @@ class BeatEmUp {
     }
   }
 
+  static drawStageBackdrop(ctx) {
+    const image = BeatEmUp.backgrounds[BeatEmUp.stage - 1];
+    if (!image?.complete || !image.naturalWidth) return;
+    ctx.save();
+    ctx.drawImage(image, 0, 0, Game.W, Game.H);
+    ctx.restore();
+  }
+  static drawStageVisualCue(ctx) {
+    if (!BeatEmUp.visualCue || BeatEmUp.visualCueT <= 0) return;
+    const cue = BeatEmUp.visualCue.toLowerCase();
+    const time = performance.now() * .001;
+    const fade = Math.min(1, BeatEmUp.visualCueT * 1.6);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+
+    // Environmental light sweeps and flickers echo each authored wave cue.
+    if (/dark|dim/.test(cue)) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = (.08 + .13 * (.5 + .5 * Math.sin(time * 5))) * fade;
+      ctx.fillStyle = '#050711'; ctx.fillRect(0, 0, Game.W, Game.H * .78);
+    } else if (/sweep|move|shift|pulse|blink|flash|focus|light|lantern|flicker|signal|monitor|broadcast|glow|vehicle/.test(cue)) {
+      const sweepX = ((time * 190) % (Game.W + 300)) - 150;
+      const width = cue.includes('sweep') || cue.includes('move') || cue.includes('shift') ? 170 : 110;
+      const beam = ctx.createLinearGradient(sweepX - width, 0, sweepX + width, 0);
+      beam.addColorStop(0, 'rgba(74,202,255,0)');
+      beam.addColorStop(.5, `rgba(74,202,255,${.12 * fade})`);
+      beam.addColorStop(1, 'rgba(74,202,255,0)');
+      ctx.fillStyle = beam;
+      ctx.fillRect(0, 0, Game.W, Game.H * .72);
+    }
+
+    if (/spark|flare|furnace|machinery/.test(cue)) {
+      ctx.fillStyle = `rgba(255,166,67,${.62 * fade})`;
+      for (let i = 0; i < 7; i++) {
+        const phase = time * (1.8 + i * .17) + i * 2.1;
+        const x = ((i * 139 + time * 45) % Game.W);
+        const y = Game.H * (.22 + .17 * Math.abs(Math.sin(phase)));
+        ctx.fillRect(x, y, 2.5 / Game.scale, 2.5 / Game.scale);
+      }
+    }
+
+    if (/silhouette/.test(cue)) {
+      const x = Game.W - ((time * 150) % (Game.W + 150));
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = .32 * fade;
+      ctx.fillStyle = '#090C19';
+      ctx.beginPath(); ctx.arc(x, Game.H * .39, 12 / Game.scale, 0, Math.PI * 2); ctx.fill();
+      ctx.fillRect(x - 5 / Game.scale, Game.H * .41, 10 / Game.scale, 34 / Game.scale);
+    }
+
+    if (/map board|control room|monitors|broadcast indicator|cargo area/.test(cue)) {
+      const pulse = .35 + .25 * (1 + Math.sin(time * 5));
+      ctx.globalAlpha = pulse * fade;
+      ctx.fillStyle = '#54D8FF';
+      ctx.shadowColor = '#54D8FF'; ctx.shadowBlur = 18 / Game.scale;
+      ctx.fillRect(Game.W * .72, Game.H * .20, 5 / Game.scale, 30 / Game.scale);
+      ctx.shadowBlur = 0;
+    }
+    if (/entrance|door|passage|gate|clears/.test(cue)) {
+      const pulse = .28 + .22 * (1 + Math.sin(time * 4));
+      const x = Game.W * .76, y = Game.H * .31, w = 42 / Game.scale, h = 92 / Game.scale;
+      ctx.globalAlpha = pulse * fade;
+      ctx.fillStyle = '#F6C453'; ctx.shadowColor = '#F6C453'; ctx.shadowBlur = 22 / Game.scale;
+      ctx.fillRect(x - w / 2, y, w, h);
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+  static drawItems(ctx) {
+    for (const item of BeatEmUp.items) {
+      const floorY = BeatEmUp.floorDepthPx(item.depth);
+      const blink = item.life < 3 && Math.floor(item.life * 8) % 2 === 0;
+      ctx.save();
+      ctx.translate(item.x - BeatEmUp.cameraX, floorY);
+      ctx.globalAlpha = blink ? .52 : 1;
+      ctx.fillStyle = 'rgba(0,0,0,.62)';
+      ctx.beginPath(); ctx.ellipse(0, 1, 15, 4, 0, 0, Math.PI * 2); ctx.fill();
+      const bob = Math.sin(item.bob) * 2;
+      ctx.translate(0, bob);
+      if (item.kind === 'energyDrink') {
+        const sc = Game.scale || 1;
+        ctx.shadowColor = '#FF354F'; ctx.shadowBlur = 8 / sc;
+        ctx.fillStyle = '#7D1726'; ctx.fillRect(-9, -27, 18, 23);
+        ctx.fillStyle = '#ED344B'; ctx.fillRect(-8, -26, 16, 21);
+        ctx.fillStyle = '#E6EDF7'; ctx.fillRect(-8, -22, 16, 6);
+        ctx.fillStyle = '#A9B8CA'; ctx.fillRect(-5, -30, 10, 3);
+        ctx.fillStyle = '#FFE06B';
+        ctx.beginPath(); ctx.moveTo(1, -21); ctx.lineTo(-3, -15); ctx.lineTo(0, -15); ctx.lineTo(-2, -9); ctx.lineTo(4, -17); ctx.lineTo(1, -17); ctx.closePath(); ctx.fill();
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = '#D89A35'; ctx.fillRect(-12, -27, 24, 21);
+        ctx.fillStyle = '#F7F2D9'; ctx.fillRect(-10, -29, 20, 19);
+        ctx.fillStyle = '#D8E7F2'; ctx.fillRect(-10, -29, 20, 3);
+        ctx.fillStyle = '#E94452'; ctx.fillRect(-2, -25, 4, 12); ctx.fillRect(-6, -21, 12, 4);
+        ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(-8, -25, 2, 5);
+      }
+      ctx.restore();
+    }
+  }
   static drawArena(ctx) {
     const sc = Game.scale;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1] || BeatEmUp.chapters[0];
     const bandTopY = Game.H * BeatEmUp.BAND_TOP;
     const bandBotY = Game.H * BeatEmUp.BAND_BOT;
-    const sky = ctx.createLinearGradient(0, 0, 0, bandTopY);
+    const sky = ctx.createLinearGradient(0, 0, 0, Game.H);
     sky.addColorStop(0, chapter.sky[0]);
-    sky.addColorStop(1, chapter.sky[1]);
+    sky.addColorStop(.62, chapter.sky[1]);
+    sky.addColorStop(1, '#0C0D10');
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, Game.W, bandTopY);
+    ctx.fillRect(0, 0, Game.W, Game.H);
 
-    const yTop = Game.H * .55;
-    ctx.fillStyle = chapter.sky[2];
-    const blocks = [
-      [0, 70, 55], [70, 50, 40], [120, 90, 70], [210, 40, 35], [250, 80, 60],
-      [330, 55, 45], [385, 100, 75], [485, 45, 38], [530, 75, 58], [605, 60, 48],
-      [665, 95, 72], [760, 50, 42], [810, 85, 65], [895, 55, 50]
-    ];
-    const ox = BeatEmUp.skyOffset % Game.W;
-    const drawBlocks = (shift) => {
-      for (const [bx, bw, bh] of blocks) {
-        const x = (bx / 960 * Game.W) - ox + shift;
-        const w = bw / 960 * Game.W;
-        const h = Math.min(bh, bandTopY - yTop);
-        if (x + w < 0 || x > Game.W) continue;
-        ctx.fillRect(x, bandTopY - h, w, h);
-      }
-    };
-    drawBlocks(0);
-    drawBlocks(Game.W);
+    BeatEmUp.drawStageBackdrop(ctx);
+    BeatEmUp.drawStageVisualCue(ctx);
 
-    ctx.fillStyle = '#0C0D10';
-    ctx.fillRect(0, bandBotY, Game.W, Game.H - bandBotY);
-    ctx.fillStyle = '#181A22';
-    ctx.fillRect(0, bandTopY, Game.W, bandBotY - bandTopY);
-    // Subtle lane guides make the depth axis readable without adding UI clutter.
+    // Let the fighters share the scene's floor while shading the play space for contrast.
+    const floorShade = ctx.createLinearGradient(0, Game.H * .42, 0, Game.H);
+    floorShade.addColorStop(0, 'rgba(8,10,18,.04)');
+    floorShade.addColorStop(.30, 'rgba(8,10,18,.20)');
+    floorShade.addColorStop(.66, 'rgba(8,10,18,.48)');
+    floorShade.addColorStop(1, 'rgba(5,6,10,.72)');
+    ctx.fillStyle = floorShade;
+    ctx.fillRect(0, Game.H * .42, Game.W, Game.H * .58);
+
+    // Subtle world-anchored floor seams slide with the camera during wave travel.
+    const floorTop = bandTopY + (bandBotY - bandTopY) * .08;
+    const floorTile = 72 / sc;
+    const floorScroll = ((BeatEmUp.cameraX % floorTile) + floorTile) % floorTile;
     ctx.save();
-    ctx.globalAlpha = .22;
+    ctx.globalAlpha = .105;
+    ctx.strokeStyle = '#A9C6E8';
+    ctx.lineWidth = 1 / sc;
+    const horizonX = Game.W * .5 - (BeatEmUp.cameraX % (floorTile * 2)) * .12;
+    for (let x = -floorTile - floorScroll; x <= Game.W + floorTile; x += floorTile) {
+      const topX = horizonX + (x - Game.W * .5) * .16;
+      ctx.beginPath(); ctx.moveTo(topX, floorTop); ctx.lineTo(x, Game.H); ctx.stroke();
+    }
+    for (let i = 1; i <= 5; i++) {
+      const depth = i / 6;
+      const y = floorTop + (Game.H - floorTop) * depth * depth;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(Game.W, y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // Faint lane guides retain depth cues without boxing the movement area in.
+    ctx.save();
+    ctx.globalAlpha = .10;
     ctx.strokeStyle = '#9AA5C2';
     ctx.lineWidth = 1 / sc;
     for (let i = 1; i <= 3; i++) {
@@ -2564,11 +3013,6 @@ class BeatEmUp {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(Game.W, y); ctx.stroke();
     }
     ctx.restore();
-    ctx.fillStyle = '#3A3F52';
-    ctx.fillRect(0, bandBotY, Game.W, 2 / sc);
-    ctx.globalAlpha = 0.55;
-    ctx.fillRect(0, bandTopY, Game.W, 1.5 / sc);
-    ctx.globalAlpha = 1;
   }
 
 
@@ -2620,93 +3064,72 @@ class BeatEmUp {
   }
 
   static bars(ctx) {
-    const sc = Game.scale;
-    const safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
-    const top = (12 + safe) / sc, h = 12 / sc, gap = 44 / sc;
-    const w = Game.W * .4 - 14 / sc, mh = 5 / sc, mGap = 4 / sc;
-    const x0 = (Game.W - 2 * w - gap) / 2;
-    const me = fighters[0];
-    ctx.fillStyle = '#2A2D35';
-    ctx.strokeStyle = '#0E0F12';
-    ctx.lineWidth = 2 / sc;
-    ctx.fillRect(x0, top, w, h);
-    ctx.strokeRect(x0, top, w, h);
-    ctx.fillStyle = 'rgba(245,245,245,.6)';
-    ctx.fillRect(x0, top, w * (me.chip / 100), h);
-    ctx.fillStyle = me.color;
-    ctx.fillRect(x0, top, w * (Math.min(100, me.hp) / 100), h);
-    ctx.font = 'bold ' + 12 / sc + 'px system-ui,sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 3 / sc;
-    ctx.strokeStyle = '#0E0F12';
-    ctx.strokeText('YOU', x0 + 6 / sc, top + h / 2);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('YOU', x0 + 6 / sc, top + h / 2);
-    const my = top + h + mGap;
-    ctx.fillStyle = '#2A2D35';
-    ctx.strokeStyle = '#0E0F12';
-    ctx.lineWidth = 2 / sc;
-    ctx.fillRect(x0, my, w, mh);
-    ctx.strokeRect(x0, my, w, mh);
-    ctx.fillStyle = me.meter >= 100 ? (me.classProfile?.accent || '#FBBF24') : '#A78BFA';
-    ctx.fillRect(x0, my, w * (me.meter / 100), mh);
+    const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
+    const top = (12 + safe) / sc, h = 12 / sc, {w,gap,x0} = Game.hudBarLayout(70);
+    const me = fighters[0], accent = me.classProfile?.accent || '#63D9FF';
+    const panelH = 34 / sc, panelY = top - 2 / sc;
+    Game.drawHudPanel(ctx, x0, panelY, w, panelH, accent);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#DCE8F5';
+    ctx.fillText('PLAYER 01 · HP', x0 + 9 / sc, top + 4 / sc);
+    const barX = x0 + 9 / sc, barY = top + 10 / sc, barW = w - 18 / sc, barH = 8 / sc;
+    ctx.fillStyle = '#080C14'; ctx.fillRect(barX, barY, barW, barH);
+    ctx.fillStyle = 'rgba(230,238,250,.35)'; ctx.fillRect(barX, barY, barW * (me.chip / 100), barH);
+    ctx.fillStyle = me.color; ctx.fillRect(barX, barY, barW * (Math.min(100, me.hp) / 100), barH);
+    ctx.strokeStyle = 'rgba(190,210,235,.45)'; ctx.lineWidth = 1 / sc; ctx.strokeRect(barX, barY, barW, barH);
+    const meterY = top + 22 / sc, meterX = x0 + 28 / sc, meterW = w - 37 / sc, meterH = 3 / sc;
+    ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0'; ctx.fillText('SP', x0 + 9 / sc, meterY + 1.5 / sc);
+    ctx.fillStyle = '#080C14'; ctx.fillRect(meterX, meterY, meterW, meterH);
+    ctx.fillStyle = me.meter >= 100 ? accent : '#A78BFA'; ctx.fillRect(meterX, meterY, meterW * (me.meter / 100), meterH);
+    ctx.strokeStyle = 'rgba(190,210,235,.32)'; ctx.lineWidth = 1 / sc; ctx.strokeRect(meterX, meterY, meterW, meterH);
 
-    const tStr = BeatEmUp.formatTime(Game.timer);
-    ctx.font = 'bold ' + 22 / sc + 'px system-ui,sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 4 / sc;
-    ctx.strokeStyle = '#0E0F12';
-    ctx.strokeText(tStr, Game.W / 2, top + h / 2);
-    ctx.fillStyle = Game.timer <= 30 ? '#F87171' : '#FFFFFF';
-    ctx.fillText(tStr, Game.W / 2, top + h / 2);
+    const timerW = 62 / sc, timerX = Game.W / 2 - timerW / 2;
+    Game.drawHudPanel(ctx, timerX, panelY, timerW, panelH, Game.timer <= 30 ? '#FF655F' : '#F6C453');
+    ctx.textAlign = 'center'; ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0';
+    ctx.fillText('TIME', Game.W / 2, top + 4 / sc);
+    ctx.font = 'bold ' + 16 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = Game.timer <= 30 ? '#FF736D' : '#FFF0C2';
+    ctx.fillText(BeatEmUp.formatTime(Game.timer), Game.W / 2, top + 19 / sc);
 
-    // Wave / boss label
-    ctx.font = 'bold ' + 13 / sc + 'px system-ui,sans-serif';
-    ctx.lineWidth = 3 / sc;
-    const waveX = Game.W / 2 + 78 / sc;
-    const label = 'ST ' + BeatEmUp.stage + ' · ' + (BeatEmUp.wave <= 3 ? ('WAVE ' + BeatEmUp.wave + '/' + BeatEmUp.waveTotal) : 'BOSS');
-    ctx.strokeText(label, waveX, top + h / 2);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(label, waveX, top + h / 2);
+    const stageX = Game.W / 2 + 39 / sc, stageW = 136 / sc;
+    Game.drawHudPanel(ctx, stageX, panelY, stageW, panelH, '#6ECFFF');
+    ctx.textAlign = 'center'; ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#D8E6F6';
+    ctx.fillText('STAGE ' + String(BeatEmUp.stage).padStart(2, '0'), stageX + stageW / 2, top + 8 / sc);
+    ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#6ECFFF';
+    ctx.fillText(BeatEmUp.wave <= 3 ? 'WAVE ' + BeatEmUp.wave + '/' + BeatEmUp.waveTotal : 'BOSS ROUND', stageX + stageW / 2, top + 22 / sc);
 
-    const infoY = my + mh + 14 / sc;
-    ctx.font = 'bold ' + 11 / sc + 'px system-ui,sans-serif';
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#E7EAF2';
-    ctx.fillText('SCORE ' + String(BeatEmUp.score).padStart(6, '0'), x0, infoY);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#AEB5C8';
-    ctx.textAlign = 'left';
-    ctx.fillText('BEST ' + String(BeatEmUp.bestScore).padStart(6, '0'), x0 + w + gap, infoY);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('LIVES ×' + BeatEmUp.lives, Game.W - 14 / sc, infoY);
-    ctx.textAlign = 'center';
-    if (BeatEmUp.combo > 1 && BeatEmUp.comboT > 0) {
-      ctx.fillStyle = '#FBBF24';
-      ctx.fillText(BeatEmUp.combo + ' HIT COMBO', Game.W / 2, infoY + 15 / sc);
+    const infoY = top + 43 / sc;
+    ctx.textBaseline = 'middle'; ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace';
+    Game.drawHudPanel(ctx, x0, infoY - 7 / sc, 106 / sc, 16 / sc, '#F6C453');
+    ctx.textAlign = 'left'; ctx.fillStyle = '#FFE6A7'; ctx.fillText('SCORE ' + String(BeatEmUp.score).padStart(6, '0'), x0 + 8 / sc, infoY + 1 / sc);
+    const player = BeatEmUp.playerEntry()?.f;
+    if (player?.attackBoostT > 0) {
+      const boostY = infoY + 13 / sc;
+      Game.drawHudPanel(ctx, x0, boostY - 7 / sc, 116 / sc, 16 / sc, '#FF5264');
+      ctx.textAlign = 'left'; ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFD9DE';
+      ctx.fillText('ATK ×1.5  ' + Math.ceil(player.attackBoostT) + 's', x0 + 8 / sc, boostY + 1 / sc);
     }
-
-    // Boss HP under timer (label stays on the timer row above — not over the bar)
+    const bestX = Game.W - 230 / sc;
+    Game.drawHudPanel(ctx, bestX, infoY - 7 / sc, 112 / sc, 16 / sc, '#7285A4');
+    ctx.fillStyle = '#C8D2E3'; ctx.fillText('BEST ' + String(BeatEmUp.bestScore).padStart(6, '0'), bestX + 8 / sc, infoY + 1 / sc);
+    Game.drawHudPanel(ctx, Game.W - 91 / sc, panelY, 79 / sc, panelH, '#F6C453');
+    ctx.textAlign = 'center'; ctx.fillStyle = '#FFE6A7'; ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace';
+    ctx.fillText('LIVES ×' + BeatEmUp.lives, Game.W - 51.5 / sc, top + 17 / sc);
+    if (BeatEmUp.combo > 1 && BeatEmUp.comboT > 0) {
+      Game.drawHudPanel(ctx, Game.W / 2 - 56 / sc, infoY - 7 / sc, 112 / sc, 16 / sc, '#F6C453');
+      ctx.textAlign = 'center'; ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
+      ctx.fillText(BeatEmUp.combo + ' HIT COMBO', Game.W / 2, infoY + 1 / sc);
+    }
     if (BeatEmUp.boss && BeatEmUp.boss.f.hp > 0) {
-      const bw = Game.W * 0.36, bh = 8 / sc;
-      const bx = (Game.W - bw) / 2, by = top + h + 14 / sc;
-      ctx.fillStyle = '#2A2D35';
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = '#0E0F12';
-      ctx.lineWidth = 2 / sc;
-      ctx.strokeRect(bx, by, bw, bh);
-      const pct = Math.max(0, BeatEmUp.boss.f.hp / BeatEmUp.bossMaxHp);
-      ctx.fillStyle = '#EF4444';
-      ctx.fillRect(bx, by, bw * pct, bh);
+      const bw = Math.min(Game.W * .36, 360 / sc), bh = 14 / sc, bx = (Game.W - bw) / 2, by = infoY + 10 / sc;
+      Game.drawHudPanel(ctx, bx, by, bw, bh, '#FF5D67');
+      ctx.textAlign = 'left'; ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFD7DA';
+      ctx.fillText('BOSS', bx + 7 / sc, by + bh / 2);
+      const hpX = bx + 42 / sc, hpY = by + 4 / sc, hpW = bw - 50 / sc, hpH = 6 / sc;
+      ctx.fillStyle = '#080C14'; ctx.fillRect(hpX, hpY, hpW, hpH);
+      ctx.fillStyle = BeatEmUp.boss.f.color; ctx.fillRect(hpX, hpY, hpW * Math.max(0, BeatEmUp.boss.f.hp / BeatEmUp.bossMaxHp), hpH);
     }
     ctx.textBaseline = 'alphabetic';
   }
-
   static draw(ctx) {
     BeatEmUp.drawArena(ctx);
     if (BeatEmUp.stageOver) {
@@ -2716,6 +3139,7 @@ class BeatEmUp {
       BeatEmUp.drawResults(ctx);
       return;
     }
+    BeatEmUp.drawItems(ctx);
     const ordered = BeatEmUp.cast.filter(e => e.f.hp > 0 || e.role === 'player' || (e.f.ragdollKO && e.f.ragdollElapsed < 2)).slice()
       .sort((a, b) => a.depth - b.depth);
     for (const e of ordered) BeatEmUp.drawFighter(ctx, e);
@@ -2727,29 +3151,36 @@ class BeatEmUp {
       const y = Game.H * 0.30;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = 'bold ' + 36 / sc + 'px system-ui,sans-serif';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 5 / sc;
-      ctx.strokeStyle = '#0E0F12';
-      ctx.strokeText('GO →', x, y);
-      ctx.fillStyle = '#FBBF24';
+      Game.drawHudPanel(ctx, x - 62 / sc, y - 24 / sc, 124 / sc, 48 / sc, '#F6C453');
+      ctx.font = 'bold ' + 27 / sc + 'px ui-monospace,monospace';
+      ctx.fillStyle = '#FFE06B';
       ctx.fillText('GO →', x, y);
       ctx.textBaseline = 'alphabetic';
     }
     if (BeatEmUp.eventT > 0 && BeatEmUp.waveEvent) {
       const sc = Game.scale;
       ctx.globalAlpha = Math.min(1, BeatEmUp.eventT * 2);
-      ctx.fillStyle = 'rgba(10,12,18,.72)';
       const hasStory = !!BeatEmUp.storyText;
-      const boxW = Math.min(Game.W * .84, 520 / sc), boxH = (hasStory ? 50 : 30) / sc;
-      ctx.fillRect((Game.W - boxW) / 2, Game.H * .25 - boxH / 2, boxW, boxH);
-      ctx.font = 'bold ' + 13 / sc + 'px system-ui,sans-serif';
+      const hasSubStory = !!BeatEmUp.storySubText;
+      const countdown = BeatEmUp.stageIntroT > 0;
+      const boxW = Math.min(Game.W * .84, 520 / sc), boxH = (hasSubStory ? 72 : hasStory ? 50 : 30) / sc + (countdown ? 14 / sc : 0);
+      const boxY = Game.H * .25 - boxH / 2;
+      Game.drawHudPanel(ctx, (Game.W - boxW) / 2, boxY, boxW, boxH, '#F6C453');
+      ctx.font = 'bold ' + 13 / sc + 'px ui-monospace,monospace';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = '#FBBF24';
-      ctx.fillText(BeatEmUp.waveEvent, Game.W / 2, Game.H * .25 - (hasStory ? 9 / sc : 0), boxW - 16 / sc);
+      ctx.fillText(BeatEmUp.waveEvent, Game.W / 2, Game.H * .25 - (hasStory ? (hasSubStory ? 22 : 9) / sc : 0), boxW - 16 / sc);
       if (hasStory) {
-        ctx.font = (11 / sc) + 'px system-ui,sans-serif'; ctx.fillStyle = '#E7EAF2';
-        ctx.fillText(BeatEmUp.storyText, Game.W / 2, Game.H * .25 + 11 / sc, boxW - 16 / sc);
+        ctx.font = (10 / sc) + 'px ui-monospace,monospace'; ctx.fillStyle = '#E7EAF2';
+        ctx.fillText(BeatEmUp.storyText, Game.W / 2, Game.H * .25 + (hasSubStory ? -6 : 11) / sc, boxW - 16 / sc);
+      }
+      if (hasSubStory) {
+        ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#8EDFFF';
+        ctx.fillText(BeatEmUp.storySubText, Game.W / 2, Game.H * .25 + 13 / sc, boxW - 16 / sc);
+      }
+      if (countdown) {
+        ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
+        ctx.fillText('FIGHT BEGINS IN ' + Math.ceil(BeatEmUp.stageIntroT), Game.W / 2, Game.H * .25 + 30 / sc);
       }
       ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
     }
@@ -2757,39 +3188,60 @@ class BeatEmUp {
 
   static drawResults(ctx) {
     const sc = Game.scale;
-    const w = Math.min(Game.W * .82, 620 / sc), h = 130 / sc;
-    const x = (Game.W - w) / 2, y = Game.H * .49;
-    ctx.fillStyle = 'rgba(10,12,18,.9)';
-    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2 / sc;
-    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const w = Math.min(Game.W * .82, 620 / sc);
     const cleared = BeatEmUp.stageOver === 1;
+    const h = (cleared ? 178 : 130) / sc;
+    const x = (Game.W - w) / 2, y = cleared ? Game.H * .38 : Game.H * .49;
+    Game.drawHudPanel(ctx, x, y, w, h, cleared ? '#F6C453' : '#FF655F');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const finalClear = cleared && BeatEmUp.stage >= BeatEmUp.stageTotal;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1] || BeatEmUp.chapters[0];
     const headline = cleared ? (finalClear ? 'CAMPAIGN COMPLETE' : 'STAGE ' + BeatEmUp.stage + ' CLEAR') : 'STAGE ' + BeatEmUp.stage + ' FAILED';
-    ctx.font = 'bold ' + 17 / sc + 'px system-ui,sans-serif';
+    ctx.font = 'bold ' + 16 / sc + 'px ui-monospace,monospace';
     ctx.fillStyle = cleared ? '#FBBF24' : '#F87171';
     ctx.fillText(headline, Game.W / 2, y + 20 / sc);
-    ctx.font = '11px system-ui,sans-serif'; ctx.fillStyle = '#E7EAF2';
-    ctx.fillText(cleared ? chapter.clear : 'Regroup and fight through ' + chapter.title.toLowerCase() + ' again.', Game.W / 2, y + 43 / sc, w - 24 / sc);
-    ctx.font = 'bold ' + 14 / sc + 'px system-ui,sans-serif';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('SCORE  ' + String(BeatEmUp.score).padStart(6, '0'), Game.W / 2, y + 70 / sc);
-    ctx.font = 'bold ' + 11 / sc + 'px system-ui,sans-serif';
-    ctx.fillStyle = '#FBBF24';
-    ctx.fillText('BEST  ' + String(BeatEmUp.bestScore).padStart(6, '0') + '   TIME ' + BeatEmUp.formatTime(Game.timer) + '   LIVES ×' + BeatEmUp.lives, Game.W / 2, y + 96 / sc);
-    ctx.font = 'bold ' + 12 / sc + 'px system-ui,sans-serif';
-    ctx.fillStyle = '#D7DCE9';
-    const prompt = !cleared ? 'TAP OR PRESS ENTER TO RETRY THIS STAGE'
-      : finalClear ? 'TAP OR PRESS ENTER TO START A NEW CAMPAIGN'
-        : 'TAP OR PRESS ENTER FOR THE NEXT STAGE';
-    ctx.fillText(prompt, Game.W / 2, y + h + 22 / sc);
+    if (cleared) {
+      ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#D7E1F0';
+      ctx.fillText('DEFEATED: ' + chapter.boss.name, Game.W / 2, y + 43 / sc, w - 24 / sc);
+      ctx.font = (9 / sc) + 'px ui-monospace,monospace'; ctx.fillStyle = '#E7EAF2';
+      ctx.fillText(chapter.clear, Game.W / 2, y + 61 / sc, w - 28 / sc);
+      if (!finalClear) {
+        const next = BeatEmUp.chapters[BeatEmUp.stage];
+        ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#8EDFFF';
+        ctx.fillText('NEXT: ' + next.title + ' · ' + next.location, Game.W / 2, y + 82 / sc, w - 28 / sc);
+      }
+      ctx.font = 'bold ' + 12 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('SCORE  ' + String(BeatEmUp.score).padStart(6, '0'), Game.W / 2, y + 105 / sc);
+      ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FBBF24';
+      ctx.fillText('BEST  ' + String(BeatEmUp.bestScore).padStart(6, '0') + '   TIME ' + BeatEmUp.formatTime(Game.timer) + '   LIVES ×' + BeatEmUp.lives, Game.W / 2, y + 127 / sc);
+      BeatEmUp.resultNextBtn = null;
+      if (!finalClear) {
+        const btn = { x: Game.W / 2 - 100 / sc, y: y + 143 / sc, w: 200 / sc, h: 27 / sc };
+        BeatEmUp.resultNextBtn = btn;
+        ctx.shadowColor = '#F6C453'; ctx.shadowBlur = 7 / sc;
+        Game.drawHudPanel(ctx, btn.x, btn.y, btn.w, btn.h, '#F6C453'); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#FFE06B'; ctx.fillRect(btn.x + 6 / sc, btn.y + 5 / sc, btn.w - 12 / sc, 2 / sc);
+        ctx.font = 'bold ' + 11 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFF0C2';
+        ctx.fillText('NEXT STAGE  →', Game.W / 2, btn.y + btn.h / 2 + 1 / sc);
+      }
+    } else {
+      ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#D7E1F0';
+      ctx.fillText('Regroup and fight through ' + chapter.title.toLowerCase() + ' again.', Game.W / 2, y + 43 / sc, w - 24 / sc);
+      ctx.font = 'bold ' + 13 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
+      ctx.fillText('SCORE  ' + String(BeatEmUp.score).padStart(6, '0'), Game.W / 2, y + 70 / sc);
+      ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FBBF24';
+      ctx.fillText('BEST  ' + String(BeatEmUp.bestScore).padStart(6, '0') + '   TIME ' + BeatEmUp.formatTime(Game.timer) + '   LIVES ×' + BeatEmUp.lives, Game.W / 2, y + 96 / sc);
+      ctx.fillStyle = '#D7DCE9';
+      const promptW = Math.min(w - 36 / sc, 520 / sc), promptY = y + h + 7 / sc;
+      Game.drawHudPanel(ctx, Game.W / 2 - promptW / 2, promptY, promptW, 26 / sc, '#6ECFFF');
+      ctx.fillText('TAP OR PRESS ENTER TO RETRY THIS STAGE', Game.W / 2, promptY + 13 / sc);
+    }
     ctx.textBaseline = 'alphabetic';
   }
 }
 
 
-var fighters = [new Fighter(0, '#3B82F6', 1, 'YOU'), new Fighter(0, '#EF4444', -1, 'CPU')];
+var fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
 class Game {
   static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60;
@@ -2806,6 +3258,9 @@ class Game {
   static levelLabels = {easy:'Easy', normal:'Normal', hard:'Hard'};
   static titleBtns = [];
   static selectedClass = 'freehand';
+  static paused = false;
+  static actionMenuOpen = false;
+  static titleBackground = (() => { const image = new Image(); image.src = 'assets/backgrounds/main-menu.webp'; return image; })();
   static practiceDummyX = 0;
   static practiceComboHits = 0;
   static practiceComboDamage = 0;
@@ -2828,14 +3283,16 @@ class Game {
   }
   static mode = '1v1';
   static goTitle() {
+    Game.closeActionMenu();
     Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
+    Game.paused = false;
     Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
     fighters[0].meter = 0; fighters[1].meter = 0;
     fighters.forEach(f => { f.ragdollActive = false; f.ragdollKO = false; f.ragdollAngle = 0; f.ragdollElapsed = 0; f.damageBurst = 0; f.damageBurstT = 0; f.y = 0; f.vy = 0; f.state = 'idle'; });
     Input.keys.clear();
     Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
-    fighters[0].color = '#3B82F6'; fighters[1].color = '#EF4444';
+    fighters[0].color = PlayerCoolColor; fighters[1].color = CpuHotColors['1v1'];
     fighters[0].setClass(Game.selectedClass);
     fighters[0].color = FighterClasses[Game.selectedClass].color;
     fighters[0].tag = 'YOU'; fighters[1].tag = 'CPU';
@@ -2862,8 +3319,10 @@ class Game {
     Game.mode = mode; Input.syncMode();
     fighters[0].setClass(Game.selectedClass);
     fighters[0].color = FighterClasses[Game.selectedClass].color;
+    fighters[1].color = CpuHotColors['1v1'];
   }
   static startPractice() {
+    Game.paused = false; Game.actionMenuOpen = false;
     Game.mode = 'practice';
     Input.syncMode();
     Game.round = 1; Game.wins = [0, 0]; Game.matchOver = 0; Game.winner = '';
@@ -2891,7 +3350,7 @@ class Game {
       Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceComboT = 0; Game.practiceLastMove = '';
     }
   }
-  /** Title-only: idle fighters at ~15% / 85% width, facing in. Match spawn unchanged. */
+  /** Title-only: idle fighters at ~10% / 90% width, facing in. Match spawn unchanged. */
   static placeTitleFighters() {
     const sc = Game.scale || 1;
     const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
@@ -2899,12 +3358,13 @@ class Game {
     const inset = (16 + Math.max(safeL, safeR)) / sc;
     // Approximate full limb reach from body center (idle pose + stroke)
     const reach = 48;
-    let x0 = Game.W * .15, x1 = Game.W * .85;
+    let x0 = Game.W * .10, x1 = Game.W * .90;
     x0 = Math.max(inset + reach, Math.min(Game.W / 2 - 80, x0));
     x1 = Math.min(Game.W - inset - reach, Math.max(Game.W / 2 + 80, x1));
     fighters[0].reset(x0, 1); fighters[1].reset(x1, -1);
   }
   static startMatch() {
+    Game.paused = false; Game.actionMenuOpen = false;
     if (Game.mode === 'beatemup') {
       BeatEmUp.begin();
       return;
@@ -2920,7 +3380,7 @@ class Game {
     Game.stop = 0; Game.shake = 0; Game.timer = 60; Game.fighting = 0; Game.matchOver = 0;
     fighters.forEach((f, i) => {
       f.setClass(i === 0 ? Game.selectedClass : null);
-      f.color = i === 0 ? FighterClasses[Game.selectedClass].color : '#EF4444';
+      f.color = i === 0 ? FighterClasses[Game.selectedClass].color : CpuHotColors['1v1'];
     });
     fighters[0].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .35)), 1);
     fighters[1].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .65)), -1);
@@ -2931,14 +3391,54 @@ class Game {
   }
   static syncControls() {
     const el = document.getElementById('controls');
-    if (el) el.style.display = Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
+    if (el) el.style.display = Game.paused || Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
     const menu = document.getElementById('main-menu-button');
     if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
     const reset = document.getElementById('practice-reset');
-    if (reset) reset.style.display = Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
+    if (reset) reset.style.display = !Game.paused && Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
     Game.btns = [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     }).filter(btn => btn.w > 0 && btn.h > 0);
+  }
+  static canPause() {
+    return Game.phase !== 'title' && !Game.matchOver
+      && !(Game.mode === 'beatemup' && BeatEmUp.stageOver);
+  }
+  static toggleActionMenu() {
+    if (Game.phase === 'title') return;
+    Game.actionMenuOpen = !Game.actionMenuOpen;
+    const menu = document.getElementById('game-action-menu');
+    const trigger = document.getElementById('main-menu-button');
+    const pause = document.getElementById('pause-game-button');
+    if (menu) menu.hidden = !Game.actionMenuOpen;
+    if (trigger) trigger.setAttribute('aria-expanded', String(Game.actionMenuOpen));
+    if (pause) {
+      pause.disabled = !Game.paused && !Game.canPause();
+      pause.innerHTML = (Game.paused ? '▶' : 'Ⅱ') + '<span>' + (Game.paused ? 'RESUME' : 'PAUSE') + '</span>';
+    }
+  }
+  static closeActionMenu() {
+    if (!Game.actionMenuOpen) return;
+    Game.actionMenuOpen = false;
+    const menu = document.getElementById('game-action-menu');
+    const trigger = document.getElementById('main-menu-button');
+    if (menu) menu.hidden = true;
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+  static togglePause() {
+    if (!Game.paused && !Game.canPause()) return;
+    Game.paused = !Game.paused;
+    Game.closeActionMenu();
+    Input.keys.clear();
+    Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
+    Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
+    Game.acc = 0;
+    Game.syncControls();
+    const pause = document.getElementById('pause-game-button');
+    if (pause) {
+      pause.innerHTML = (Game.paused ? '▶' : 'Ⅱ') + '<span>' + (Game.paused ? 'RESUME' : 'PAUSE') + '</span>';
+      pause.disabled = !Game.paused && !Game.canPause();
+    }
   }
   static placePracticeFighters(reset = false) {
     const span = Math.max(0, Game.maxX - Game.minX);
@@ -3073,12 +3573,12 @@ class Game {
     Game.GROUND = Math.round(Game.H * .72);
     const scale = innerHeight / Game.H;
     Game.scale = scale; Game.ox = 0; Game.oy = 0;
-    Game.hr = Math.max(16.5, 13.2 / scale); Game.lw = Math.max(6, 4.5 / scale);
+    Game.hr = Math.max(13.2, 10.56 / scale); Game.lw = Math.max(4.8, 3.6 / scale);
     Game.canvas.style.width = innerWidth + 'px'; Game.canvas.style.height = innerHeight + 'px';
     Game.canvas.width = Math.round(innerWidth * dpr); Game.canvas.height = Math.round(innerHeight * dpr);
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     // Prefer middle 70% (15%–85%), but end the lane early enough that visual
-    // bones() at the edges stay ≥8px from edge-pinned controls (drawNudgeX → 0).
+    // bones() at the edges stay ≥4px from edge-pinned controls (drawNudgeX → 0).
     const EDGE = 16, CLEAR = 8;
     const MOVE_W = 132;
     const PAD_W = 200; // right-thumb action cluster width
@@ -3153,6 +3653,8 @@ class Game {
       if (!box.special || !me.specialMeterTargets.has(foe)) foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       if (box.special) me.specialMeterTargets.add(foe);
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      const comboStunned = i === 0 && Game.tryComboStun(me, foe, box, kind, confirmed, cx, cy - 58);
+      if (comboStunned && Game.mode === 'practice') Game.practiceLastMove += ' · STUN';
       if (i === 0) {
         if (box.comboFinisher && box.special && !me.specialEffectDone) Fx.combo(cx, cy - 34, Fighter.comboMessage(box, me.state, me.comboHits), me.classProfile);
         else if (confirmed && me.comboHits >= 2) Fx.combo(cx, cy - 34, Fighter.comboMessage(box, me.state, me.comboHits), me.classProfile);
@@ -3206,6 +3708,7 @@ class Game {
   }
   static frame(now) {
     let dt = (now - Game.last) / 1000; Game.last = now; if (dt > .05) dt = .05;
+    if (Game.paused) { Game.acc = 0; Game.draw(); requestAnimationFrame(Game.frame); return; }
     if (Game.shake > 0) Game.shake -= dt;
     Fx.update(dt);
     if (Game.stop > 0) { Game.stop -= dt; Game.draw(); requestAnimationFrame(Game.frame); return; }
@@ -3222,6 +3725,10 @@ class Game {
           BeatEmUp.stageTransitionStage = 0;
           BeatEmUp.stageTransitionSwitched = 0;
         }
+      }
+      if (Game.mode === 'beatemup' && BeatEmUp.stageIntroT > 0) {
+        BeatEmUp.stageIntroT = Math.max(0, BeatEmUp.stageIntroT - step);
+        BeatEmUp.eventT = Math.min(BeatEmUp.eventT, BeatEmUp.stageIntroT);
       }
       if (Game.mode === 'practice' && Game.practiceComboT > 0) {
         Game.practiceComboT = Math.max(0, Game.practiceComboT - step);
@@ -3311,66 +3818,97 @@ class Game {
     Game.draw(); requestAnimationFrame(Game.frame);
   }
   static bars(ctx) {
-    const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t'))||0,
-      top = (12 + safe) / sc, h = 12 / sc, gap = 44 / sc, w = Game.W * .4 - 14 / sc, mh = 5 / sc, mGap = 4 / sc;
-    const x0 = (Game.W - 2 * w - gap) / 2, x1 = x0 + w + gap;
-    const drawBar = (x, fill, chip, fromLeft, label, meter) => {
-      ctx.fillStyle = '#2A2D35'; ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc;
-      ctx.fillRect(x, top, w, h); ctx.strokeRect(x, top, w, h);
-      const cw = w * (chip / 100), fw = w * (fill / 100);
-      ctx.fillStyle = 'rgba(245,245,245,.6)';
-      if (fromLeft) ctx.fillRect(x, top, cw, h); else ctx.fillRect(x + w - cw, top, cw, h);
-      ctx.fillStyle = fromLeft ? '#3B82F6' : '#EF4444';
-      if (fromLeft) ctx.fillRect(x, top, fw, h); else ctx.fillRect(x + w - fw, top, fw, h);
-      ctx.font = 'bold ' + 12 / sc + 'px system-ui,sans-serif';
+    const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
+    const top = (12 + safe) / sc, h = 12 / sc, {w,gap,x0,x1} = Game.hudBarLayout();
+    const panelH = 34 / sc, panelY = top - 2 / sc, hpY = top + 10 / sc, hpH = 8 / sc;
+    const drawBar = (x, fighter, color, label, fromLeft) => {
+      Game.drawHudPanel(ctx, x, panelY, w, panelH, color);
       ctx.textAlign = fromLeft ? 'left' : 'right'; ctx.textBaseline = 'middle';
-      const lx = fromLeft ? x + 6 / sc : x + w - 6 / sc, ly = top + h / 2;
-      ctx.lineJoin = 'round'; ctx.lineWidth = 3 / sc; ctx.strokeStyle = '#0E0F12';
-      ctx.strokeText(label, lx, ly); ctx.fillStyle = '#FFFFFF'; ctx.fillText(label, lx, ly);
-      ctx.textBaseline = 'alphabetic';
-      const my = top + h + mGap;
-      ctx.fillStyle = '#2A2D35'; ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc;
-      ctx.fillRect(x, my, w, mh); ctx.strokeRect(x, my, w, mh);
-      const mw = w * (meter / 100);
-      ctx.fillStyle = meter >= 100 ? '#FBBF24' : '#A78BFA';
-      if (fromLeft) ctx.fillRect(x, my, mw, mh); else ctx.fillRect(x + w - mw, my, mw, mh);
+      ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#DCE8F5';
+      ctx.fillText(label, fromLeft ? x + 8 / sc : x + w - 8 / sc, top + 4 / sc);
+      const bx = x + 8 / sc, bw = w - 16 / sc;
+      ctx.fillStyle = '#080C14'; ctx.fillRect(bx, hpY, bw, hpH);
+      const chipW = bw * (fighter.chip / 100), hpW = bw * (Math.min(100, fighter.hp) / 100);
+      ctx.fillStyle = 'rgba(230,238,250,.35)'; ctx.fillRect(fromLeft ? bx : bx + bw - chipW, hpY, chipW, hpH);
+      ctx.fillStyle = color; ctx.fillRect(fromLeft ? bx : bx + bw - hpW, hpY, hpW, hpH);
+      ctx.strokeStyle = 'rgba(190,210,235,.45)'; ctx.lineWidth = 1 / sc; ctx.strokeRect(bx, hpY, bw, hpH);
+      const meterY = top + 22 / sc, meterH = 3 / sc, meterX = x + 33 / sc, meterW = w - 41 / sc;
+      ctx.textAlign = fromLeft ? 'left' : 'right'; ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0';
+      ctx.fillText('SP', fromLeft ? x + 8 / sc : x + 25 / sc, meterY + 1.5 / sc);
+      ctx.fillStyle = '#080C14'; ctx.fillRect(meterX, meterY, meterW, meterH);
+      const meterFill = meterW * (fighter.meter / 100);
+      ctx.fillStyle = fighter.meter >= 100 ? (fighter.classProfile?.accent || '#F6C453') : '#A78BFA';
+      ctx.fillRect(fromLeft ? meterX : meterX + meterW - meterFill, meterY, meterFill, meterH);
     };
-    drawBar(x0, fighters[0].hp, fighters[0].chip, 1, 'YOU', fighters[0].meter);
-    drawBar(x1, fighters[1].hp, fighters[1].chip, 0, Game.mode === 'practice' ? 'DUMMY' : 'CPU', fighters[1].meter);
-    const dy = top + h / 2, r = 4 / sc, gapD = 12 / sc;
-    for (let i = 0; i < 2; i++) {
-      const won = Game.wins[i];
-      for (let d = 0; d < 2; d++) {
-        const filled = d < won;
-        ctx.beginPath();
-        if (i === 0) ctx.arc(x0 - gapD - d * (r * 2 + 6 / sc), dy, r, 0, Math.PI * 2);
-        else ctx.arc(x1 + w + gapD + d * (r * 2 + 6 / sc), dy, r, 0, Math.PI * 2);
-        ctx.fillStyle = filled ? (i === 0 ? '#3B82F6' : '#EF4444') : '#2A2D35';
-        ctx.fill(); ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc; ctx.stroke();
-      }
-    }
-    const tStr = Game.mode === 'practice' ? '∞' : String(Math.ceil(Math.max(0, Game.timer))).padStart(2, '0');
-    ctx.font = 'bold ' + 22 / sc + 'px system-ui,sans-serif';
+    drawBar(x0, fighters[0], '#54D6FF', 'PLAYER 01 · YOU', true);
+    drawBar(x1, fighters[1], '#FF6969', Game.mode === 'practice' ? 'TRAINING DUMMY' : 'CPU FIGHTER', false);
+    const timerW = 38 / sc;
+    Game.drawHudPanel(ctx, Game.W / 2 - timerW / 2, panelY, timerW, panelH, '#F6C453');
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round'; ctx.lineWidth = 4 / sc; ctx.strokeStyle = '#0E0F12';
-    ctx.strokeText(tStr, Game.W / 2, top + h / 2);
-    ctx.fillStyle = '#FFFFFF'; ctx.fillText(tStr, Game.W / 2, top + h / 2);
+    ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0';
+    ctx.fillText(Game.mode === 'practice' ? 'TRAIN' : 'RD ' + Game.round, Game.W / 2, top + 4 / sc);
+    const timer = Game.mode === 'practice' ? '∞' : String(Math.ceil(Math.max(0, Game.timer))).padStart(2, '0');
+    ctx.font = 'bold ' + 16 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFF0C2';
+    ctx.fillText(timer, Game.W / 2, top + 20 / sc);
     ctx.textBaseline = 'alphabetic';
+    const dy = top + h / 2, r = 4 / sc, gapD = 12 / sc;
+    for (let i = 0; i < 2; i++) for (let d = 0; d < 2; d++) {
+      const won = d < Game.wins[i];
+      ctx.fillStyle = won ? (i === 0 ? '#54D6FF' : '#FF6969') : '#273247';
+      ctx.fillRect(i === 0 ? x0 - gapD - d * (r * 2 + 3 / sc) - r : x1 + w + gapD + d * (r * 2 + 3 / sc) - r, dy - r, r * 2, r * 2);
+      ctx.strokeStyle = '#72819A'; ctx.lineWidth = 1 / sc;
+      ctx.strokeRect(i === 0 ? x0 - gapD - d * (r * 2 + 3 / sc) - r : x1 + w + gapD + d * (r * 2 + 3 / sc) - r, dy - r, r * 2, r * 2);
+    }
+  }
+  static drawHudPanel(ctx, x, y, w, h, accent = '#63D9FF') {
+    const sc = Game.scale || 1;
+    const cut = Math.min(6 / sc, h * .28, w * .08);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x + cut, y); ctx.lineTo(x + w - cut, y); ctx.lineTo(x + w, y + cut);
+    ctx.lineTo(x + w, y + h - cut); ctx.lineTo(x + w - cut, y + h); ctx.lineTo(x + cut, y + h);
+    ctx.lineTo(x, y + h - cut); ctx.lineTo(x, y + cut); ctx.closePath();
+    ctx.fillStyle = 'rgba(8,12,21,.92)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(116,137,170,.76)'; ctx.lineWidth = 1.5 / sc; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + cut + 2 / sc, y + 1.5 / sc);
+    ctx.lineTo(x + Math.min(w * .24, 54 / sc), y + 1.5 / sc);
+    ctx.strokeStyle = accent; ctx.lineWidth = 2 / sc; ctx.stroke();
+    ctx.restore();
+  }
+  static tryComboStun(attacker, target, hit, kind, confirmed, x, y) {
+    if (!confirmed || kind !== 'hit' || !target || target.hp <= 0 || attacker.comboHits < 2) return false;
+    const chance = hit.comboFinisher ? .40 : hit.comboLink ? .25 : 0;
+    if (!chance || Math.random() >= chance) return false;
+    target.stun = Math.min(72, Math.max(0, target.stun) + 18);
+    target.comboStunEffectT = .45;
+    target.flash = Math.max(target.flash, .16);
+    Fx.stun(x, y, chance);
+    return true;
+  }
+  static hudBarLayout(centerGapPx = 44) {
+    const sc = Game.scale || 1, gap = centerGapPx / sc;
+    const menu = document.getElementById('main-menu-button');
+    const menuVisible = menu && getComputedStyle(menu).display !== 'none';
+    const reservedLeft = menuVisible ? (menu.getBoundingClientRect().right + 8) / sc : 0;
+    const width = Math.min(Game.W * .4 - 14 / sc, Game.W / 2 - gap / 2 - reservedLeft);
+    const x0 = (Game.W - 2 * width - gap) / 2;
+    return {w:width,gap,x0,x1:x0 + width + gap};
   }
   static drawPracticeHud(ctx) {
-    const sc = Game.scale, w = 390 / sc, h = 82 / sc, x = (Game.W - w) / 2, y = Game.H * .17;
-    ctx.fillStyle = 'rgba(10,12,18,.78)'; ctx.strokeStyle = 'rgba(220,228,255,.45)'; ctx.lineWidth = 1.5 / sc;
-    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+    const sc = Game.scale, w = Math.min(410 / sc, Game.W * .82), h = 96 / sc, x = (Game.W - w) / 2, y = Game.H * .17;
+    Game.drawHudPanel(ctx, x, y, w, h, '#F6C453');
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold ' + 10 / sc + 'px system-ui,sans-serif'; ctx.fillStyle = '#AEB5C8';
-    ctx.fillText('PRACTICE · ' + (Game.practiceComboHits ? 'COMBO ACTIVE' : 'LAND A HIT TO START'), Game.W / 2, y + 11 / sc);
-    ctx.font = 'bold ' + 17 / sc + 'px system-ui,sans-serif'; ctx.fillStyle = '#FBBF24';
-    ctx.fillText(Game.practiceComboHits + ' HITS   ·   ' + Game.practiceComboDamage.toFixed(1) + ' DAMAGE', Game.W / 2, y + 31 / sc);
-    ctx.font = 'bold ' + 10 / sc + 'px system-ui,sans-serif'; ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(Game.practiceLastMove || 'LAST MOVE: —', Game.W / 2, y + 48 / sc);
-    ctx.font = 'bold ' + 8.5 / sc + 'px system-ui,sans-serif'; ctx.fillStyle = '#D7DCE9';
+    ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#6ECFFF';
+    ctx.fillText('COMBO TRAINING  //  ' + (Game.practiceComboHits ? 'LINK CONFIRMED' : 'LAND A HIT TO START'), Game.W / 2, y + 10 / sc);
+    ctx.font = 'bold ' + 17 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
+    ctx.fillText(String(Game.practiceComboHits).padStart(2, '0') + ' HITS   ·   ' + Game.practiceComboDamage.toFixed(1) + ' DMG', Game.W / 2, y + 30 / sc);
+    ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(Game.practiceLastMove || 'LAST LINK: —', Game.W / 2, y + 47 / sc);
+    ctx.font = 'bold ' + 7.5 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#B8C5D9';
     ctx.fillText('NORMAL ×3  ·  NORMAL → HEAVY  ·  HEAVY → NORMAL ×2', Game.W / 2, y + 63 / sc);
-    ctx.fillText('JUMP → NORMAL / HEAVY  ·  2+ HITS → SPECIAL (+25%)', Game.W / 2, y + 75 / sc);
+    ctx.fillText('JUMP → NORMAL / HEAVY  ·  2+ HITS → SUPER (+25%)', Game.W / 2, y + 75 / sc);
+    ctx.fillStyle = '#FFE16B';
+    ctx.fillText('LINK STUN 25%  ·  SUPER FINISHER STUN 40%', Game.W / 2, y + 87 / sc);
     ctx.textBaseline = 'alphabetic';
   }
   static drawArena(ctx) {
@@ -3395,108 +3933,170 @@ class Game {
   static drawTitle(ctx) {
     const sc = Game.scale;
     const compact = sc < 1.5;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold ' + (compact ? 26 : 40) / sc + 'px system-ui,sans-serif';
-    ctx.lineJoin = 'round'; ctx.lineWidth = 3 / sc; ctx.strokeStyle = '#0E0F12';
-    const titleY = Game.H * (compact ? .08 : .22);
-    ctx.strokeText('STICKMAN FIGHTER', Game.W / 2, titleY);
-    ctx.fillStyle = '#FFFFFF'; ctx.fillText('STICKMAN FIGHTER', Game.W / 2, titleY);
-
     const layout = Game.titleLayout();
     Game.titleBtns = layout.levels;
-    ctx.font = 'bold ' + 16 / sc + 'px system-ui,sans-serif';
+    const bg = Game.titleBackground;
+    if (bg.complete && bg.naturalWidth) {
+      const cover = Math.max(Game.W / bg.naturalWidth, Game.H / bg.naturalHeight);
+      const drawW = bg.naturalWidth * cover, drawH = bg.naturalHeight * cover;
+      ctx.save(); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(bg, (Game.W - drawW) / 2, (Game.H - drawH) / 2, drawW, drawH);
+      ctx.restore();
+    } else {
+      const fallback = ctx.createLinearGradient(0, 0, 0, Game.H);
+      fallback.addColorStop(0, '#081528'); fallback.addColorStop(1, '#11101B');
+      ctx.fillStyle = fallback; ctx.fillRect(0, 0, Game.W, Game.H);
+    }
+    const veil = ctx.createLinearGradient(0, 0, 0, Game.H);
+    veil.addColorStop(0, 'rgba(3,7,16,.48)'); veil.addColorStop(.48, 'rgba(3,7,16,.58)');
+    veil.addColorStop(1, 'rgba(3,7,16,.74)');
+    ctx.fillStyle = veil; ctx.fillRect(0, 0, Game.W, Game.H);
+    const centerShade = ctx.createRadialGradient(Game.W / 2, Game.H * .51, Game.W * .08, Game.W / 2, Game.H * .51, Game.W * .63);
+    centerShade.addColorStop(0, 'rgba(5,10,23,.10)'); centerShade.addColorStop(1, 'rgba(2,5,12,.52)');
+    ctx.fillStyle = centerShade; ctx.fillRect(0, 0, Game.W, Game.H);
+
+    // Keep the selected fighters visible behind the menu cards, as in the arcade mockup.
+    fighters.forEach(fighter => fighter.draw(ctx));
+
+    // Fine scanlines and clipped corner marks make the image read like an arcade display.
+    ctx.save(); ctx.globalAlpha = .022; ctx.fillStyle = '#A8DFFF';
+    for (let y = 2 / sc; y < Game.H; y += 6 / sc) ctx.fillRect(0, y, Game.W, 1 / sc);
+    ctx.restore();
+    const edge = 10 / sc, corner = 24 / sc;
+    ctx.strokeStyle = 'rgba(86,196,255,.72)'; ctx.lineWidth = 2 / sc;
+    for (const side of [-1, 1]) {
+      const x = side < 0 ? edge : Game.W - edge;
+      const inward = side < 0 ? 1 : -1;
+      ctx.beginPath(); ctx.moveTo(x, edge + corner); ctx.lineTo(x, edge); ctx.lineTo(x + inward * corner, edge); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, Game.H - edge - corner); ctx.lineTo(x, Game.H - edge); ctx.lineTo(x + inward * corner, Game.H - edge); ctx.stroke();
+    }
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const titleY = Game.H * (compact ? .08 : .22);
+    ctx.font = '900 ' + (compact ? 27 : 42) / sc + 'px ui-monospace,monospace';
+    ctx.lineJoin = 'miter'; ctx.lineWidth = 5 / sc; ctx.strokeStyle = '#07101F';
+    ctx.strokeText('STICKMAN FIGHTER', Game.W / 2, titleY + 2 / sc);
+    ctx.globalAlpha = .82; ctx.fillStyle = '#FF3CBA';
+    ctx.fillText('STICKMAN FIGHTER', Game.W / 2 - 2 / sc, titleY - 1 / sc);
+    ctx.globalAlpha = 1; ctx.fillStyle = '#F4FAFF';
+    ctx.shadowColor = '#22D3EE'; ctx.shadowBlur = 6 / sc;
+    ctx.fillText('STICKMAN FIGHTER', Game.W / 2, titleY);
+    ctx.shadowBlur = 0;
+    ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#8EDFFF';
+    ctx.fillText('INSERT COIN  ·  SELECT YOUR FIGHTER', Game.W / 2, titleY + (compact ? 24 : 34) / sc);
+
+    const drawSelectionArrow = (x, y, color) => {
+      ctx.fillStyle = color; ctx.beginPath();
+      ctx.moveTo(x, y); ctx.lineTo(x + 8 / sc, y + 5 / sc); ctx.lineTo(x, y + 10 / sc); ctx.closePath(); ctx.fill();
+    };
+    const drawClassPreview = (profile, x, y) => {
+      const unit = 1 / sc, color = profile.color, weapon = profile.weapon;
+      ctx.save(); ctx.translate(x, y); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#07101A'; ctx.lineWidth = 6 * unit;
+      const strokePath = (points) => {
+        ctx.beginPath(); ctx.moveTo(points[0][0] * unit, points[0][1] * unit);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * unit, points[i][1] * unit);
+        ctx.stroke();
+        ctx.strokeStyle = color; ctx.lineWidth = 3.5 * unit;
+        ctx.beginPath(); ctx.moveTo(points[0][0] * unit, points[0][1] * unit);
+        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * unit, points[i][1] * unit);
+        ctx.stroke(); ctx.strokeStyle = '#07101A'; ctx.lineWidth = 6 * unit;
+      };
+      ctx.fillStyle = '#07101A'; ctx.beginPath(); ctx.arc(0, -20 * unit, 6.5 * unit, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, -20 * unit, 5 * unit, 0, Math.PI * 2); ctx.fill();
+      strokePath([[0,-14],[0,4]]);
+      if (weapon === 'staff') {
+        strokePath([[0,-10],[-10,-4],[-12,3]]); strokePath([[0,-10],[10,-7],[13,-1]]);
+        strokePath([[0,4],[-8,15],[-10,25]]); strokePath([[0,4],[8,14],[10,25]]);
+        ctx.strokeStyle = '#E2B96F'; ctx.lineWidth = 3 * unit; ctx.beginPath(); ctx.moveTo(-20 * unit, 4 * unit); ctx.lineTo(22 * unit, -16 * unit); ctx.stroke();
+        ctx.strokeStyle = '#F5D69B'; ctx.lineWidth = 1 * unit; ctx.beginPath(); ctx.moveTo(-20 * unit, 4 * unit); ctx.lineTo(22 * unit, -16 * unit); ctx.stroke();
+      } else if (weapon === 'blade') {
+        strokePath([[0,-10],[-10,-6],[-13,0]]); strokePath([[0,-10],[10,-5],[13,-1]]);
+        strokePath([[0,4],[-8,15],[-10,25]]); strokePath([[0,4],[8,14],[10,25]]);
+        ctx.strokeStyle = '#DCEBFA'; ctx.lineWidth = 3 * unit; ctx.beginPath(); ctx.moveTo(13 * unit, -1 * unit); ctx.lineTo(24 * unit, -25 * unit); ctx.stroke();
+        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1 * unit; ctx.beginPath(); ctx.moveTo(13 * unit, -1 * unit); ctx.lineTo(24 * unit, -25 * unit); ctx.stroke();
+      } else {
+        strokePath([[0,-10],[-10,-5],[-14,-1]]); strokePath([[0,-10],[10,-8],[14,-4]]);
+        strokePath([[0,4],[-8,14],[-11,24]]); strokePath([[0,4],[9,14],[13,24]]);
+      }
+      ctx.restore();
+    };
     for (const t of layout.tabs) {
       const sel = t.id === Game.mode;
-      if (sel) {
-        ctx.fillStyle = '#3B82F6';
-        ctx.fillRect(t.x, t.y, t.w, t.h);
-        ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc; ctx.strokeRect(t.x, t.y, t.w, t.h);
-        ctx.fillStyle = '#FFFFFF';
-      } else {
-        ctx.fillStyle = 'rgba(42,45,53,0.55)';
-        ctx.fillRect(t.x, t.y, t.w, t.h);
-        ctx.strokeStyle = '#3A3F52'; ctx.lineWidth = 2 / sc; ctx.strokeRect(t.x, t.y, t.w, t.h);
-        ctx.fillStyle = '#FFFFFF';
-      }
+      const accent = sel ? '#FFD34D' : '#38BDF8';
+      Game.drawHudPanel(ctx, t.x, t.y, t.w, t.h, accent); ctx.shadowBlur = 0;
+      if (sel) { ctx.fillStyle = 'rgba(255,211,77,.10)'; ctx.fillRect(t.x + 2 / sc, t.y + 2 / sc, t.w - 4 / sc, t.h - 4 / sc); }
+      ctx.fillStyle = sel ? '#FFE08A' : '#D4E6FA';
+      ctx.font = 'bold ' + 14 / sc + 'px ui-monospace,monospace';
       ctx.fillText(t.label, t.x + t.w / 2, t.y + t.h / 2);
     }
-    ctx.font = 'bold ' + 18 / sc + 'px system-ui,sans-serif';
     for (const b of layout.levels) {
       const sel = Game.mode === 'beatemup' ? b.id === Game.arcadeLevel : b.id === Game.level;
-      ctx.fillStyle = sel ? '#FBBF24' : '#2A2D35';
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-      if (sel) {
-        ctx.strokeStyle = '#0E0F12'; ctx.lineWidth = 2 / sc; ctx.strokeRect(b.x, b.y, b.w, b.h);
-        ctx.fillStyle = '#0E0F12';
-      } else {
-        ctx.strokeStyle = 'rgba(245,245,245,.4)'; ctx.lineWidth = 2 / sc; ctx.strokeRect(b.x, b.y, b.w, b.h);
-        ctx.fillStyle = '#FFFFFF';
-      }
+      const accent = sel ? '#FFC936' : '#3679AE';
+      Game.drawHudPanel(ctx, b.x, b.y, b.w, b.h, accent); ctx.shadowBlur = 0;
+      if (sel) { ctx.fillStyle = 'rgba(255,201,54,.10)'; ctx.fillRect(b.x + 2 / sc, b.y + 2 / sc, b.w - 4 / sc, b.h - 4 / sc); }
+      ctx.fillStyle = sel ? '#FFE08A' : '#D4E6FA';
+      ctx.font = 'bold ' + 14 / sc + 'px ui-monospace,monospace';
       ctx.fillText(b.label || Game.levelLabels[b.id] || b.id, b.x + b.w / 2, b.y + b.h / 2);
     }
     if (Game.mode === 'beatemup') {
-      ctx.font = 'bold ' + 10 / sc + 'px system-ui,sans-serif';
-      ctx.fillStyle = '#D7DCE9';
-      ctx.fillText(ArcadeDiff[Game.arcadeLevel].details, Game.W / 2, Game.H * (compact ? .47 : .55), Game.W - 32 / sc);
+      const detailY = Game.H * (compact ? .47 : .55), detailW = Math.min(Game.W - 32 / sc, 500 / sc);
+      Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
+      ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#CDEBFF';
+      ctx.fillText(ArcadeDiff[Game.arcadeLevel].details, Game.W / 2, detailY, detailW - 18 / sc);
     } else if (Game.mode === 'practice') {
-      ctx.font = 'bold ' + 12 / sc + 'px system-ui,sans-serif';
-      ctx.fillStyle = '#D7DCE9';
-      ctx.fillText('STATIONARY DUMMY · NO TIMER · RESET WITH R OR BUTTON', Game.W / 2, Game.H * (compact ? .43 : .45), Game.W - 32 / sc);
+      const detailY = Game.H * (compact ? .43 : .45), detailW = Math.min(Game.W - 32 / sc, 440 / sc);
+      Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
+      ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#CDEBFF';
+      ctx.fillText('STATIONARY DUMMY · NO TIMER · RESET WITH R OR BUTTON', Game.W / 2, detailY, detailW - 18 / sc);
     }
     const start = layout.start;
     if (start) {
-      ctx.fillStyle = '#FBBF24'; ctx.fillRect(start.x, start.y, start.w, start.h);
-      ctx.strokeStyle = '#FFF1B8'; ctx.lineWidth = 2 / sc; ctx.strokeRect(start.x, start.y, start.w, start.h);
-      ctx.fillStyle = '#171923'; ctx.font = 'bold ' + 20 / sc + 'px system-ui,sans-serif';
+      ctx.shadowColor = '#FFB91F'; ctx.shadowBlur = 4 / sc;
+      Game.drawHudPanel(ctx, start.x, start.y, start.w, start.h, '#FFE06B'); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#FFE06B'; ctx.fillRect(start.x + 7 / sc, start.y + 7 / sc, start.w - 14 / sc, 2 / sc);
+      ctx.fillStyle = '#FFF0B6'; ctx.font = '900 ' + 17 / sc + 'px ui-monospace,monospace';
       ctx.fillText(start.label, start.x + start.w / 2, start.y + start.h / 2);
+      ctx.shadowBlur = 0;
     }
     for (const card of layout.classes || []) {
       const p = card.profile, selected = card.id === Game.selectedClass;
-      ctx.fillStyle = selected ? '#303A52' : '#191C26';
-      ctx.fillRect(card.x, card.y, card.w, card.h);
-      ctx.strokeStyle = selected ? p.accent : 'rgba(220,228,255,.32)'; ctx.lineWidth = (selected ? 3 : 1.5) / sc;
-      ctx.strokeRect(card.x, card.y, card.w, card.h);
+      const accent = selected ? p.accent : '#3D4B68';
+      Game.drawHudPanel(ctx, card.x, card.y, card.w, card.h, accent); ctx.shadowBlur = 0;
+      ctx.fillStyle = selected ? 'rgba(35,54,83,.68)' : 'rgba(5,10,20,.46)';
+      ctx.fillRect(card.x + 2 / sc, card.y + 4 / sc, card.w - 4 / sc, card.h - 6 / sc);
+      if (selected) drawSelectionArrow(card.x - 10 / sc, card.y + card.h * .5 - 5 / sc, p.accent);
+      const previewX = card.x + 23 / sc, previewY = card.y + card.h * .64;
+      drawClassPreview(p, previewX, previewY);
+      const textX = card.x + Math.min(51 / sc, card.w * .29), textW = card.w - (textX - card.x) - 7 / sc;
       if (card.menuCompact) {
         const menuAt = (small,large) => card.y + (compact ? small : large) / sc;
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(card.x + card.w / 2, menuAt(10,15), (compact ? 5 : 6) / sc, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min(12 / sc, card.w * .11) + 'px system-ui,sans-serif';
-        ctx.fillText(p.name, card.x + card.w / 2, menuAt(25,34));
-        ctx.fillStyle = '#D7DCE9'; ctx.font = Math.min(8 / sc, card.w * .075) + 'px system-ui,sans-serif';
-        ctx.fillText(p.role, card.x + card.w / 2, menuAt(38,51));
-        ctx.fillStyle = '#E7EAF2'; ctx.font = 'bold ' + Math.min(8 / sc, card.w * .075) + 'px system-ui,sans-serif';
-        ctx.fillText('NORMAL  ' + p.punchMove, card.x + card.w / 2, menuAt(57,73));
-        ctx.fillText('HEAVY  ' + p.kickMove, card.x + card.w / 2, menuAt(73,91));
-        ctx.fillStyle = selected ? p.accent : '#9AA3B7'; ctx.font = 'bold ' + 7 / sc + 'px system-ui,sans-serif';
-        ctx.fillText(selected ? 'SELECTED' : 'CHOOSE', card.x + card.w / 2, menuAt(95,105));
-        continue;
-      }
-      const at = (normal, small) => card.y + (compact ? small : normal) / sc;
-      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(card.x + card.w / 2, at(22,11), (compact ? 6 : 9) / sc, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 14) / sc, card.w * .11) + 'px system-ui,sans-serif';
-      ctx.fillText(p.name, card.x + card.w / 2, at(44,25));
-      ctx.fillStyle = '#C4C9D8'; ctx.font = Math.min((compact ? 7.5 : 9.5) / sc, card.w * .074) + 'px system-ui,sans-serif';
-      ctx.fillText(p.role, card.x + card.w / 2, at(57,37));
-      ctx.fillStyle = '#E7EAF2'; ctx.font = 'bold ' + Math.min((compact ? 7 : 8) / sc, card.w * .065) + 'px system-ui,sans-serif';
-      ctx.fillText('P  ' + p.punchMove, card.x + card.w / 2, at(72,51));
-      ctx.fillText('K  ' + p.kickMove, card.x + card.w / 2, at(86,63));
-      ctx.fillStyle = p.accent; ctx.font = 'bold ' + Math.min((compact ? 7.5 : 9) / sc, card.w * .07) + 'px system-ui,sans-serif';
-      ctx.fillText(p.super, card.x + card.w / 2, at(101,75));
-      ctx.fillStyle = '#D7DCE9'; ctx.font = Math.min((compact ? 7 : 8) / sc, card.w * .065) + 'px system-ui,sans-serif';
-      if (compact) {
-        ctx.fillText('MOVE ' + Math.round(p.speed * 100) + '  PUNCH ' + Math.round(p.punch * 100) + '  KICK ' + Math.round(p.kick * 100), card.x + card.w / 2, at(119,91));
-        ctx.fillText('METER ' + Math.round(p.meter * 100) + '  SUPER ' + Math.round(p.superPower * 100) + '  DASH ' + Math.round(p.dash / .14 * 100), card.x + card.w / 2, at(133,104));
+        ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min(11 / sc, textW * .11) + 'px ui-monospace,monospace';
+        ctx.fillText(p.name, textX + textW / 2, menuAt(22,31), textW);
+        ctx.fillStyle = '#E7F1FF'; ctx.font = 'bold ' + Math.min(8 / sc, textW * .075) + 'px ui-monospace,monospace';
+        ctx.fillText('N · ' + p.punchMove, textX + textW / 2, menuAt(43,56), textW);
+        ctx.fillText('H · ' + p.kickMove, textX + textW / 2, menuAt(59,76), textW);
+        ctx.fillStyle = p.accent; ctx.font = 'bold ' + Math.min(8 / sc, textW * .075) + 'px ui-monospace,monospace';
+        ctx.fillText('S · ' + p.super, textX + textW / 2, menuAt(75,96), textW);
       } else {
-        ctx.fillText('MOVE ' + Math.round(p.speed * 100) + '%  PUNCH ' + Math.round(p.punch * 100) + '%', card.x + card.w / 2, at(119,91));
-        ctx.fillText('KICK ' + Math.round(p.kick * 100) + '%  METER ' + Math.round(p.meter * 100) + '%', card.x + card.w / 2, at(133,104));
-        ctx.fillText('SUPER ' + Math.round(p.superPower * 100) + '%  DASH ' + Math.round(p.dash / .14 * 100) + '%', card.x + card.w / 2, at(147,117));
+        const nameY = card.y + (compact ? 25 : 34) / sc;
+        ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 14) / sc, textW * .11) + 'px ui-monospace,monospace';
+        ctx.fillText(p.name, textX + textW / 2, nameY, textW);
+        const rowGap = (compact ? 17 : 22) / sc, firstY = nameY + (compact ? 19 : 25) / sc;
+        ctx.fillStyle = '#E7F1FF'; ctx.font = 'bold ' + Math.min((compact ? 8 : 9) / sc, textW * .075) + 'px ui-monospace,monospace';
+        ctx.fillText('N · ' + p.punchMove, textX + textW / 2, firstY, textW);
+        ctx.fillText('H · ' + p.kickMove, textX + textW / 2, firstY + rowGap, textW);
+        ctx.fillStyle = p.accent; ctx.fillText('S · ' + p.super, textX + textW / 2, firstY + rowGap * 2, textW);
       }
     }
-    ctx.globalAlpha = .8; ctx.fillStyle = '#FFFFFF';
-    ctx.font = (Game.mode === 'beatemup' ? 13 : 16) / sc + 'px system-ui,sans-serif';
+    ctx.globalAlpha = .94; ctx.fillStyle = '#B9D6F2';
+    ctx.font = 'bold ' + 8.5 / sc + 'px ui-monospace,monospace';
     const footer = Game.mode === 'beatemup' ? '10-STAGE STORY • Choose difficulty and fighter • Press START RUN'
       : Game.mode === 'practice' ? 'PRACTICE MODE • Test your combos on a stationary dummy'
         : 'Choose a fighter and difficulty • Press START FIGHT';
-    ctx.fillText(footer, Game.W / 2, Game.H * .97);
+    const footerW = Math.min(Game.W - 28 / sc, 580 / sc), footerY = Game.H * .97 - 8 / sc;
+    Game.drawHudPanel(ctx, Game.W / 2 - footerW / 2, footerY - 9 / sc, footerW, 18 / sc, '#25BFEF');
+    ctx.fillText(footer, Game.W / 2, footerY);
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
@@ -3516,13 +4116,16 @@ class Game {
       if (alpha > .72) {
         ctx.globalAlpha = Math.min(1, (alpha - .72) / .28);
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.font = 'bold ' + 22 / Game.scale + 'px system-ui,sans-serif';
-        ctx.fillStyle = '#FBBF24';
-        ctx.fillText('STAGE ' + BeatEmUp.stageTransitionStage, Game.W / 2, Game.H / 2);
+        const sc = Game.scale, panelW = 240 / sc, panelH = 62 / sc;
+        Game.drawHudPanel(ctx, Game.W / 2 - panelW / 2, Game.H / 2 - panelH / 2, panelW, panelH, '#F6C453');
+        ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0';
+        ctx.fillText('CAMPAIGN ROUTE', Game.W / 2, Game.H / 2 - 10 / sc);
+        ctx.font = 'bold ' + 22 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
+        ctx.fillText('STAGE ' + String(BeatEmUp.stageTransitionStage).padStart(2, '0'), Game.W / 2, Game.H / 2 + 14 / sc);
         ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
       }
     }
-    } else {
+    } else if (Game.phase !== 'title') {
       Game.drawArena(ctx);
       fighters.forEach(f => f.draw(ctx));
       Fx.draw(ctx);
@@ -3532,18 +4135,28 @@ class Game {
     if (Game.mode !== 'beatemup') Game.bars(ctx);
     if (Game.mode === 'practice') Game.drawPracticeHud(ctx);
     if (Game.banner && BeatEmUp.stageTransitionT <= 0) {
-      ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-      ctx.font = 'bold ' + (Game.banner === 'Fight!' ? 56 : 42) / Game.scale + 'px system-ui,sans-serif';
-      ctx.lineJoin = 'round'; ctx.lineWidth = 5 / Game.scale; ctx.strokeStyle = '#0E0F12';
-      ctx.strokeText(Game.banner, Game.W / 2, Game.H * .42);
+      const sc = Game.scale, bannerY = Game.H * .42, bannerW = (Game.banner === 'Fight!' ? 210 : 260) / sc;
+      const bannerH = Game.matchOver ? 74 / sc : 56 / sc;
+      Game.drawHudPanel(ctx, Game.W / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, Game.matchOver ? '#F6C453' : '#6ECFFF');
+      ctx.fillStyle = '#FFF0C2'; ctx.textAlign = 'center';
+      ctx.font = 'bold ' + (Game.banner === 'Fight!' ? 28 : 21) / sc + 'px ui-monospace,monospace';
       ctx.fillText(Game.banner, Game.W / 2, Game.H * .42);
       if (Game.matchOver && Game.mode !== 'beatemup') {
         const tip = Game.mode === 'beatemup' ? 'Tap to retry' : 'Tap for title';
-        ctx.font = 16 / Game.scale + 'px system-ui,sans-serif';
-        ctx.lineWidth = 3 / Game.scale;
-        ctx.strokeText(tip, Game.W / 2, Game.H * .42 + 40 / Game.scale);
-        ctx.fillText(tip, Game.W / 2, Game.H * .42 + 40 / Game.scale);
+        ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#6ECFFF';
+        ctx.fillText(tip.toUpperCase(), Game.W / 2, Game.H * .42 + 22 / sc);
       }
+    }
+    if (Game.paused) {
+      const sc = Game.scale || 1, w = Math.min(Game.W * .76, 300 / sc), h = 106 / sc;
+      ctx.fillStyle = 'rgba(4,7,14,.62)'; ctx.fillRect(0, 0, Game.W, Game.H);
+      Game.drawHudPanel(ctx, Game.W / 2 - w / 2, Game.H / 2 - h / 2, w, h, '#F6C453');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold ' + 24 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
+      ctx.fillText('PAUSED', Game.W / 2, Game.H / 2 - 13 / sc);
+      ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#C7D4E8';
+      ctx.fillText('OPEN THE TOP-LEFT MENU TO RESUME', Game.W / 2, Game.H / 2 + 18 / sc);
+      ctx.textBaseline = 'alphabetic';
     }
   }
 }
