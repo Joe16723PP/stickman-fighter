@@ -75,6 +75,10 @@ class Sfx {
     else if (name === 'super-charge') { Sfx.tone(95 * pitch, 260 * pitch, .2, 'sawtooth', .055); setTimeout(() => Sfx.tone(240 * pitch, 520 * pitch, .13, 'triangle', .045), 95); }
     else if (name === 'super-dash') Sfx.tone(620 * pitch, 130 * pitch, .16, 'sawtooth', .075);
     else if (name === 'super-hit') { Sfx.tone(105 * pitch, 32 * pitch, .26, 'sawtooth', .1); setTimeout(() => Sfx.tone(390 * pitch, 80 * pitch, .18, 'triangle', .06), 55); }
+    else if (name === 'player-normal-hit') { Sfx.tone(185 * pitch, 72 * pitch, .095, 'triangle', .075); Sfx.tone(680 * pitch, 240 * pitch, .045, 'square', .025); }
+    else if (name === 'player-heavy-hit') { Sfx.tone(105 * pitch, 38 * pitch, .19, 'sawtooth', .11); setTimeout(() => Sfx.tone(75 * pitch, 32 * pitch, .12, 'triangle', .065), 35); }
+    else if (name === 'player-special-hit') { Sfx.tone(82 * pitch, 28 * pitch, .31, 'sawtooth', .13); setTimeout(() => Sfx.tone(520 * pitch, 150 * pitch, .2, 'square', .075), 45); setTimeout(() => Sfx.tone(260 * pitch, 90 * pitch, .18, 'triangle', .06), 115); }
+    else if (name === 'player-die') { Sfx.tone(190 * pitch, 42 * pitch, .42, 'sawtooth', .12); setTimeout(() => Sfx.tone(92 * pitch, 30 * pitch, .34, 'triangle', .085), 115); }
     else if (name === 'critical') { Sfx.tone(520 * pitch, 170 * pitch, .15, 'square', .07); setTimeout(() => Sfx.tone(760 * pitch, 320 * pitch, .12, 'triangle', .055), 45); }
     else if (name === 'heal') { Sfx.tone(540 * pitch, 780 * pitch, .12, 'sine', .055); setTimeout(() => Sfx.tone(760 * pitch, 1040 * pitch, .14, 'sine', .045), 75); }
     else if (name === 'powerup') { Sfx.tone(300 * pitch, 680 * pitch, .16, 'square', .06); setTimeout(() => Sfx.tone(620 * pitch, 980 * pitch, .18, 'triangle', .05), 80); }
@@ -95,6 +99,17 @@ class Input {
   static bind() {
     Input.pad.forEach(p => Input.acts.forEach(a => p[a] = 0));
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
+    // Safari can still apply its double-tap and gesture zoom despite the viewport
+    // settings. Keep zoom gestures from scaling the full-screen game surface.
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', e => {
+      const now = performance.now();
+      if (now - lastTouchEnd < 320 && e.cancelable) e.preventDefault();
+      lastTouchEnd = now;
+    }, { passive: false });
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
+      document.addEventListener(type, e => e.preventDefault(), { passive: false });
+    });
     const on = (e, down) => {
       if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
       if (down) Sfx.unlock();
@@ -136,8 +151,9 @@ class Input {
     }
     const actionMenu = document.getElementById('game-action-menu');
     const pauseBtn = document.getElementById('pause-game-button');
+    const fullscreenBtn = document.getElementById('fullscreen-button');
     const titleBtn = document.getElementById('return-main-menu-button');
-    [actionMenu, pauseBtn, titleBtn].filter(Boolean).forEach(el => {
+    [actionMenu, pauseBtn, fullscreenBtn, titleBtn].filter(Boolean).forEach(el => {
       el.addEventListener('pointerdown', e => { e.stopPropagation(); Sfx.unlock(); });
     });
     if (pauseBtn) pauseBtn.addEventListener('click', e => {
@@ -146,6 +162,12 @@ class Input {
     if (titleBtn) titleBtn.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation(); Game.goTitle();
     });
+    if (fullscreenBtn) fullscreenBtn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation(); Game.toggleFullscreen();
+    });
+    document.addEventListener('fullscreenchange', () => Game.syncFullscreenButton());
+    document.addEventListener('webkitfullscreenchange', () => Game.syncFullscreenButton());
+    Game.syncFullscreenButton();
     if (actionMenu) actionMenu.addEventListener('click', e => e.stopPropagation());
     document.addEventListener('pointerdown', e => {
       if (!e.target.closest('#main-menu-button, #game-action-menu')) Game.closeActionMenu();
@@ -1249,6 +1271,19 @@ class Fighter {
     Fx.dodge(this.x - cameraX, Game.GROUND + this.y - 34 * Fighter.S, this.classProfile);
     Sfx.play('dodge', this.classProfile);
   }
+  moveGround(dt, slot, speedScale = 1) {
+    let ax = 0;
+    if (Input.held(slot, 'left')) ax--;
+    if (Input.held(slot, 'right')) ax++;
+    const targetVx = ax * Fighter.RUN_SPEED * speedScale;
+    const reversing = ax !== 0 && this.vx * ax < 0;
+    const accel = ax === 0 ? Fighter.GROUND_BRAKE : reversing ? Fighter.TURN_ACCEL : Fighter.GROUND_ACCEL;
+    const deltaV = targetVx - this.vx;
+    this.vx += Math.sign(deltaV) * Math.min(Math.abs(deltaV), accel * dt);
+    if (Math.abs(this.vx) < 4 && ax === 0) this.vx = 0;
+    this.x += this.vx * dt;
+    return { ax, speedRatio: Math.min(1, Math.abs(this.vx) / Fighter.RUN_SPEED) };
+  }
   update(dt, other, slot) {
     this.comboTimer = Math.max(0, this.comboTimer - dt);
     this.attackBoostT = Math.max(0, this.attackBoostT - dt);
@@ -1329,6 +1364,7 @@ class Fighter {
         const step = this.dashLeft / Math.max(1, a.su + a.ac - this.atkT + 1);
         const move = Math.min(step, this.dashLeft);
         this.x += this.face * move; this.dashLeft -= move; this.vx = 0;
+        this.moveGround(dt, slot, .18);
         const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
         Fx.superTrail(this.x - cameraX, Game.GROUND + this.y - 58 * Fighter.S, this.face, this.classProfile);
       } else if (airAttack) {
@@ -1342,7 +1378,7 @@ class Fighter {
         this.vx += Math.sign(deltaV) * Math.min(Math.abs(deltaV), accel * dt);
         if (Math.abs(this.vx) < 4 && ax === 0) this.vx = 0;
         this.x += this.vx * dt;
-      } else this.vx = 0;
+      } else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
       const landed = this.landCheck(wasAir);
@@ -1368,21 +1404,12 @@ class Fighter {
     }
     this.blocking = Input.held(slot, 'block') && this.grounded ? 1 : 0;
     if (this.blocking) {
-      this.vx = 0; this.state = 'block';
+      this.moveGround(dt, slot, .38); this.state = 'block';
       this.aim('block', Pose.block(this.classProfile), .08);
       this.tickPose(dt);
       this.face = other.x >= this.x ? 1 : -1; this.clamp(other); return;
     }
-    let ax = 0;
-    if (Input.held(slot, 'left')) ax -= 1;
-    if (Input.held(slot, 'right')) ax += 1;
-    const targetVx = ax * Fighter.RUN_SPEED;
-    const reversing = ax !== 0 && this.vx * ax < 0;
-    const accel = ax === 0 ? Fighter.GROUND_BRAKE : reversing ? Fighter.TURN_ACCEL : Fighter.GROUND_ACCEL;
-    const deltaV = targetVx - this.vx;
-    this.vx += Math.sign(deltaV) * Math.min(Math.abs(deltaV), accel * dt);
-    if (Math.abs(this.vx) < 4 && ax === 0) this.vx = 0;
-    const speedRatio = Math.min(1, Math.abs(this.vx) / Fighter.RUN_SPEED);
+    const { ax, speedRatio } = this.moveGround(dt, slot);
     if (this.grounded && (ax !== 0 || speedRatio > .04)) {
       this.walkT += dt * speedRatio;
       this.state = 'walk';
@@ -1401,7 +1428,7 @@ class Fighter {
     else if (!this.grounded && kickPressed) this.startAtk('airKick');
     if (this.atk) { this.driveAtkPose(dt); this.tickPose(dt); this.clamp(other); return; }
     const wasAir = this.y < 0 || !this.grounded;
-    this.vy += 1600 * dt; this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vy += 1600 * dt; this.y += this.vy * dt;
     if (this.landCheck(wasAir)) { if (this.state === 'jump') this.state = 'idle'; }
     else if (this.y < 0) this.state = 'jump';
     this.face = other.x >= this.x ? 1 : -1;
@@ -1523,7 +1550,14 @@ class Fighter {
     }
   }
   startRagdoll(from, lethal = false) {
-    if (this.ragdollActive) { if (lethal) this.ragdollKO = true; return; }
+    if (this.ragdollActive) {
+      if (lethal && !this.ragdollKO) {
+        this.ragdollKO = true;
+        if (this.playerControlled) Sfx.play('player-die', this.classProfile);
+      }
+      return;
+    }
+    if (lethal && this.playerControlled) Sfx.play('player-die', this.classProfile);
     this.ragdollActive = true; this.ragdollKO = lethal; this.ragdollElapsed = 0; this.koT = 0;
     this.ragdollFrom = Pose.copy(this.pose);
     this.ragdollDirection = Math.sign(this.x - (from?.x ?? this.x + this.face)) || -this.face;
@@ -2811,11 +2845,13 @@ class BeatEmUp {
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && !attacker.f.specialEffectDone) {
           Fx.special(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile);
-          Sfx.play('super-hit', attacker.f.classProfile);
+          Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile);
           attacker.f.specialEffectDone = 1;
         }
         else if (kind === 'block') Fx.blocked(cx, cy);
         else if (!criticalHit) Fx.hit(cx, cy);
+        if (attacker.role === 'player' && !hit.special && kind === 'hit' && damage > 0)
+          Sfx.play(attacker.f.state === 'kick' || attacker.f.state === 'airKick' ? 'player-heavy-hit' : 'player-normal-hit', attacker.f.classProfile);
         Game.stop = .05; Game.shake = .1; Game.shMag = 3;
         if (kind === 'hit') target.f.vy = -100;
         if (attacker.role === 'player') {
@@ -3400,6 +3436,30 @@ class Game {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     }).filter(btn => btn.w > 0 && btn.h > 0);
   }
+  static syncFullscreenButton() {
+    const button = document.getElementById('fullscreen-button');
+    if (!button) return;
+    const supported = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled
+      || document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+    const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    const label = button.querySelector('span');
+    button.disabled = !supported;
+    button.setAttribute('aria-label', !supported ? 'Fullscreen is not supported in this browser'
+      : active ? 'Exit fullscreen' : 'Enter fullscreen');
+    if (label) label.textContent = !supported ? 'FULLSCREEN N/A' : active ? 'EXIT FULLSCREEN' : 'FULLSCREEN';
+  }
+  static toggleFullscreen() {
+    const doc = document;
+    const root = doc.documentElement;
+    const active = doc.fullscreenElement || doc.webkitFullscreenElement;
+    const change = active ? (doc.exitFullscreen || doc.webkitExitFullscreen)
+      : (root.requestFullscreen || root.webkitRequestFullscreen);
+    if (!change) return;
+    try {
+      const result = active ? change.call(doc) : change.call(root);
+      if (result && typeof result.catch === 'function') result.catch(() => Game.syncFullscreenButton());
+    } catch (e) { Game.syncFullscreenButton(); }
+  }
   static canPause() {
     return Game.phase !== 'title' && !Game.matchOver
       && !(Game.mode === 'beatemup' && BeatEmUp.stageOver);
@@ -3462,9 +3522,9 @@ class Game {
     if (Game.mode === 'beatemup') {
       const classCount = Object.keys(FighterClasses).length;
       const gap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
-      const cardH = (compact ? 118 : 166) / sc;
+      const cardH = (compact ? 104 : 166) / sc;
       const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
-      const y = Game.H * (compact ? .59 : .67) - cardH / 2;
+      const y = Game.H * (compact ? .64 : .67) - cardH / 2;
       const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
       const levelGap = 8 / sc, levelW = Math.min(140 / sc, (Game.W - 48 / sc - levelGap * 2) / 3), levelH = 40 / sc;
       const levelTotal = levelW * 3 + levelGap * 2, levelX = (Game.W - levelTotal) / 2;
@@ -3662,9 +3722,15 @@ class Game {
       const criticalHit = !!box.critical && kind !== 'block';
       Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
       if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
-      if (box.special && !me.specialEffectDone) { Fx.special(cx, cy, me.classProfile); Sfx.play('super-hit', me.classProfile); me.specialEffectDone = 1; }
+      if (box.special && !me.specialEffectDone) {
+        Fx.special(cx, cy, me.classProfile);
+        Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile);
+        me.specialEffectDone = 1;
+      }
       else if (kind === 'block') Fx.blocked(cx, cy);
       else if (!criticalHit) Fx.hit(cx, cy);
+      if (me.playerControlled && !box.special && kind === 'hit' && damage > 0)
+        Sfx.play(me.state === 'kick' || me.state === 'airKick' ? 'player-heavy-hit' : 'player-normal-hit', me.classProfile);
       Game.stop = .06; Game.shake = .12; Game.shMag = 4;
       if (kind === 'hit') foe.vy = -120;
       if (kind === 'block' && box.special) Bot.lastBlockKind = 'special';
@@ -4040,10 +4106,14 @@ class Game {
       ctx.fillText(b.label || Game.levelLabels[b.id] || b.id, b.x + b.w / 2, b.y + b.h / 2);
     }
     if (Game.mode === 'beatemup') {
-      const detailY = Game.H * (compact ? .47 : .55), detailW = Math.min(Game.W - 32 / sc, 500 / sc);
-      Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
-      ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#CDEBFF';
-      ctx.fillText(ArcadeDiff[Game.arcadeLevel].details, Game.W / 2, detailY, detailW - 18 / sc);
+      // At phone heights there is no clear row between difficulty and fighter
+      // cards; omitting this secondary line keeps it from showing through cards.
+      if (!compact) {
+        const detailY = Game.H * .55, detailW = Math.min(Game.W - 32 / sc, 500 / sc);
+        Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
+        ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#CDEBFF';
+        ctx.fillText(ArcadeDiff[Game.arcadeLevel].details, Game.W / 2, detailY, detailW - 18 / sc);
+      }
     } else if (Game.mode === 'practice') {
       const detailY = Game.H * (compact ? .43 : .45), detailW = Math.min(Game.W - 32 / sc, 440 / sc);
       Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
@@ -4134,7 +4204,8 @@ class Game {
     if (Game.phase === 'title') { Game.drawTitle(ctx); return; }
     if (Game.mode !== 'beatemup') Game.bars(ctx);
     if (Game.mode === 'practice') Game.drawPracticeHud(ctx);
-    if (Game.banner && BeatEmUp.stageTransitionT <= 0) {
+    const arcadeIntroPanelActive = Game.mode === 'beatemup' && Game.phase === 'intro' && BeatEmUp.eventT > 0;
+    if (Game.banner && BeatEmUp.stageTransitionT <= 0 && !arcadeIntroPanelActive) {
       const sc = Game.scale, bannerY = Game.H * .42, bannerW = (Game.banner === 'Fight!' ? 210 : 260) / sc;
       const bannerH = Game.matchOver ? 74 / sc : 56 / sc;
       Game.drawHudPanel(ctx, Game.W / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, Game.matchOver ? '#F6C453' : '#6ECFFF');
