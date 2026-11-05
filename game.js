@@ -1446,8 +1446,7 @@ class Fighter {
     this.clamp(other);
   }
   clamp() {
-    // Lane only — button clearance is guaranteed by ending the lane early enough
-    // that drawNudgeX stays 0 for every visual pose (controls stay screen-edge pinned).
+    // Mode movement bounds are applied here; Beat ’em up allows fighters beneath UI controls.
     this.x = Math.max(Game.minX, Math.min(Game.maxX, this.x));
     const arcadeSize = Game.mode === 'beatemup' ? BeatEmUp.baseS / 1.5 : 1;
     const hitW = 42 * arcadeSize, hitH = 135 * arcadeSize;
@@ -1597,6 +1596,7 @@ class Fighter {
   }
   /** Draw-only X nudge keeps visual bones clear of overlapping touch controls. */
   drawNudgeX() {
+    if (Game.mode === 'beatemup') return 0;
     const b = this.bones();
     const sc = Game.scale, ox = Game.ox, oy = Game.oy, c = 4;
     const cameraX = Game.mode === 'beatemup' && Game.phase !== 'title' ? BeatEmUp.cameraX : 0;
@@ -2024,14 +2024,17 @@ class Fx {
     }
   }
   static update(dt) {
-    for (const e of Fx.list) {
+    let write = 0;
+    for (let i = 0; i < Fx.list.length; i++) {
+      const e = Fx.list[i];
       e.life -= dt;
       if (e.kind === 'damage') e.y -= 30 * dt;
       if (e.kind === 'combo') e.y -= 42 * dt;
       if (e.kind === 'stun') e.y -= 24 * dt;
       if (e.kind === 'ring') e.radius = e.r0 + (e.r1 - e.r0) * (1 - e.life / e.max);
+      if (e.life > 0) Fx.list[write++] = e;
     }
-    Fx.list = Fx.list.filter(e => e.life > 0);
+    Fx.list.length = write;
   }
   static draw(ctx) {
     const sc = Game.scale;
@@ -2192,19 +2195,10 @@ class BeatEmUp {
   static depthClose(a, b) {
     return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= BeatEmUp.DEPTH_HIT_PX;
   }
-  /** Horizontal screen bounds that avoid only controls which overlap this fighter vertically. */
+  /** Beat ’em up fighters may pass beneath the overlaid touch controls. */
   static horizontalScreenBounds(entry) {
-    const sc = Game.scale || 1, ox = Game.ox || 0, oy = Game.oy || 0;
-    const b = entry.f.bones();
-    const top = oy + b.y0 * sc, bottom = oy + b.y1 * sc;
-    const mid = ox + Game.W * sc * .5;
-    let left = ox + 4, right = ox + Game.W * sc - 4;
-    for (const btn of Game.btns) {
-      if (top >= btn.y + btn.h + 4 || bottom <= btn.y - 4) continue;
-      if (btn.x + btn.w * .5 < mid) left = Math.max(left, btn.x + btn.w + 4);
-      else right = Math.min(right, btn.x - 4);
-    }
-    return { left, right };
+    const ox = Game.ox || 0, width = Game.W * (Game.scale || 1);
+    return { left: ox + width * .02, right: ox + width * .98 };
   }
   /** Pull fighter left so bones().x1 stays inside the active screen bound. */
   static clampFighterRight(entry) {
@@ -3067,7 +3061,9 @@ class BeatEmUp {
       ctx.globalAlpha = 1;
       const drawTag = entry.f.tag;
       const showAlert = entry.ai && (entry.ai.tellT > 0 || entry.ai.phaseCallout > 0);
-      if (showAlert) entry.f.tag = '';
+      // Repeated rookie/regular labels stack into noise when a wave crowds
+      // around the player. Keep identity labels for the player and boss only.
+      if (showAlert || (entry.kind !== 'boss' && entry.role !== 'player')) entry.f.tag = '';
       entry.f.draw(ctx);
       entry.f.tag = drawTag;
       if (entry.ai && entry.ai.tellT > 0) {
@@ -3102,22 +3098,26 @@ class BeatEmUp {
   static bars(ctx) {
     const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
     const top = (12 + safe) / sc, h = 12 / sc, {w,gap,x0} = Game.hudBarLayout(70);
-    const me = fighters[0], accent = me.classProfile?.accent || '#63D9FF';
+    const me = fighters[0], accent = me.hp <= 25 ? '#FF655F' : (me.classProfile?.accent || '#63D9FF');
     const panelH = 34 / sc, panelY = top - 2 / sc;
     Game.drawHudPanel(ctx, x0, panelY, w, panelH, accent);
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#DCE8F5';
-    ctx.fillText('PLAYER 01 · HP', x0 + 9 / sc, top + 4 / sc);
-    const barX = x0 + 9 / sc, barY = top + 10 / sc, barW = w - 18 / sc, barH = 8 / sc;
-    ctx.fillStyle = '#080C14'; ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = 'rgba(230,238,250,.35)'; ctx.fillRect(barX, barY, barW * (me.chip / 100), barH);
-    ctx.fillStyle = me.color; ctx.fillRect(barX, barY, barW * (Math.min(100, me.hp) / 100), barH);
-    ctx.strokeStyle = 'rgba(190,210,235,.45)'; ctx.lineWidth = 1 / sc; ctx.strokeRect(barX, barY, barW, barH);
-    const meterY = top + 22 / sc, meterX = x0 + 28 / sc, meterW = w - 37 / sc, meterH = 3 / sc;
-    ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0'; ctx.fillText('SP', x0 + 9 / sc, meterY + 1.5 / sc);
-    ctx.fillStyle = '#080C14'; ctx.fillRect(meterX, meterY, meterW, meterH);
-    ctx.fillStyle = me.meter >= 100 ? accent : '#A78BFA'; ctx.fillRect(meterX, meterY, meterW * (me.meter / 100), meterH);
-    ctx.strokeStyle = 'rgba(190,210,235,.32)'; ctx.lineWidth = 1 / sc; ctx.strokeRect(meterX, meterY, meterW, meterH);
+    ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = me.hp <= 25 ? '#FFD5D2' : '#DCE8F5';
+    const badgeX = x0 + 14 / sc, badgeY = top + 15 / sc;
+    ctx.fillStyle = '#0B1422'; ctx.beginPath(); ctx.arc(badgeX, badgeY, 9 / sc, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = accent; ctx.lineWidth = 1.5 / sc; ctx.stroke();
+    ctx.fillStyle = me.color; ctx.beginPath(); ctx.arc(badgeX, badgeY - 2 / sc, 3 / sc, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(badgeX, badgeY + 6 / sc, 4.5 / sc, Math.PI, 0); ctx.fill();
+    ctx.textAlign = 'center'; ctx.font = 'bold ' + 5 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('1', badgeX + 6 / sc, badgeY - 6 / sc);
+    ctx.textAlign = 'left'; ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#DCE8F5';
+    const infoX = x0 + 27 / sc;
+    ctx.fillText('PLAYER 01 · HP ' + Math.ceil(me.hp) + '/100', infoX, top + 4 / sc);
+    const barX = infoX, barY = top + 10 / sc, barW = w - 36 / sc, barH = 8 / sc;
+    Game.drawHudProgress(ctx, barX, barY, barW, barH, Math.min(100, me.hp) / 100, me.color, me.chip / 100);
+    const meterY = top + 22 / sc, meterX = infoX + 31 / sc, meterW = w - 67 / sc, meterH = 3 / sc;
+    ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0'; ctx.fillText('SP ' + Math.floor(me.meter) + '%', infoX, meterY + 1.5 / sc);
+    Game.drawHudProgress(ctx, meterX, meterY, meterW, meterH, me.meter / 100, me.meter >= 100 ? accent : '#A78BFA');
 
     const timerW = 62 / sc, timerX = Game.W / 2 - timerW / 2;
     Game.drawHudPanel(ctx, timerX, panelY, timerW, panelH, Game.timer <= 30 ? '#FF655F' : '#F6C453');
@@ -3131,7 +3131,15 @@ class BeatEmUp {
     ctx.textAlign = 'center'; ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#D8E6F6';
     ctx.fillText('STAGE ' + String(BeatEmUp.stage).padStart(2, '0'), stageX + stageW / 2, top + 8 / sc);
     ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#6ECFFF';
-    ctx.fillText(BeatEmUp.wave <= 3 ? 'WAVE ' + BeatEmUp.wave + '/' + BeatEmUp.waveTotal : 'BOSS ROUND', stageX + stageW / 2, top + 22 / sc);
+    const waveLabel = BeatEmUp.wave <= 3 ? 'WAVE ' + BeatEmUp.wave + '/' + BeatEmUp.waveTotal : 'BOSS ROUND';
+    ctx.fillText(waveLabel, stageX + stageW / 2 - 11 / sc, top + 22 / sc);
+    if (BeatEmUp.wave <= 3) {
+      const dotGap = 7 / sc, dotR = 1.8 / sc, dotX = stageX + stageW - 16 / sc;
+      for (let i = 1; i <= BeatEmUp.waveTotal; i++) {
+        ctx.beginPath(); ctx.arc(dotX + (i - BeatEmUp.waveTotal) * dotGap, top + 22 / sc, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = i <= BeatEmUp.wave ? '#6ECFFF' : 'rgba(174,187,208,.45)'; ctx.fill();
+      }
+    }
 
     const infoY = top + 43 / sc;
     ctx.textBaseline = 'middle'; ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace';
@@ -3283,6 +3291,7 @@ class Game {
   static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60;
   static minX = 192; static maxX = 768; static scale = 1; static ox = 0; static oy = 0;
   static hr = 16.5; static lw = 6; static btns = [];
+  static actionButtons = { special: null, roll: null };
   static stop = 0; static shake = 0; static shMag = 0;
   static canvas; static ctx; static acc = 0; static last = 0;
   static round = 1; static wins = [0, 0]; static timer = 60;
@@ -3427,11 +3436,14 @@ class Game {
   }
   static syncControls() {
     const el = document.getElementById('controls');
+    if (el) el.classList.toggle('arcade-controls', Game.mode === 'beatemup');
     if (el) el.style.display = Game.paused || Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
     const menu = document.getElementById('main-menu-button');
     if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
     const reset = document.getElementById('practice-reset');
     if (reset) reset.style.display = !Game.paused && Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
+    Game.actionButtons.special = document.querySelector('#controls button.special');
+    Game.actionButtons.roll = document.querySelector('#controls button.roll');
     Game.btns = [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     }).filter(btn => btn.w > 0 && btn.h > 0);
@@ -3521,17 +3533,18 @@ class Game {
     const tabs = Game.modeTabs();
     if (Game.mode === 'beatemup') {
       const classCount = Object.keys(FighterClasses).length;
-      const gap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
-      const cardH = (compact ? 104 : 166) / sc;
+      const gap = (compact ? 8 : 14) / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
+      const cardH = (compact ? 96 : 166) / sc;
       const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
-      const y = Game.H * (compact ? .64 : .67) - cardH / 2;
-      const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH }));
-      const levelGap = 8 / sc, levelW = Math.min(140 / sc, (Game.W - 48 / sc - levelGap * 2) / 3), levelH = 40 / sc;
+      const levelGap = 8 / sc, levelW = Math.min(140 / sc, (Game.W - 48 / sc - levelGap * 2) / 3), levelH = Game.difficultyButtonHeight(sc);
       const levelTotal = levelW * 3 + levelGap * 2, levelX = (Game.W - levelTotal) / 2;
-      const levelY = Game.H * (compact ? .39 : .48) - levelH / 2;
+      const modeBottom = Math.max(...tabs.map(tab => tab.y + tab.h));
+      const levelY = compact ? modeBottom + 6 / sc : Game.H * .48 - levelH / 2;
       const levels = Game.levels.map((id, i) => ({id, x:levelX + i * (levelW + levelGap), y:levelY, w:levelW, h:levelH, label:Game.levelLabels[id]}));
-      const bw = 174 / sc, bh = (compact ? 42 : 52) / sc;
-      return { tabs, classes, levels, start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .86 : .88) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
+      const y = compact ? levelY + levelH + 6 / sc : Game.H * .67 - cardH / 2;
+      const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH, menuCompact: true }));
+      const bw = (compact ? 190 : 174) / sc, bh = (compact ? 42 : 52) / sc;
+      return { tabs, classes, levels, start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .88 : .88) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
     }
     if (Game.mode === 'practice') {
       const classCount = Object.keys(FighterClasses).length;
@@ -3542,22 +3555,24 @@ class Game {
       const bw = 200 / sc, bh = 52 / sc;
       return {tabs, classes, levels:[], start:{id:'start-practice',x:(Game.W-bw)/2,y:Game.H*(compact ? .87 : .87)-bh/2,w:bw,h:bh,label:'START PRACTICE'}};
     }
-    const bw = 120 / sc, bh = 57 / sc, gap = 12 / sc;
+    const bw = 140 / sc, bh = Game.difficultyButtonHeight(sc), gap = 8 / sc;
     const total = 3 * bw + 2 * gap;
     let x0 = (Game.W - total) / 2;
     x0 = Math.max(inset, Math.min(Game.W - inset - total, x0));
-    const y = Game.H * (compact ? .42 : .49) - bh / 2;
-    const startW = 190 / sc, startH = 52 / sc;
+    const modeBottom = Math.max(...tabs.map(tab => tab.y + tab.h));
+    const y = compact ? modeBottom + 6 / sc : Game.H * .48 - bh / 2;
+    const startW = (compact ? 190 : 174) / sc, startH = (compact ? 42 : 52) / sc;
     const classCount = Object.keys(FighterClasses).length;
-    const classGap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - classGap * (classCount - 1)) / classCount);
-    const cardH = (compact ? 104 : 112) / sc, cardTotal = cardW * classCount + classGap * (classCount - 1);
+    const classGap = (compact ? 8 : 14) / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - classGap * (classCount - 1)) / classCount);
+    const cardH = (compact ? 96 : 112) / sc, cardTotal = cardW * classCount + classGap * (classCount - 1);
+    const classY = compact ? y + bh + 6 / sc : Game.H * .66 - cardH / 2;
     const classes = Object.entries(FighterClasses).map(([id,profile],i) => ({id,profile,menuCompact:true,
-      x:(Game.W-cardTotal)/2 + i*(cardW+classGap),y:Game.H*(compact ? .64 : .66)-cardH/2,w:cardW,h:cardH}));
+      x:(Game.W-cardTotal)/2 + i*(cardW+classGap),y:classY,w:cardW,h:cardH}));
     return {
       tabs,
       classes,
       levels: Game.levels.map((id, i) => ({id, x: x0 + i * (bw + gap), y, w: bw, h: bh, label: Game.levelLabels[id]})),
-      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * (compact ? .85 : .87) - startH / 2,w:startW,h:startH,label:'START FIGHT'},
+      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * (compact ? .88 : .87) - startH / 2,w:startW,h:startH,label:'START FIGHT'},
     };
   }
   static modeTabs() {
@@ -3566,13 +3581,14 @@ class Game {
     const tw = 140 / sc, th = 44 / sc, tgap = 10 / sc;
     const tTotal = 3 * tw + 2 * tgap;
     const tx0 = (Game.W - tTotal) / 2;
-    const ty = Game.H * (compact ? .24 : .38) - th / 2;
+    const ty = Game.H * (compact ? .25 : .38) - th / 2;
     return [
       { id: '1v1', label: '1v1', x: tx0, y: ty, w: tw, h: th },
       { id: 'practice', label: 'Practice', x: tx0 + tw + tgap, y: ty, w: tw, h: th },
       { id: 'beatemup', label: "Beat 'em up", x: tx0 + 2 * (tw + tgap), y: ty, w: tw, h: th },
     ];
   }
+  static difficultyButtonHeight(sc = Game.scale) { return (sc < 1.5 ? 38 : 40) / sc; }
   static titlePointer(e) {
     const sc = Game.scale;
     const gx = e.clientX / sc, gy = e.clientY / sc;
@@ -3760,17 +3776,28 @@ class Game {
     } else Game.endRound(fighters[0].hp > fighters[1].hp ? 0 : 1);
   }
   static syncSpecialBtn() {
-    const btn = document.querySelector('#controls button.special');
+    const btn = Game.actionButtons.special || document.querySelector('#controls button.special');
     if (!btn) return;
-    const full = fighters[0].meter >= 100;
-    btn.disabled = !full;
-    btn.classList.toggle('ready', full);
+    const meter = Math.max(0, Math.min(100, fighters[0].meter));
+    const full = meter >= 100;
+    const progress = `${Math.round(meter / 2) * 2}%`;
+    if (btn.style.getPropertyValue('--action-progress') !== progress) btn.style.setProperty('--action-progress', progress);
+    if (btn.disabled !== !full) btn.disabled = !full;
+    if (btn.classList.contains('ready') !== full) btn.classList.toggle('ready', full);
+    const label = full ? 'Special attack ready' : `Special attack; ${Math.floor(meter)} percent SP`;
+    if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
   }
   static syncDodgeBtn() {
-    const btn = document.querySelector('#controls button.roll');
+    const btn = Game.actionButtons.roll || document.querySelector('#controls button.roll');
     if (!btn) return;
-    const ready = Game.fighting && fighters[0].dodgeCooldown <= 0;
-    btn.classList.toggle('ready', ready);
+    const cooldown = Math.max(0, Math.min(1.05, fighters[0].dodgeCooldown));
+    const progress = Game.fighting ? `${Math.round((1 - cooldown / 1.05) * 50) * 2}%` : '0%';
+    const ready = Game.fighting && cooldown <= 0;
+    if (btn.style.getPropertyValue('--action-progress') !== progress) btn.style.setProperty('--action-progress', progress);
+    if (btn.classList.contains('ready') !== ready) btn.classList.toggle('ready', ready);
+    const label = ready ? 'Dodge roll ready' : Game.fighting
+      ? `Dodge roll cooling down (${cooldown.toFixed(1)} seconds)` : 'Dodge roll available when fight starts';
+    if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
   }
   static frame(now) {
     let dt = (now - Game.last) / 1000; Game.last = now; if (dt > .05) dt = .05;
@@ -3941,6 +3968,17 @@ class Game {
     ctx.strokeStyle = accent; ctx.lineWidth = 2 / sc; ctx.stroke();
     ctx.restore();
   }
+  static drawHudProgress(ctx, x, y, w, h, value, color, chipValue = null) {
+    const ratio = Math.max(0, Math.min(1, value));
+    ctx.fillStyle = '#080C14'; ctx.fillRect(x, y, w, h);
+    if (chipValue !== null) {
+      ctx.fillStyle = 'rgba(230,238,250,.35)';
+      ctx.fillRect(x, y, w * Math.max(ratio, Math.min(1, chipValue)), h);
+    }
+    ctx.fillStyle = color; ctx.fillRect(x, y, w * ratio, h);
+    ctx.strokeStyle = 'rgba(190,210,235,.42)'; ctx.lineWidth = 1 / (Game.scale || 1);
+    ctx.strokeRect(x, y, w, h);
+  }
   static tryComboStun(attacker, target, hit, kind, confirmed, x, y) {
     if (!confirmed || kind !== 'hit' || !target || target.hp <= 0 || attacker.comboHits < 2) return false;
     const chance = hit.comboFinisher ? .40 : hit.comboLink ? .25 : 0;
@@ -4048,8 +4086,6 @@ class Game {
     ctx.shadowColor = '#22D3EE'; ctx.shadowBlur = 6 / sc;
     ctx.fillText('STICKMAN FIGHTER', Game.W / 2, titleY);
     ctx.shadowBlur = 0;
-    ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#8EDFFF';
-    ctx.fillText('INSERT COIN  ·  SELECT YOUR FIGHTER', Game.W / 2, titleY + (compact ? 24 : 34) / sc);
 
     const drawSelectionArrow = (x, y, color) => {
       ctx.fillStyle = color; ctx.beginPath();
@@ -4141,13 +4177,13 @@ class Game {
       const textX = card.x + Math.min(51 / sc, card.w * .29), textW = card.w - (textX - card.x) - 7 / sc;
       if (card.menuCompact) {
         const menuAt = (small,large) => card.y + (compact ? small : large) / sc;
-        ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min(11 / sc, textW * .11) + 'px ui-monospace,monospace';
+        ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 14 : 11) / sc, textW * .15) + 'px ui-monospace,monospace';
         ctx.fillText(p.name, textX + textW / 2, menuAt(22,31), textW);
-        ctx.fillStyle = '#E7F1FF'; ctx.font = 'bold ' + Math.min(8 / sc, textW * .075) + 'px ui-monospace,monospace';
-        ctx.fillText('N · ' + p.punchMove, textX + textW / 2, menuAt(43,56), textW);
-        ctx.fillText('H · ' + p.kickMove, textX + textW / 2, menuAt(59,76), textW);
-        ctx.fillStyle = p.accent; ctx.font = 'bold ' + Math.min(8 / sc, textW * .075) + 'px ui-monospace,monospace';
-        ctx.fillText('S · ' + p.super, textX + textW / 2, menuAt(75,96), textW);
+        ctx.fillStyle = '#E7F1FF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 8) / sc, textW * .12) + 'px ui-monospace,monospace';
+        ctx.fillText('N · ' + p.punchMove, textX + textW / 2, menuAt(46,56), textW);
+        ctx.fillText('H · ' + p.kickMove, textX + textW / 2, menuAt(66,76), textW);
+        ctx.fillStyle = p.accent; ctx.font = 'bold ' + Math.min((compact ? 11 : 8) / sc, textW * .12) + 'px ui-monospace,monospace';
+        ctx.fillText('S · ' + p.super, textX + textW / 2, menuAt(86,96), textW);
       } else {
         const nameY = card.y + (compact ? 25 : 34) / sc;
         ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 14) / sc, textW * .11) + 'px ui-monospace,monospace';
@@ -4159,14 +4195,6 @@ class Game {
         ctx.fillStyle = p.accent; ctx.fillText('S · ' + p.super, textX + textW / 2, firstY + rowGap * 2, textW);
       }
     }
-    ctx.globalAlpha = .94; ctx.fillStyle = '#B9D6F2';
-    ctx.font = 'bold ' + 8.5 / sc + 'px ui-monospace,monospace';
-    const footer = Game.mode === 'beatemup' ? '10-STAGE STORY • Choose difficulty and fighter • Press START RUN'
-      : Game.mode === 'practice' ? 'PRACTICE MODE • Test your combos on a stationary dummy'
-        : 'Choose a fighter and difficulty • Press START FIGHT';
-    const footerW = Math.min(Game.W - 28 / sc, 580 / sc), footerY = Game.H * .97 - 8 / sc;
-    Game.drawHudPanel(ctx, Game.W / 2 - footerW / 2, footerY - 9 / sc, footerW, 18 / sc, '#25BFEF');
-    ctx.fillText(footer, Game.W / 2, footerY);
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static draw() {
