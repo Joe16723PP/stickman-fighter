@@ -3645,6 +3645,10 @@ class Game {
   }
   static fit() {
     const dpr = Math.max(1, devicePixelRatio || 1);
+    // Remember what the backing store was sized for, so draw() can detect a
+    // devicePixelRatio change that arrives without a resize event (Chrome
+    // responsive emulation, moving a window between displays, browser zoom).
+    Game.fitDpr = dpr; Game.fitW = innerWidth; Game.fitH = innerHeight;
     Game.H = 540; Game.W = Math.max(640, Math.round(540 * innerWidth / innerHeight));
     Game.GROUND = Math.round(Game.H * .72);
     const scale = innerHeight / Game.H;
@@ -4199,10 +4203,13 @@ class Game {
   }
   static draw() {
     const ctx = Game.ctx;
-    ctx.setTransform(Math.max(1, devicePixelRatio || 1) * Game.scale, 0, 0, Math.max(1, devicePixelRatio || 1) * Game.scale, 0, 0);
+    if (Math.max(1, devicePixelRatio || 1) !== Game.fitDpr || innerWidth !== Game.fitW || innerHeight !== Game.fitH) Game.fit();
+    // Clear the whole backing store in device pixels, independent of the game transform.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, Game.canvas.width, Game.canvas.height);
+    ctx.setTransform(Game.fitDpr * Game.scale, 0, 0, Game.fitDpr * Game.scale, 0, 0);
     let sx = 0, sy = 0;
     if (Game.shake > 0) { const m = Game.shMag * (Game.shake / .12); sx = (Math.random() - .5) * 2 * m; sy = (Math.random() - .5) * 2 * m; }
-    ctx.clearRect(-10, -10, Game.W + 20, Game.H + 20);
     ctx.save(); ctx.translate(sx, sy);
     if (Game.mode === 'beatemup' && Game.phase !== 'title') {
     BeatEmUp.draw(ctx);
