@@ -1,0 +1,20 @@
+name: CI checks
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  parity-and-clearance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright (pinned) and Chromium
+        run: |
+          python -m pip install playwright==1.64.1
+          python -m playwright install --with-deps chromium
+      - name: Seeded 1v1 parity + edge clearance
+        run: python tests/ci_checks.py
