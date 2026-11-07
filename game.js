@@ -1599,9 +1599,8 @@ class Fighter {
     if (Game.mode === 'beatemup') return 0;
     const b = this.bones();
     const sc = Game.scale, ox = Game.ox, oy = Game.oy, c = 4;
-    const cameraX = Game.mode === 'beatemup' && Game.phase !== 'title' ? BeatEmUp.cameraX : 0;
-    const x0 = ox + (b.x0 - cameraX) * sc;
-    const x1 = ox + (b.x1 - cameraX) * sc;
+    const x0 = ox + b.x0 * sc;
+    const x1 = ox + b.x1 * sc;
     let dx = 0;
     for (const btn of Game.btns) {
       const y0 = oy + b.y0 * sc, y1 = oy + b.y1 * sc;
@@ -1935,7 +1934,7 @@ class Fx {
   static clear() { Fx.list = []; }
   static hudBottom() {
     const sc = Game.scale;
-    const safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
+    const safe = Game.safeTop;
     return (12 + safe) / sc + 12 / sc + 4 / sc + 5 / sc + 8 / sc;
   }
   static allowed(wx, wy) {
@@ -2150,7 +2149,21 @@ class BeatEmUp {
     'assets/backgrounds/stage-08-skybridge.webp',
     'assets/backgrounds/stage-09-broadcast-tower.webp',
     'assets/backgrounds/stage-10-coliseum.webp',
-  ].map(src => { const image = new Image(); image.src = src; return image; });
+  ];
+  static backgroundCache = new Map();
+  /** Load a stage background on first use (index is 0-based). */
+  static background(index) {
+    const src = BeatEmUp.backgrounds[index];
+    if (!src) return null;
+    let image = BeatEmUp.backgroundCache.get(src);
+    if (!image) { image = new Image(); image.decoding = 'async'; image.src = src; BeatEmUp.backgroundCache.set(src, image); }
+    return image;
+  }
+  /** Current stage now, next stage in the background. */
+  static loadStageBackgrounds(stage) {
+    BeatEmUp.background(stage - 1);
+    BeatEmUp.background(stage);
+  }
   static wave = 0;
   static waveTotal = 3;
   static locked = 1;
@@ -2205,7 +2218,7 @@ class BeatEmUp {
     return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= BeatEmUp.DEPTH_HIT_PX;
   }
   /** Beat ’em up fighters may pass beneath the overlaid touch controls. */
-  static horizontalScreenBounds(entry) {
+  static horizontalScreenBounds() {
     const ox = Game.ox || 0, width = Game.W * (Game.scale || 1);
     return { left: ox + width * .02, right: ox + width * .98 };
   }
@@ -2213,14 +2226,14 @@ class BeatEmUp {
   static clampFighterRight(entry) {
     const b = entry.f.bones();
     const screenX1 = Game.ox + (b.x1 - BeatEmUp.cameraX) * Game.scale;
-    const limit = BeatEmUp.horizontalScreenBounds(entry).right;
+    const limit = BeatEmUp.horizontalScreenBounds().right;
     if (screenX1 > limit) entry.f.x -= (screenX1 - limit) / Game.scale;
   }
   /** Pull fighter right so bones().x0 stays inside the active screen bound. */
   static clampFighterLeft(entry) {
     const b = entry.f.bones();
     const screenX0 = Game.ox + (b.x0 - BeatEmUp.cameraX) * Game.scale;
-    const limit = BeatEmUp.horizontalScreenBounds(entry).left;
+    const limit = BeatEmUp.horizontalScreenBounds().left;
     if (screenX0 < limit) entry.f.x += (limit - screenX0) / Game.scale;
   }
   /** Soft + hard limb clamps for current pose (left then right). */
@@ -2230,12 +2243,12 @@ class BeatEmUp {
   }
   /** Soft lane max for body centre, adjusted for the current pose's limb reach. */
   static softMaxX(entry) {
-    const b = entry.f.bones(), bounds = BeatEmUp.horizontalScreenBounds(entry);
+    const b = entry.f.bones(), bounds = BeatEmUp.horizontalScreenBounds();
     return BeatEmUp.cameraX + (bounds.right - Game.ox) / Game.scale - (b.x1 - entry.f.x);
   }
   /** Soft lane min for body centre (mirrors softMaxX). */
   static softMinX(entry) {
-    const b = entry.f.bones(), bounds = BeatEmUp.horizontalScreenBounds(entry);
+    const b = entry.f.bones(), bounds = BeatEmUp.horizontalScreenBounds();
     return BeatEmUp.cameraX + (bounds.left - Game.ox) / Game.scale + (entry.f.x - b.x0);
   }
   static withDepth(entry, fn) {
@@ -2323,6 +2336,7 @@ class BeatEmUp {
 
   static startCampaignStage(stage, retry = false) {
     BeatEmUp.stage = Math.max(1, Math.min(BeatEmUp.stageTotal, stage));
+    BeatEmUp.loadStageBackgrounds(BeatEmUp.stage);
     BeatEmUp.cameraX = 0; BeatEmUp.skyOffset = 0;
     BeatEmUp.lockL = 0; BeatEmUp.lockR = Game.W * .95;
     BeatEmUp.spawnX = Game.W * .7; BeatEmUp.worldMax = Game.W * 4.2;
@@ -2900,7 +2914,7 @@ class BeatEmUp {
   }
 
   static drawStageBackdrop(ctx) {
-    const image = BeatEmUp.backgrounds[BeatEmUp.stage - 1];
+    const image = BeatEmUp.background(BeatEmUp.stage - 1);
     if (!image?.complete || !image.naturalWidth) return;
     ctx.save();
     ctx.drawImage(image, 0, 0, Game.W, Game.H);
@@ -3105,13 +3119,13 @@ class BeatEmUp {
   }
 
   static bars(ctx) {
-    const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
+    const sc = Game.scale, safe = Game.safeTop;
     const top = (12 + safe) / sc, h = 12 / sc, {w,gap,x0} = Game.hudBarLayout(70);
     const me = fighters[0], accent = me.hp <= 25 ? '#FF655F' : (me.classProfile?.accent || '#63D9FF');
     const panelH = 34 / sc, panelY = top - 2 / sc;
     Game.drawHudPanel(ctx, x0, panelY, w, panelH, accent);
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = me.hp <= 25 ? '#FFD5D2' : '#DCE8F5';
+    ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace';
     const badgeX = x0 + 14 / sc, badgeY = top + 15 / sc;
     ctx.fillStyle = '#0B1422'; ctx.beginPath(); ctx.arc(badgeX, badgeY, 9 / sc, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = accent; ctx.lineWidth = 1.5 / sc; ctx.stroke();
@@ -3119,7 +3133,7 @@ class BeatEmUp {
     ctx.beginPath(); ctx.arc(badgeX, badgeY + 6 / sc, 4.5 / sc, Math.PI, 0); ctx.fill();
     ctx.textAlign = 'center'; ctx.font = 'bold ' + 5 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
     ctx.fillText('1', badgeX + 6 / sc, badgeY - 6 / sc);
-    ctx.textAlign = 'left'; ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#DCE8F5';
+    ctx.textAlign = 'left'; ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = me.hp <= 25 ? '#FF655F' : '#DCE8F5';
     const infoX = x0 + 27 / sc;
     ctx.fillText('PLAYER 01 · HP ' + Math.ceil(me.hp) + '/100', infoX, top + 4 / sc);
     const barX = infoX, barY = top + 10 / sc, barW = w - 36 / sc, barH = 8 / sc;
@@ -3300,6 +3314,7 @@ class Game {
   static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60;
   static minX = 192; static maxX = 768; static scale = 1; static ox = 0; static oy = 0;
   static hr = 16.5; static lw = 6; static btns = [];
+  static safeTop = 0; static safeL = 0; static safeR = 0; static menuRight = 0;
   static actionButtons = { special: null, roll: null };
   static stop = 0; static shake = 0; static shMag = 0;
   static canvas; static ctx; static acc = 0; static last = 0;
@@ -3407,8 +3422,8 @@ class Game {
   /** Title-only: idle fighters at ~10% / 90% width, facing in. Match spawn unchanged. */
   static placeTitleFighters() {
     const sc = Game.scale || 1;
-    const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
-    const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
+    const safeL = Game.safeL;
+    const safeR = Game.safeR;
     const inset = (16 + Math.max(safeL, safeR)) / sc;
     // Approximate full limb reach from body center (idle pose + stroke)
     const reach = 48;
@@ -3449,6 +3464,7 @@ class Game {
     if (el) el.style.display = Game.paused || Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
     const menu = document.getElementById('main-menu-button');
     if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
+    Game.menuRight = menu && Game.phase !== 'title' ? menu.getBoundingClientRect().right : 0;
     const reset = document.getElementById('practice-reset');
     if (reset) reset.style.display = !Game.paused && Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
     Game.actionButtons.special = document.querySelector('#controls button.special');
@@ -3536,8 +3552,8 @@ class Game {
   static titleLayout() {
     const sc = Game.scale;
     const compact = sc < 1.5;
-    const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
-    const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
+    const safeL = Game.safeL;
+    const safeR = Game.safeR;
     const inset = 16 / sc + Math.max(safeL, safeR) / sc;
     const tabs = Game.modeTabs();
     if (Game.mode === 'beatemup') {
@@ -3658,6 +3674,11 @@ class Game {
     // devicePixelRatio change that arrives without a resize event (Chrome
     // responsive emulation, moving a window between displays, browser zoom).
     Game.fitDpr = dpr; Game.fitW = innerWidth; Game.fitH = innerHeight;
+    // Safe-area insets only change with layout, so read them here, not per frame.
+    const rootStyle = getComputedStyle(document.documentElement);
+    Game.safeTop = parseFloat(rootStyle.getPropertyValue('--sai-t')) || 0;
+    Game.safeL = parseFloat(rootStyle.getPropertyValue('--sai-l')) || 0;
+    Game.safeR = parseFloat(rootStyle.getPropertyValue('--sai-r')) || 0;
     Game.H = 540; Game.W = Math.max(640, Math.round(540 * innerWidth / innerHeight));
     Game.GROUND = Math.round(Game.H * .72);
     const scale = innerHeight / Game.H;
@@ -3672,8 +3693,8 @@ class Game {
     const MOVE_W = 132;
     const PAD_W = 200; // right-thumb action cluster width
     const REACH = 65; // max observed visual AABB past hip (worst pose)
-    const safeL = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-l')) || 0;
-    const safeR = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-r')) || 0;
+    const safeL = Game.safeL;
+    const safeR = Game.safeR;
     const loBtn = (EDGE + safeL + MOVE_W + CLEAR) / scale + REACH;
     const hiBtn = (innerWidth - EDGE - safeR - PAD_W - CLEAR) / scale - REACH;
     Game.minX = Math.max(Game.W * .15, loBtn);
@@ -3924,7 +3945,7 @@ class Game {
     Game.draw(); requestAnimationFrame(Game.frame);
   }
   static bars(ctx) {
-    const sc = Game.scale, safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sai-t')) || 0;
+    const sc = Game.scale, safe = Game.safeTop;
     const top = (12 + safe) / sc, h = 12 / sc, {w,gap,x0,x1} = Game.hudBarLayout();
     const panelH = 34 / sc, panelY = top - 2 / sc, hpY = top + 10 / sc, hpH = 8 / sc;
     const drawBar = (x, fighter, color, label, fromLeft) => {
@@ -4004,9 +4025,7 @@ class Game {
   }
   static hudBarLayout(centerGapPx = 44) {
     const sc = Game.scale || 1, gap = centerGapPx / sc;
-    const menu = document.getElementById('main-menu-button');
-    const menuVisible = menu && getComputedStyle(menu).display !== 'none';
-    const reservedLeft = menuVisible ? (menu.getBoundingClientRect().right + 8) / sc : 0;
+    const reservedLeft = Game.menuRight ? (Game.menuRight + 8) / sc : 0;
     const width = Math.min(Game.W * .4 - 14 / sc, Game.W / 2 - gap / 2 - reservedLeft);
     const x0 = (Game.W - 2 * width - gap) / 2;
     return {w:width,gap,x0,x1:x0 + width + gap};
