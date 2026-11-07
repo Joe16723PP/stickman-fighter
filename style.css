@@ -59,11 +59,26 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 .arcade-controls .cluster .kick{width:80px;height:80px;left:42px;bottom:2px;background:rgba(201,89,58,.94)}
 .arcade-controls .cluster .punch{width:98px;height:98px;right:0;bottom:2px;background:rgba(43,111,222,.96)}
 @media (max-height:420px){
-.pad{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
-.move-stick{width:129px;height:129px}
-.stick-ring{width:115px;height:115px}
-.stick-knob{width:55px;height:55px}
-.actions{transform:scale(.86);transform-origin:bottom right}
+/* Phone touch layout (1v1 and beat 'em up). Tweak only these variables.
+   Sizes are CSS px; --tc-*-r/-b are each button's right/bottom offset inside .actions.
+   No transform scaling, so every hit box equals the drawn circle. Keep >=14px edge gaps. */
+#controls{--tc-stick:150px;--tc-knob:68px;--tc-main:96px;--tc-mid:80px;--tc-btn:64px;--tc-actions-w:268px;--tc-actions-h:174px;
+--tc-punch-r:0px;--tc-punch-b:0px;--tc-kick-r:110px;--tc-kick-b:0px;--tc-special-r:16px;--tc-special-b:110px;
+--tc-roll-r:98px;--tc-roll-b:92px;--tc-block-r:204px;--tc-block-b:8px;--tc-jump-r:186px;--tc-jump-b:90px}
+#controls .pad{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+#controls .pad.left{left:calc(28px + env(safe-area-inset-left,0px))}
+#controls .pad.right{right:calc(20px + env(safe-area-inset-right,0px))}
+#controls .move-stick{width:var(--tc-stick);height:var(--tc-stick);border-radius:50%}
+#controls .stick-ring{width:100%;height:100%;box-sizing:border-box}
+#controls .stick-knob{width:var(--tc-knob);height:var(--tc-knob)}
+#controls .actions{transform:none;width:var(--tc-actions-w);height:var(--tc-actions-h)}
+#controls .actions button{left:auto;top:auto}
+#controls .actions .punch{width:var(--tc-main);height:var(--tc-main);right:var(--tc-punch-r);bottom:var(--tc-punch-b)}
+#controls .actions .kick{width:var(--tc-mid);height:var(--tc-mid);right:var(--tc-kick-r);bottom:var(--tc-kick-b)}
+#controls .actions .special{width:var(--tc-btn);height:var(--tc-btn);right:var(--tc-special-r);bottom:var(--tc-special-b)}
+#controls .actions .roll{width:var(--tc-btn);height:var(--tc-btn);right:var(--tc-roll-r);bottom:var(--tc-roll-b)}
+#controls .actions .block{width:var(--tc-btn);height:var(--tc-btn);right:var(--tc-block-r);bottom:var(--tc-block-b)}
+#controls .actions .jump{width:var(--tc-btn);height:var(--tc-btn);right:var(--tc-jump-r);bottom:var(--tc-jump-b)}
 }
 @media (orientation:portrait){
 #rotate{display:flex}
