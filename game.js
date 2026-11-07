@@ -3685,15 +3685,14 @@ class Game {
     Game.canvas.width = Math.round(innerWidth * dpr); Game.canvas.height = Math.round(innerHeight * dpr);
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     // Prefer middle 70% (15%–85%), but end the lane early enough that visual
-    // bones() at the edges stay ≥4px from edge-pinned controls (drawNudgeX → 0).
-    const EDGE = 16, CLEAR = 8;
-    const MOVE_W = 132;
-    const PAD_W = 200; // right-thumb action cluster width
+    // bones() at the edges stay clear of the 1v1 touch controls (drawNudgeX → 0).
+    // Control rects are measured from the DOM in their 1v1 layout, so CSS changes
+    // to the pads can't silently desync the lane.
+    const CLEAR = 8;
     const REACH = 65; // max observed visual AABB past hip (worst pose)
-    const safeL = Game.safeL;
-    const safeR = Game.safeR;
-    const loBtn = (EDGE + safeL + MOVE_W + CLEAR) / scale + REACH;
-    const hiBtn = (innerWidth - EDGE - safeR - PAD_W - CLEAR) / scale - REACH;
+    const pads = Game.measure1v1Pads();
+    const loBtn = (pads.leftEdge + CLEAR) / scale + REACH;
+    const hiBtn = (pads.rightEdge - CLEAR) / scale - REACH;
     Game.minX = Math.max(Game.W * .15, loBtn);
     Game.maxX = Math.min(Game.W * .85, hiBtn);
     if (Game.minX > Game.maxX) { // ultra-narrow: keep a usable centre strip
@@ -3714,6 +3713,24 @@ class Game {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     });
     Game.titleBtns = Game.titleLayout().levels;
+  }
+  /** Inner edges (CSS px) of the left and right control pads in their 1v1 layout. */
+  static measure1v1Pads() {
+    const el = document.getElementById('controls');
+    const fallback = { leftEdge: 16 + Game.safeL + 132, rightEdge: innerWidth - 16 - Game.safeR - 200 };
+    if (!el) return fallback;
+    const prev = { display: el.style.display, visibility: el.style.visibility, arcade: el.classList.contains('arcade-controls') };
+    el.style.visibility = 'hidden'; el.style.display = ''; el.classList.remove('arcade-controls');
+    let leftEdge = 0, rightEdge = innerWidth;
+    for (const node of el.querySelectorAll('#move-stick, .pad.left button')) {
+      const r = node.getBoundingClientRect(); if (r.width > 0) leftEdge = Math.max(leftEdge, r.right);
+    }
+    for (const node of el.querySelectorAll('.pad.right button')) {
+      const r = node.getBoundingClientRect(); if (r.width > 0) rightEdge = Math.min(rightEdge, r.left);
+    }
+    el.style.display = prev.display; el.style.visibility = prev.visibility;
+    if (prev.arcade) el.classList.add('arcade-controls');
+    return leftEdge > 0 && rightEdge < innerWidth ? { leftEdge, rightEdge } : fallback;
   }
   static hitTest(a, b) {
     if (!a.segment) return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
