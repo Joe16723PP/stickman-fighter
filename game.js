@@ -2296,6 +2296,7 @@ class BeatEmUp {
     BeatEmUp.cameraX = 0;
     BeatEmUp.skyOffset = 0;
     BeatEmUp.stage = 1;
+    BeatEmUp.loadStageBackgrounds(1);
     BeatEmUp.wave = 0;
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
