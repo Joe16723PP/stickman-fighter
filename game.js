@@ -1923,6 +1923,15 @@ class Fighter {
 
 class Fx {
   static list = [];
+  /** Cosmetic-only PRNG (mulberry32). Effects must never draw from Math.random,
+   *  or the control layout (via Fx.allowed) would shift gameplay randomness. */
+  static seed = 0x5EED1234;
+  static random() {
+    let t = (Fx.seed = (Fx.seed + 0x6D2B79F5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
   static clear() { Fx.list = []; }
   static hudBottom() {
     const sc = Game.scale;
@@ -1941,7 +1950,7 @@ class Fx {
     if (!Fx.allowed(x, y)) return;
     const sc = Game.scale || 1, len = 10 / sc;
     for (let i = 0; i < n; i++) {
-      const a = (Math.PI * 2 * i) / n + Math.random() * .35;
+      const a = (Math.PI * 2 * i) / n + Fx.random() * .35;
       Fx.list.push({kind: 'spark', x, y, a, len, life, max: life, color, alpha: alpha == null ? 1 : alpha});
     }
   }
