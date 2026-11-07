@@ -89,6 +89,8 @@ class Input {
   static keys = new Set();
   static pad = [{}, {}];
   static was = [{}, {}];
+  /** Touch presses seen since the last sim step, so a tap shorter than one frame still fires. */
+  static tapped = [{}, {}];
   // acts list byte-identical to main (AC2). Depth keys read via depthHeld() in beat mode only.
   static acts = ['left','right','jump','punch','kick','block','roll','special'];
   static keyMap = [
@@ -99,6 +101,7 @@ class Input {
   static bind() {
     Input.pad.forEach(p => Input.acts.forEach(a => p[a] = 0));
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
+    Input.tapped = [{}, {}];
     // Safari can still apply its double-tap and gesture zoom despite the viewport
     // settings. Keep zoom gestures from scaling the full-screen game surface.
     let lastTouchEnd = 0;
@@ -139,7 +142,7 @@ class Input {
         const k = btn.dataset.k;
         if (Input.acts.includes(k)) { Input.pad[+btn.dataset.p][k] = v; btn.classList.toggle('held', !!v); }
       };
-      btn.addEventListener('pointerdown', e => { Sfx.unlock(); e.preventDefault(); e.stopPropagation(); set(1); });
+      btn.addEventListener('pointerdown', e => { Sfx.unlock(); e.preventDefault(); e.stopPropagation(); set(1); Input.tapped[+btn.dataset.p][btn.dataset.k] = 1; });
       const end = e => { e.preventDefault(); set(0); };
       btn.addEventListener('pointerup', end); btn.addEventListener('pointercancel', end);
       btn.addEventListener('pointerleave', e => { if (e.buttons) set(0); });
@@ -231,8 +234,9 @@ class Input {
     return (Input.depthKeys[dir] || []).some(k => Input.keys.has(k)) || !!Input.pad[0][padKey];
   }
   static edge(p, a) {
-    const on = Input.held(p, a), e = on && !Input.was[p][a];
-    Input.was[p][a] = on ? 1 : 0; return e;
+    const tap = Input.tapped[p][a]; Input.tapped[p][a] = 0;
+    const on = Input.held(p, a), e = (on || !!tap) && !Input.was[p][a];
+    Input.was[p][a] = on || e ? 1 : 0; return e;
   }
 }
 
@@ -3362,6 +3366,7 @@ class Game {
     Input.keys.clear();
     Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
+    Input.tapped = [{}, {}];
     fighters[0].color = PlayerCoolColor; fighters[1].color = CpuHotColors['1v1'];
     fighters[0].setClass(Game.selectedClass);
     fighters[0].color = FighterClasses[Game.selectedClass].color;
@@ -3456,6 +3461,7 @@ class Game {
     fighters[1].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .65)), -1);
     Fx.clear(); Bot.reset();
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
+    Input.tapped = [{}, {}];
     Game.phase = 'intro'; Game.banner = 'Round ' + Game.round; Game.bannerT = 1.2;
     Game.syncSpecialBtn(); Game.syncControls();
   }
@@ -3530,6 +3536,7 @@ class Game {
     Input.keys.clear();
     Input.pad.forEach(p => { Input.acts.forEach(a => p[a] = 0); p.depthUp = 0; p.depthDown = 0; });
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
+    Input.tapped = [{}, {}];
     Game.acc = 0;
     Game.syncControls();
     const pause = document.getElementById('pause-game-button');
@@ -3546,7 +3553,9 @@ class Game {
       fighters[0].reset(playerX, 1);
       fighters[1].reset(Game.practiceDummyX, -1);
     } else {
-      fighters[0].x = playerX; fighters[0].vx = 0; fighters[0].clamp();
+      // Re-fit (resize, phone toolbar show/hide, rotation, DPR change): keep the
+      // player where they are inside the new lane; only re-anchor the dummy.
+      fighters[0].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[0].x)); fighters[0].clamp();
       fighters[1].x = Game.practiceDummyX; fighters[1].vx = 0; fighters[1].clamp();
     }
   }
