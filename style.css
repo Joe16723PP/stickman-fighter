@@ -61,12 +61,16 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 @media (max-height:420px){
 /* Phone touch layout (1v1 and beat 'em up). Tweak only these variables.
    Sizes are CSS px; --tc-*-r/-b are each button's right/bottom offset inside .actions.
-   No transform scaling, so every hit box equals the drawn circle. Keep >=14px edge gaps. */
-#controls{--tc-stick:150px;--tc-knob:68px;--tc-main:96px;--tc-mid:80px;--tc-btn:64px;--tc-actions-w:268px;--tc-actions-h:174px;
+   No transform scaling, so every hit box equals the drawn circle. Keep >=14px edge gaps.
+   The 1v1 lane is fixed by constants in Game.fit (MOVE_W/PAD_W), not by these sizes. To keep
+   ~22px fighter clearance, anything whose top sits above the ground line (~y=276 at 375px tall)
+   must stay within ~218px of .actions' right edge and the stick's right edge <=~169px; the
+   low row (jump, block: top below the ground line) may extend further left. */
+#controls{--tc-stick:150px;--tc-knob:68px;--tc-main:96px;--tc-mid:80px;--tc-btn:64px;--tc-actions-w:346px;--tc-actions-h:174px;
 --tc-punch-r:0px;--tc-punch-b:0px;--tc-kick-r:110px;--tc-kick-b:0px;--tc-special-r:16px;--tc-special-b:110px;
---tc-roll-r:98px;--tc-roll-b:92px;--tc-block-r:204px;--tc-block-b:8px;--tc-jump-r:186px;--tc-jump-b:90px}
+--tc-roll-r:98px;--tc-roll-b:92px;--tc-block-r:204px;--tc-block-b:8px;--tc-jump-r:282px;--tc-jump-b:8px}
 #controls .pad{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
-#controls .pad.left{left:calc(28px + env(safe-area-inset-left,0px))}
+#controls .pad.left{left:calc(18px + env(safe-area-inset-left,0px))}
 #controls .pad.right{right:calc(20px + env(safe-area-inset-right,0px))}
 #controls .move-stick{width:var(--tc-stick);height:var(--tc-stick);border-radius:50%}
 #controls .stick-ring{width:100%;height:100%;box-sizing:border-box}
