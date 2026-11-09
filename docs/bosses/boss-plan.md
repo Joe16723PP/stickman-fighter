@@ -16,7 +16,9 @@ DPS is ×1.4 × 1.43 = ×2.0, and with HP ×2.5 that gives ×5.0. The rest of th
 - One constant `BOSS_HARDNESS = 5` splits into these three factors (√ shares as above), so Jirot can dial it later.
 Report for Easy, Normal and Hard: the bot's boss clear rate per stage, average boss fight time, and damage taken, before and after. Time-to-kill should be about ×2.5 and damage taken about ×5. No other retune.
 
-## Part B: unique boss per stage (framework PR + 2 content PRs)
+## Part B: unique boss per stage
+Lanes are continuous depth from 0 to 1 (72px, y 318 to 390). Every depth check here is in px of depth: 14px is a normal match, and Forge Quake uses 30px.
+ (framework PR + 2 content PRs)
 A `BossProfiles[stage]` table replaces the random weapon. Each entry has a weapon, a silhouette accessory, a colour (use the existing `bosses[]` palette), a normal pair, and one signature move. The signature unlocks in phase 2, and in phase 3 its tell drops by 20% (but never below 0.40s). All numbers below are base values before the Part A multipliers.
 
 | # | Boss | Weapon (reach) | Look | Normals | Signature |
@@ -24,9 +26,9 @@ A `BossProfiles[stage]` table replaces the random weapon. Each entry has a weapo
 | 1 | BLOCK CAPTAIN | Brass knuckles (95) | Flat cap, vest | Jab 5, Hook 9 | **Block Party**: 3-punch rush 6/6/12, the last hit is a guard-break, +140px advance |
 | 2 | DOCKMASTER | Anchor chain (230) | Peacoat, beanie | Chain lash 10, Low swing 12 | **Haul In**: the chain hooks you and pulls you 150px into a 14 dmg anchor smash |
 | 3 | MARKET KING | Twin cleavers (100) | Apron, crown of lanterns | Chop 6, Cross-chop 8 | **Butcher's Toss**: a thrown cleaver projectile, 500px at 700px/s, 12 dmg, then a 4-hit flurry ×4 |
-| 4 | IRON JACK | Sledgehammer (150) | Welder mask, glowing apron | Overhead 16 (armored windup), Sweep 12 | **Forge Quake**: a slam that sends a shockwave along the floor, 420px, hitting depth gaps up to 30px. Block it or change lane by more than 30px |
+| 4 | IRON JACK | Sledgehammer (150) | Welder mask, glowing apron | Overhead 16 (armored windup), Sweep 12 | **Forge Quake**: a slam that sends a shockwave along the floor, 420px, hitting depth gaps up to 30px. Block it, or be more than 30px of depth (≈0.42) from the boss's depth on the slam frame |
 | 5 | TUNNEL WARDEN | Riot shield + baton (110) | Helmet, hi-vis | Baton 8, Shield bash 10 | **Shield Wall**: blocks all frontal hits in phase 1 except a back hit or a whiffed bash. Shield Charge 300px, 14 dmg |
-| 6 | SKYLINE SNIPER | Crossbow (ranged) + kick | Hood, red visor | Stock strike 8, Kick 10 | **Laser Lock**: a red laser line on your lane for 0.6s, then a bolt across the whole screen, 18 dmg. Phase 3 fires 3 shots on 3 lanes |
+| 6 | SKYLINE SNIPER | Crossbow (ranged) + kick | Hood, red visor | Stock strike 8, Kick 10 | **Laser Lock**: a red laser line on your lane for 0.6s, then a bolt across the whole screen, 18 dmg. Phase 3: three laser lines at depth 0, .5 and 1, shown together for 0.6s, then they fire one after another in random order, 0.25s apart. Each hits within 14px |
 | 7 | MASTER KAGE | Naginata (200) | White gi, black hakama, long hair | Thrust 10, Wheel cut 12 | **Shadow Step**: teleports behind you, leaving an afterimage, then cuts for 16. Also a counter stance that parries your next hit, 0.8s |
 | 8 | BRIDGE BREAKER | Steel girder (210, slow) | Hard hat, huge frame (scale 1.4) | Girder swing 18, Shove 10 | **Roadblock**: throws a barricade that blocks one lane for 4s, then charges 400px for 20 dmg |
 | 9 | THE DIRECTOR | Shock baton (120) | Suit, headset, mic | Shock jab 8 (+0.3s stun), Cane sweep 10 | **Live Broadcast**: screen glitch, then 3 lightning strikes on marked spots after a 0.7s tell, 14 dmg each |
