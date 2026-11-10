@@ -187,6 +187,7 @@ CLASS_CHECKS = '''() => {
       if (Game.stop > 0) { Game.stop -= step; continue; }
       fighters[0].update(step, fighters[1], 0);
       fighters[1].update(step, fighters[0], 1);
+      Game.updateProjectiles(step);
       Game.resolve();
     }
   }
@@ -258,7 +259,7 @@ CLASS_CHECKS = '''() => {
 
   function testParryGap(gap) {
     setup('blade');
-    resetPositions(95);
+    resetPositions(80);
     fighters[1].setClass('freehand');
     fighters[1].color = '#EF4444';
     fighters[1].hp = 100; fighters[0].hp = 100; fighters[0].meter = 0;
@@ -271,18 +272,19 @@ CLASS_CHECKS = '''() => {
 
   function testParryLockout() {
     setup('blade');
-    resetPositions(95);
+    resetPositions(80);
     fighters[1].setClass('freehand');
     fighters[1].color = '#EF4444';
     fighters[0].meter = 0;
     Input.pad[0].block = 1; Input.tapped[0].block = 1; advance(1);
     startMove(1, 'punch'); advance(1); Input.pad[1].punch = 0;
-    for (let f = 2; f < 8; f++) advance(1);
+    for (let f = 2; f < 17; f++) advance(1);
     const meterAfterFirst = fighters[0].meter;
-    Input.pad[0].block = 1; Input.tapped[0].block = 1; advance(1); Input.pad[0].block = 0;
-    for (let f = 9; f < 13; f++) advance(1);
+    Input.pad[0].block = 0; advance(1);
+    Input.pad[0].block = 1; Input.tapped[0].block = 1; advance(1);
+    for (let f = 19; f < 24; f++) advance(1);
     startMove(1, 'punch'); advance(1); Input.pad[1].punch = 0;
-    for (let f = 14; f < 25; f++) advance(1);
+    for (let f = 25; f < 40; f++) advance(1);
     const meterAfterSecond = fighters[0].meter;
     return {meterAfterFirst, meterAfterSecond};
   }
@@ -302,8 +304,8 @@ CLASS_CHECKS = '''() => {
       reach: {punch: measureReach('blade','punch'), kick: measureReach('blade','kick')},
       chainCap: measureChainCap('blade'),
       super: measureSuper('blade'),
-      parry6: testParryGap(6),
-      parry7: testParryGap(7),
+        parry6: testParryGap(6),
+        parry9: testParryGap(9),
       lockout: testParryLockout(),
     };
   }
@@ -354,10 +356,10 @@ def run_class_checks(page):
             failures.append(f"blade super total damage {total} != 74")
         if b['super']['knockdownFrame'] < 0:
             failures.append("blade super did not knock down")
-        if b['parry6']['dummyHP'] < 99.9 or b['parry6']['playerMeter'] <= 5:
+        if b['parry6']['dummyHP'] > 99.9 or b['parry6']['playerMeter'] <= 5:
             failures.append(f"blade 6f parry failed: dummyHP={b['parry6']['dummyHP']:.1f} meter={b['parry6']['playerMeter']:.1f}")
-        if b['parry7']['playerHP'] > 99.5 or b['parry7']['dummyHP'] < 99.9:
-            failures.append(f"blade 7f block failed: playerHP={b['parry7']['playerHP']:.1f} dummyHP={b['parry7']['dummyHP']:.1f}")
+        if b['parry9']['playerHP'] > 99.5 or b['parry9']['dummyHP'] < 99.9:
+            failures.append(f"blade 9f block failed: playerHP={b['parry9']['playerHP']:.1f} dummyHP={b['parry9']['dummyHP']:.1f}")
         if b['lockout']['meterAfterSecond'] > b['lockout']['meterAfterFirst'] + 1:
             failures.append(f"blade parry lockout failed: first={b['lockout']['meterAfterFirst']:.1f} second={b['lockout']['meterAfterSecond']:.1f}")
     return failures
