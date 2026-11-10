@@ -8,7 +8,7 @@ Today every stage boss is the same `boss` archetype: HP 220 (plus 5.5% per stage
 |---|---|---|---|
 | HP | 220 base | 550 base | ×2.5 |
 | Damage | weapon dmg mult | ×1.4 on all boss hits | ×1.4 |
-| Attack rate | cool .80/.68/.56 by phase, tell .72s | cool .56/.48/.40, tell .50s | ×1.43 |
+| Attack rate | cool .68/.56/.44 by phase, tell .72s | cool .476/.392/.308, tell .50s | ×1.43 |
 DPS is ×1.4 × 1.43 = ×2.0, and with HP ×2.5 that gives ×5.0. The rest of the boss stays as it is:
 - Stage scaling, the difficulty multipliers (Easy, Normal and Hard keep their relative gaps), the phases at 66% and 33%, and boss HP carrying across lives.
 - The tell stays at 0.50s or more, so every boss attack remains readable and blockable. Do not go lower.
