@@ -1567,6 +1567,9 @@ class Fighter {
         if (this.state === 'special') {
           common.pulse = this.superPulse();
           if (weapon === 'staff' && a.superFractions) {
+            // Gap frames between staff pulses have no pulse index; without this guard the
+            // collider stays live with `a.dmg * undefined` = NaN and poisons the foe's HP.
+            if (common.pulse < 0) return null;
             common.dmg = a.dmg * a.superFractions[common.pulse];
             common.knockdown = common.pulse === 2;
           }
@@ -1657,8 +1660,10 @@ class Fighter {
     this.damageBurstT = 1.6;
     if (this.hp <= 0 && !(Game.mode === 'practice' && !this.playerControlled)) this.startRagdoll(from, true);
     // Karate super: P and QK must not trigger the burst knockdown, so the HK (which knocks down itself) can land.
+    // Staff super: same rule for both spins, so only the Dragon Slam knocks down.
     else if (!this.ragdollActive && this.damageBurst >= 30 && !(Game.mode === 'practice' && !this.playerControlled)
-      && !(from?.state === 'special' && from.classProfile?.style === 'ward' && from.superPulse() >= 0 && from.superPulse() < 2)) {
+      && !(from?.state === 'special' && (from.classProfile?.style === 'ward' || from.classProfile?.weapon === 'staff')
+        && from.superPulse() >= 0 && from.superPulse() < 2)) {
       this.damageBurst = 0;
       this.startRagdoll(from, false);
     }
