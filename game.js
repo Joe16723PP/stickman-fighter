@@ -26,6 +26,10 @@ const Depth = {
   SCALE_1V1_MIN: 0.88,
   SCALE_1V1_MAX: 1.0,
   HIT_PX: 14,
+  // Round start / Training Reset depth: front lane (scale 1.00), so 1v1 starts exactly like pre-lanes main.
+  START: 1,
+  // Effects may not draw within this many CSS px below the HUD/health-bar panels (1v1/practice only).
+  HUD_CLEAR_PX: 8,
 };
 
 const FighterClasses = {
@@ -878,7 +882,7 @@ class Fighter {
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
-    this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side; this.depth = 0.5;
+    this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side; this.depth = Depth.START;
     this.grounded = true; this.state = 'idle'; this.walkT = 0; this.animT = 0;
     this.pose = Pose.idle(this.classProfile); this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose);
     this.blendT = 1; this.blendDur = .08; this.poseKey = 'idle';
@@ -1976,6 +1980,13 @@ class Fx {
     }
     Fx.list.length = write;
   }
+  /** 1v1/practice: game-space y (in the shaken draw space) above which effects are clipped; null elsewhere. */
+  static hudClipY() {
+    if (Game.mode !== '1v1' && Game.mode !== 'practice') return null;
+    const sc = Game.scale || 1;
+    // Game.bars panel bottom = (12 + safeTop - 2 + 34) CSS px; +1 for its stroke, then the clearance.
+    return (12 + Game.safeTop - 2 + 34 + 1 + Depth.HUD_CLEAR_PX) / sc - (Game.drawShakeY || 0);
+  }
   static draw(ctx) {
     const sc = Game.scale;
     for (const e of Fx.list) {
@@ -1997,7 +2008,12 @@ class Fx {
         if (!Fx.allowed(e.x, e.y)) continue;
         ctx.globalAlpha = e.life / e.max;
         ctx.strokeStyle = e.color; ctx.lineWidth = e.width;
-        ctx.beginPath(); ctx.arc(e.x, e.y, e.radius || e.r0, 0, Math.PI * 2); ctx.stroke();
+        const ringR = e.radius || e.r0, hudLimit = Fx.hudClipY();
+        const clipRing = hudLimit !== null && e.y - ringR - e.width / 2 < hudLimit;
+        // Lanes: a back-lane hit ring keeps its size and centre but is clipped below the HUD clearance line.
+        if (clipRing) { ctx.save(); ctx.beginPath(); ctx.rect(-Game.W, hudLimit, Game.W * 3, Game.H * 2); ctx.clip(); }
+        ctx.beginPath(); ctx.arc(e.x, e.y, ringR, 0, Math.PI * 2); ctx.stroke();
+        if (clipRing) ctx.restore();
       } else if (e.kind === 'damage') {
         const fade = e.life / e.max;
         if (!Fx.allowed(e.x, e.y)) continue;
@@ -3247,7 +3263,7 @@ class Game {
   static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60;
   static minX = 192; static maxX = 768; static scale = 1; static ox = 0; static oy = 0;
   static hr = 16.5; static lw = 6; static btns = [];
-  static safeTop = 0; static safeL = 0; static safeR = 0; static menuRight = 0;
+  static safeTop = 0; static safeL = 0; static safeR = 0; static menuRight = 0; static drawShakeY = 0;
   static actionButtons = { special: null, roll: null };
   static stop = 0; static shake = 0; static shMag = 0;
   static canvas; static ctx; static acc = 0; static last = 0;
@@ -3336,7 +3352,7 @@ class Game {
     dummy.setClass(null); dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
     Game.placePracticeFighters(true);
     dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
-    player.depth = 0.5; dummy.depth = 0.5;
+    player.depth = Depth.START; dummy.depth = Depth.START;
     Game.timer = Infinity; Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceComboT = 0; Game.practiceLastMove = '';
     Game.stop = 0; Game.shake = 0; Game.fighting = 0; Game.matchOver = 0;
     Input.pad[1] = {}; Input.was[1] = {};
@@ -3350,7 +3366,7 @@ class Game {
     dummy.setClass(null); dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
     dummy.reset(Game.practiceDummyX || Game.W * .64, -1);
     dummy.color = '#AEB5C8'; dummy.tag = 'DUMMY';
-    dummy.depth = 0.5; fighters[0].depth = 0.5;
+    dummy.depth = Depth.START; fighters[0].depth = Depth.START;
     if (clearCombo) {
       Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceComboT = 0; Game.practiceLastMove = '';
     }
@@ -3389,7 +3405,7 @@ class Game {
     });
     fighters[0].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .35)), 1);
     fighters[1].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .65)), -1);
-    fighters.forEach(f => f.depth = 0.5);
+    fighters.forEach(f => f.depth = Depth.START);
     Fx.clear(); Bot.reset();
     Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
     Input.tapped = [{}, {}];
@@ -4189,6 +4205,7 @@ class Game {
     ctx.setTransform(Game.fitDpr * Game.scale, 0, 0, Game.fitDpr * Game.scale, 0, 0);
     let sx = 0, sy = 0;
     if (Game.shake > 0) { const m = Game.shMag * (Game.shake / .12); sx = (Math.random() - .5) * 2 * m; sy = (Math.random() - .5) * 2 * m; }
+    Game.drawShakeY = sy;
     ctx.save(); ctx.translate(sx, sy);
     if (Game.mode === 'beatemup' && Game.phase !== 'title') {
     BeatEmUp.draw(ctx);
