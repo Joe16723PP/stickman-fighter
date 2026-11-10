@@ -2670,7 +2670,10 @@ class BeatEmUp {
           if (e.kind === 'heavy') { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
           if (e.kind === 'runner' || e.kind === 'tough') { e.f.atk.dmg *= .8; }
           e.f.atk.dmg *= BeatEmUp.difficulty.damage;
-          if (e.kind === 'boss') e.f.atk.dmg *= BossHardness.damage;
+          if (e.kind === 'boss') {
+            e.f.atk.dmg *= BossHardness.damage;
+            if (e.f.atk.chip) e.f.atk.chip *= BossHardness.damage; // kept in step with dmg; supers are unblockable today, so takeHit never applies chip
+          }
         }
         BeatEmUp.clampFighterBones(e);
       });
