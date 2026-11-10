@@ -12,6 +12,15 @@ const ArcadeDiff = {
   hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
 };
 
+/* Beat 'em up boss hardness: boss threat (HP x damage per second) multiplier.
+   Splits into HP x2.5, damage x1.4, attack rate x1.43 at BOSS_HARDNESS = 5 (2.5 x 1.4 x 1.43 = 5). */
+const BOSS_HARDNESS = 5;
+const BossHardness = (() => {
+  const share = f => BOSS_HARDNESS ** (Math.log(f) / Math.log(5));
+  // Tell never drops below .50s so every boss attack stays readable and blockable.
+  return { health: share(2.5), damage: share(1.4), rate: share(1.43), tellMin: .5 };
+})();
+
 /* Shared depth lane math. Beat 'em up calls these with its own band constants. */
 const Depth = {
   // lerp keeps BeatEmUp's original float order (a + span * t) so its output stays bit-identical.
@@ -2323,7 +2332,7 @@ class BeatEmUp {
     f.meterGainMultiplier = archetype.specialGain;
     f.tag = kind === 'regular' ? 'ROOKIE' : kind.toUpperCase();
     f.y = 0;
-    f.hp = archetype.health; f.chip = archetype.health;
+    f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
@@ -2661,6 +2670,7 @@ class BeatEmUp {
           if (e.kind === 'heavy') { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
           if (e.kind === 'runner' || e.kind === 'tough') { e.f.atk.dmg *= .8; }
           e.f.atk.dmg *= BeatEmUp.difficulty.damage;
+          if (e.kind === 'boss') e.f.atk.dmg *= BossHardness.damage;
         }
         BeatEmUp.clampFighterBones(e);
       });
@@ -2706,7 +2716,7 @@ class BeatEmUp {
         ai.tellT = Math.max(0, ai.tellT - dt);
         if (ai.tellT <= 0) {
           Input.pad[1][ai.tellMove] = 1;
-          ai.cool = e.kind === 'boss' ? Math.max(.42, .8 - ai.phase * .12) : e.kind === 'runner' || e.kind === 'tough' ? .52 : e.kind === 'heavy' ? .95 : .7;
+          ai.cool = e.kind === 'boss' ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate : e.kind === 'runner' || e.kind === 'tough' ? .52 : e.kind === 'heavy' ? .95 : .7;
           ai.tellMove = ''; ai.tellKind = '';
         }
         BeatEmUp._driveEnemyPad(e, player, dt);
@@ -2747,7 +2757,7 @@ class BeatEmUp {
         else move = Math.random() < .72 ? 'punch' : 'kick';
         ai.tellMove = move;
         ai.tellKind = move === 'special' ? 'CHARGE' : move.toUpperCase();
-        ai.tellT = e.kind === 'boss' ? .72 : e.kind === 'heavy' ? .48 : .34;
+        ai.tellT = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate) : e.kind === 'heavy' ? .48 : .34;
       }
       BeatEmUp._driveEnemyPad(e, player, dt);
     }
