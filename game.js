@@ -1183,16 +1183,6 @@ class Fighter {
   }
   /** Karate extends the punch chain to 4 hits; every other class keeps Moves.punch.chainMax (3). */
   punchChainMax() { return this.classProfile?.style === 'ward' ? 4 : Moves.punch.chainMax; }
-  /** Karate roll-cancel: on hit only, during the first 6 frames of recovery. Other classes roll as before. */
-  rollCancelAllowed() {
-    if (!this.atk) return true;
-    if (this.classProfile?.style !== 'ward') return true;
-    if (this.state === 'punch' && this.chain === 3) return false;
-    if (this.state !== 'punch' && this.state !== 'kick') return false;
-    if (!this.hitConfirmed) return false;
-    const a = this.atk, end = a.su + a.ac;
-    return this.atkT > end && this.atkT <= end + 6;
-  }
   /** Karate Roundhouse: 40px forward step spread over the windup, clamped and never crossing the foe. */
   roundhouseStep(other) {
     if (this.classProfile?.style !== 'ward' || this.state !== 'kick' || !this.atk) return 0;
@@ -1367,7 +1357,7 @@ class Fighter {
       if (this.dodgeT <= 0) { this.vx = 0; this.state = 'idle'; this.aim('idle', Pose.idle(this.classProfile), .08); }
       this.clamp(other); return;
     }
-    if (rollPressed && Game.fighting && this.grounded && this.dodgeCooldown <= 0 && this.state !== 'special' && this.rollCancelAllowed()) {
+    if (rollPressed && Game.fighting && this.grounded && this.dodgeCooldown <= 0 && this.state !== 'special') {
       this.startRoll(slot, other);
       this.dodgeT = Math.max(0, this.dodgeT - dt);
       this.x += this.rollVx * dt; this.vx = this.rollVx;
@@ -2115,6 +2105,60 @@ class Fx {
     if (!Fx.allowed(x, y)) return;
     Fx.list.push({kind:'combo', text, x, y, life:.82, max:.82, color:profile?.accent || '#FBBF24'});
   }
+  /**
+   * Running damage total + one combo label for a Karate super string.
+   * Reuses the existing 'damage' and 'combo' draw branches; these entries do not drift.
+   */
+  /** Fixed slot for the Karate super's running total: centred between the two heads, above both name tags and the ×N badge. */
+  static karateSuperSlot(ba, bb) {
+    const sc = Game.scale || 1;
+    return { x: (ba.head.x + bb.head.x) / 2, y: Math.min(ba.y0, bb.y0) - 63 / sc };
+  }
+  static karateSuperText(owner, atkRef, x, y, damage, critical, comboText, profile) {
+    if (damage <= 0) return; // same rule as Fx.damage: no text for a hit that took no HP
+    let damageEntry = null;
+    for (const e of Fx.list) {
+      if (e.kind === 'damage' && e.karateSuper && e.owner === owner && e.atkRef === atkRef) { damageEntry = e; break; }
+    }
+    if (damageEntry) {
+      damageEntry.total += damage;
+      damageEntry.text = (critical ? 'CRITICAL!  ' : '') + '-' + (Math.round(damageEntry.total * 10) / 10);
+      damageEntry.life = damageEntry.max;
+    } else {
+      if (!Fx.allowed(x, y)) return;
+      Fx.list = Fx.list.filter(e => !(e.karateSuper && (e.kind === 'damage' || e.kind === 'combo') && e.owner === owner));
+      const total = damage;
+      Fx.list.push({
+        kind:'damage', karateSuper:true, owner, atkRef, total,
+        x, y, text:(critical ? 'CRITICAL!  ' : '') + '-' + (Math.round(total * 10) / 10),
+        life:.95, max:.95,
+        color:critical ? '#FFE16B' : '#FFFFFF', critical
+      });
+      damageEntry = Fx.list[Fx.list.length - 1];
+    }
+    if (comboText) {
+      let comboEntry = null;
+      for (const e of Fx.list) {
+        if (e.kind === 'combo' && e.karateSuper && e.owner === owner && e.atkRef === atkRef) { comboEntry = e; break; }
+      }
+      if (comboEntry) {
+        comboEntry.text = comboText;
+        comboEntry.life = comboEntry.max;
+      } else {
+        const cy = y - 26 / (Game.scale || 1);
+        if (!Fx.allowed(x, cy)) return;
+        Fx.list.push({
+          kind:'combo', karateSuper:true, owner, atkRef,
+          x, y:cy, text:comboText,
+          life:.95, max:.95,
+          color:profile?.accent || '#FBBF24'
+        });
+        comboEntry = Fx.list[Fx.list.length - 1];
+      }
+      comboEntry.x = damageEntry.x;
+      comboEntry.y = damageEntry.y - 26 / (Game.scale || 1);
+    }
+  }
   static stun(x, y, chance) {
     if (!Fx.allowed(x, y)) return;
     Fx.list.push({kind:'stun', text:'STUN! ' + Math.round(chance * 100) + '%', x, y, life:.72, max:.72, color:'#FFE16B'});
@@ -2138,8 +2182,8 @@ class Fx {
     for (let i = 0; i < Fx.list.length; i++) {
       const e = Fx.list[i];
       e.life -= dt;
-      if (e.kind === 'damage') e.y -= 30 * dt;
-      if (e.kind === 'combo') e.y -= 42 * dt;
+      if (e.kind === 'damage' && !e.karateSuper) e.y -= 30 * dt;
+      if (e.kind === 'combo' && !e.karateSuper) e.y -= 42 * dt;
       if (e.kind === 'stun') e.y -= 24 * dt;
       if (e.kind === 'ring') e.radius = e.r0 + (e.r1 - e.r0) * (1 - e.life / e.max);
       if (e.life > 0) Fx.list[write++] = e;
@@ -3009,12 +3053,21 @@ class BeatEmUp {
         if (attacker.role === 'player') Game.tryComboStun(
           attacker.f, target.f, hit, kind, confirmed, cx - BeatEmUp.cameraX, cy - 58
         );
-        if (attacker.role === 'player') {
-          if (hit.comboFinisher && specialFirst) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits), attacker.f.classProfile);
-          else if (confirmed && attacker.f.comboHits >= 2) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits), attacker.f.classProfile);
-        }
         const criticalHit = !!hit.critical && kind !== 'block';
-        Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block', criticalHit);
+        const isKarateSuper = hit.special && attacker.f.classProfile?.style === 'ward';
+        let comboText = '';
+        if (attacker.role === 'player') {
+          if (hit.comboFinisher && specialFirst) comboText = Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits);
+          else if (confirmed && attacker.f.comboHits >= 2) comboText = Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits);
+          if (comboText && !isKarateSuper) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, comboText, attacker.f.classProfile);
+        }
+        if (isKarateSuper) {
+          const ba = BeatEmUp.withDepth(attacker, () => attacker.f.bones()), bt = BeatEmUp.withDepth(target, () => target.f.bones());
+          const slot = Fx.karateSuperSlot(ba, bt);
+          Fx.karateSuperText(attacker.f, attacker.f.atk, slot.x - BeatEmUp.cameraX, slot.y, damage, criticalHit, comboText, attacker.f.classProfile);
+        } else {
+          Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block', criticalHit);
+        }
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && attacker.f.classProfile?.style === 'ward') {
           const camX = cx - BeatEmUp.cameraX, k = BeatEmUp.withDepth(attacker, () => attacker.f.drawS() / 1.2);
@@ -3938,12 +3991,20 @@ class Game {
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
       const comboStunned = i === 0 && Game.tryComboStun(me, foe, box, kind, confirmed, cx, cy - 58);
       if (comboStunned && Game.mode === 'practice') Game.practiceLastMove += ' · STUN';
-      if (i === 0) {
-        if (box.comboFinisher && box.special && !me.specialEffectDone) Fx.combo(cx, cy - 34, Fighter.comboMessage(box, me.state, me.comboHits), me.classProfile);
-        else if (confirmed && me.comboHits >= 2) Fx.combo(cx, cy - 34, Fighter.comboMessage(box, me.state, me.comboHits), me.classProfile);
-      }
       const criticalHit = !!box.critical && kind !== 'block';
-      Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
+      const isKarateSuper = box.special && me.classProfile?.style === 'ward';
+      let comboText = '';
+      if (i === 0) {
+        if (box.comboFinisher && box.special && !me.specialEffectDone) comboText = Fighter.comboMessage(box, me.state, me.comboHits);
+        else if (confirmed && me.comboHits >= 2) comboText = Fighter.comboMessage(box, me.state, me.comboHits);
+        if (comboText && !isKarateSuper) Fx.combo(cx, cy - 34, comboText, me.classProfile);
+      }
+      if (isKarateSuper) {
+        const slot = Fx.karateSuperSlot(me.bones(), foe.bones());
+        Fx.karateSuperText(me, me.atk, slot.x, slot.y, damage, criticalHit, comboText, me.classProfile);
+      } else {
+        Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
+      }
       if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
       if (box.special && me.classProfile?.style === 'ward') {
         const k = me.drawS() / 1.2;
