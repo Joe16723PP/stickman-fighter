@@ -290,12 +290,41 @@ const Moves = {
     su: 14, ac: 10, re: 18,
     dmg: 22, chip: 6, kb: 390, stun: 22,
   },
+  staffPunch: {
+    su: 13, ac: 4, re: 22,
+    dmg: 6, kb: 160, stun: 10,
+    chainMax: 2,
+    chainDmg: [6, 8],
+    chainKb: [160, 220],
+    chainStun: [10, 15],
+    chainSu: [11], chainAc: [4], chainRe: [20],
+    chainWindow: 10,
+    reach: 130, front: 80,
+  },
+  staffKick: {
+    su: 18, ac: 6, re: 28,
+    dmg: 23, kb: 260, stun: 22,
+    chainWindow: 18,
+    reach: 210, front: 180,
+    knockdown: true,
+  },
+  staffSpecial: {
+    su: 16, ac: 19, re: 22,
+    dmg: 22, chip: 6, kb: 390, stun: 22,
+    hitCount: 3,
+    hitDurations: [4, 4, 5],
+    hitDelays: [0, 7, 14],
+    hitDamages: [24, 24, 38],
+    reach: 210, spinFront: 130, slamFront: 180,
+  },
 };
 
 /** Resolved attack snapshot used by Fighter (reads Moves). */
 class Atk {
-  static of(kind, chain = 0, chainMax = null) {
-    const m = Moves[kind];
+  static staffTable(kind) { return { punch: 'staffPunch', kick: 'staffKick', special: 'staffSpecial' }[kind]; }
+  static of(kind, chain = 0, chainMax = null, profile = null) {
+    const table = profile?.weapon === 'staff' ? Atk.staffTable(kind) : kind;
+    const m = Moves[table] || Moves[kind];
     if (!m) return null;
     if (kind === 'punch') {
       const max = chainMax || m.chainMax;
@@ -309,6 +338,7 @@ class Atk {
         kb: m.chainKb[n], stun: m.chainStun[n],
         chain: n, kind: 'punch',
         chainMax: max, chainWindow: m.chainWindow,
+        reach: m.reach,
       };
     }
     if (kind === 'kick') {
@@ -316,12 +346,14 @@ class Atk {
         su: m.su, ac: m.ac, re: m.re,
         dmg: m.dmg, kb: m.kb, stun: m.stun,
         kind: 'kick', chainWindow: m.chainWindow,
+        reach: m.reach, knockdown: !!m.knockdown,
       };
     }
     return {
       su: m.su, ac: m.ac, re: m.re,
       dmg: m.dmg, chip: m.chip || 0, kb: m.kb, stun: m.stun,
       kind: 'special',
+      reach: m.reach,
     };
   }
   // Back-compat mirrors for any Atk.punch.su style reads (Bot ranges still use literals via Moves)
@@ -709,6 +741,23 @@ class Pose {
       la:d(-95), le:d(-20), ra:d(-95), re:d(-20),
       ll:d(70), lk:d(20), rl:d(-80), rk:d(30), hipBob:8};
   }
+  /** Dragon Staff Spin poses: windup, two spin sweeps, and the ground slam. */
+  static staffSuperWind(profile = null) {
+    const d = Pose.deg;
+    return Pose.staffGrip(-6,[-128,-30,16,52],[40,22,-42,22],0);
+  }
+  static staffSuperSpin1(profile = null) {
+    const d = Pose.deg;
+    return Pose.staffGrip(-16,[-78,22,-24,-118],[52,28,-54,32],-3);
+  }
+  static staffSuperSpin2(profile = null) {
+    const d = Pose.deg;
+    return Pose.staffGrip(10,[-150,-34,-86,-50],[55,30,-52,30],-2);
+  }
+  static staffSuperSlam(profile = null) {
+    const d = Pose.deg;
+    return Pose.staffGrip(32,[-92,12,-12,-132],[48,26,-50,28],-4);
+  }
 }
 
 class Bot {
@@ -1093,14 +1142,14 @@ class Fighter {
       linked = kind === 'kick' && this.canChainHeavy();
       this.chain = 0; this.chainArmed = 0;
     }
-    this.atk = Atk.of(kind, kind === 'punch' ? this.chain : 0, kind === 'punch' ? this.punchChainMax() : null);
+    this.atk = Atk.of(kind, kind === 'punch' ? this.chain : 0, kind === 'punch' ? this.punchChainMax() : null, this.classProfile);
     if (this.atk) {
       // Player specials release quickly; CPU specials telegraph longer to give players a dodge window.
       if (kind === 'special') {
         if (this.classProfile?.style === 'ward') {
           this.atk.su = this.playerControlled ? 10 : Math.round(1.25 / Game.STEP);
           this.atk.ac = 15; this.atk.re = 18;
-        } else {
+        } else if (this.classProfile?.weapon !== 'staff') {
           this.atk.su = Math.round((this.playerControlled ? .5 : 1.25) / Game.STEP);
         }
       }
@@ -1110,12 +1159,12 @@ class Fighter {
         flash:{punch:[5,3,9],kick:[8,4,12]}, quake:{punch:[10,3,17],kick:[14,5,22]},
         ward:{punch:[4,3,9],kick:[9,4,15]},
       }[style];
-      if (timings && (kind === 'punch' || kind === 'kick')) {
+      if (timings && (kind === 'punch' || kind === 'kick') && this.classProfile?.weapon !== 'staff') {
         const timing = timings[kind];
         if (kind !== 'punch' || !this.chain) [this.atk.su,this.atk.ac,this.atk.re] = timing;
       }
       const attackSpeed = this.attackSpeed * (this.classProfile?.attackSpeed || 1);
-      if (kind !== 'special' && attackSpeed !== 1) {
+      if (kind !== 'special' && attackSpeed !== 1 && this.classProfile?.weapon !== 'staff') {
         this.atk.su = Math.max(1, Math.round(this.atk.su / attackSpeed));
         this.atk.ac = Math.max(1, Math.round(this.atk.ac / attackSpeed));
         this.atk.re = Math.max(1, Math.round(this.atk.re / attackSpeed));
@@ -1146,6 +1195,14 @@ class Fighter {
         this.atk.hitCount = hitCount;
         if (this.classProfile?.style === 'ward') {
           this.atk.superFractions = [18 / 66, 18 / 66, 30 / 66];
+        } else if (this.classProfile?.weapon === 'staff') {
+          const m = Moves.staffSpecial;
+          this.atk.hitCount = m.hitCount;
+          this.atk.hitDurations = m.hitDurations;
+          this.atk.hitDelays = m.hitDelays;
+          const total = m.hitDamages.reduce((a, b) => a + b, 0);
+          this.atk.dmg = total;
+          this.atk.superFractions = m.hitDamages.map(d => d / total);
         } else {
           this.atk.dmg /= hitCount;
           this.atk.chip /= hitCount;
@@ -1181,8 +1238,11 @@ class Fighter {
     const intoRecovery = this.atkT - (a.su + a.ac);
     return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRecovery <= Moves.punch.chainWindow;
   }
-  /** Karate extends the punch chain to 4 hits; every other class keeps Moves.punch.chainMax (3). */
-  punchChainMax() { return this.classProfile?.style === 'ward' ? 4 : Moves.punch.chainMax; }
+  /** Karate extends the punch chain to 4 hits; Staff caps at 2; every other class keeps Moves.punch.chainMax (3). */
+  punchChainMax() {
+    if (this.classProfile?.weapon === 'staff') return Moves.staffPunch.chainMax;
+    return this.classProfile?.style === 'ward' ? 4 : Moves.punch.chainMax;
+  }
   /** Karate Roundhouse: 40px forward step spread over the windup, clamped and never crossing the foe. */
   roundhouseStep(other) {
     if (this.classProfile?.style !== 'ward' || this.state !== 'kick' || !this.atk) return 0;
@@ -1206,6 +1266,13 @@ class Fighter {
       if (off >= 12 && off <= 15) return 2;
       return -1;
     }
+    if (this.classProfile?.weapon === 'staff' && a.hitDelays) {
+      const off = this.atkT - a.su - 1;
+      for (let i = 0; i < a.hitDelays.length; i++) {
+        if (off >= a.hitDelays[i] && off < a.hitDelays[i] + a.hitDurations[i]) return i;
+      }
+      return -1;
+    }
     const hitCount = a.hitCount || 1;
     return Math.min(hitCount - 1, Math.floor((this.atkT - a.su - 1) / Math.max(1, a.ac / hitCount)));
   }
@@ -1226,6 +1293,22 @@ class Fighter {
         } else if (t <= a.su + 15) {
           if (this.atkPhase !== 'kh') { this.aim('kh', Pose.karateSuperKickHigh(this.classProfile), .05); this.atkPhase = 'kh'; }
         } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.idle(this.classProfile), a.re * Game.STEP); this.atkPhase = 'kr'; }
+        return;
+      }
+      if (this.classProfile?.weapon === 'staff') {
+        if (t <= a.su) {
+          if (this.atkPhase !== 'ssw') { this.aim('ssw', Pose.staffSuperWind(this.classProfile), a.su * Game.STEP); this.atkPhase = 'ssw'; }
+        } else if (t <= a.su + 4) {
+          if (this.atkPhase !== 'ss1') { this.aim('ss1', Pose.staffSuperSpin1(this.classProfile), .05); this.atkPhase = 'ss1'; Sfx.play('super-dash', this.classProfile); }
+        } else if (t <= a.su + 7) {
+          if (this.atkPhase !== 'ss1b') { this.aim('ss1b', Pose.staffSuperSpin2(this.classProfile), 3 * Game.STEP); this.atkPhase = 'ss1b'; }
+        } else if (t <= a.su + 11) {
+          if (this.atkPhase !== 'ss2') { this.aim('ss2', Pose.staffSuperSpin2(this.classProfile), .05); this.atkPhase = 'ss2'; Sfx.play('super-dash', this.classProfile); }
+        } else if (t <= a.su + 14) {
+          if (this.atkPhase !== 'ss2b') { this.aim('ss2b', Pose.staffSuperSlam(this.classProfile), 3 * Game.STEP); this.atkPhase = 'ss2b'; }
+        } else if (t <= a.su + 19) {
+          if (this.atkPhase !== 'ssl') { this.aim('ssl', Pose.staffSuperSlam(this.classProfile), .05); this.atkPhase = 'ssl'; Sfx.play('super-dash', this.classProfile); }
+        } else if (this.atkPhase !== 'sr') { this.aim('sr', Pose.idle(this.classProfile), a.re * Game.STEP); this.atkPhase = 'sr'; }
         return;
       }
       if (t <= a.su) {
@@ -1357,7 +1440,7 @@ class Fighter {
       if (this.dodgeT <= 0) { this.vx = 0; this.state = 'idle'; this.aim('idle', Pose.idle(this.classProfile), .08); }
       this.clamp(other); return;
     }
-    if (rollPressed && Game.fighting && this.grounded && this.dodgeCooldown <= 0 && this.state !== 'special') {
+    if (rollPressed && Game.fighting && this.grounded && this.dodgeCooldown <= 0 && this.state !== 'special' && !(this.classProfile?.weapon === 'staff' && this.atk)) {
       this.startRoll(slot, other);
       this.dodgeT = Math.max(0, this.dodgeT - dt);
       this.x += this.rollVx * dt; this.vx = this.rollVx;
@@ -1480,10 +1563,13 @@ class Fighter {
         const segment = {x1:start.x,y1:start.y,x2:end.x,y2:end.y,r};
         const x = Math.min(start.x,end.x) - r, y = Math.min(start.y,end.y) - r;
         const w = Math.abs(end.x - start.x) + r * 2, h = Math.abs(end.y - start.y) + r * 2;
-        const common = {x,y,w,h,segment,dmg:a.dmg,kb:a.kb,stun:a.stun,chip:a.chip || 0,special:this.state === 'special',critical:!!a.critical,comboFinisher:!!a.comboFinisher,comboLink:!!a.linked,chain:a.chain || 0};
+        const common = {x,y,w,h,segment,dmg:a.dmg,kb:a.kb,stun:a.stun,chip:a.chip || 0,special:this.state === 'special',critical:!!a.critical,comboFinisher:!!a.comboFinisher,comboLink:!!a.linked,chain:a.chain || 0,knockdown:!!a.knockdown};
         if (this.state === 'special') {
-          const hitCount = a.hitCount || 1;
-          common.pulse = Math.min(hitCount - 1, Math.floor((this.atkT - a.su - 1) / Math.max(1, a.ac / hitCount)));
+          common.pulse = this.superPulse();
+          if (weapon === 'staff' && a.superFractions) {
+            common.dmg = a.dmg * a.superFractions[common.pulse];
+            common.knockdown = common.pulse === 2;
+          }
         }
         return common;
       }
@@ -1560,7 +1646,7 @@ class Fighter {
     this.atkPhase = '';
     this.state = 'hit';
     this.recordDamage(hpBefore - this.hp, from);
-    const knockdown = (!atk.special && atk.chain === 3) || (atk.special && atk.pulse === 2 && from.classProfile?.style === 'ward');
+    const knockdown = atk.knockdown || (!atk.special && atk.chain === 3) || (atk.special && atk.pulse === 2 && from.classProfile?.style === 'ward');
     if (knockdown && !(Game.mode === 'practice' && !this.playerControlled)) this.startRagdoll(from, false);
     return 'hit';
   }
@@ -1664,7 +1750,7 @@ class Fighter {
     }
     if (weapon === 'staff') {
       // Build the staff shaft through both hands, then extend it past each grip.
-      // This keeps idle, thrust, and heavy sweep collision on the drawn weapon.
+      // This keeps idle, thrust, heavy sweep, and super spin/slam collision on the drawn weapon.
       const leadIsLeft = (b.la.x - b.ra.x) * face >= 0;
       const rear = leadIsLeft ? b.ra : b.la, lead = leadIsLeft ? b.la : b.ra;
       let dx = (lead.x - rear.x) * face, dy = lead.y - rear.y;
@@ -1676,7 +1762,16 @@ class Fighter {
       }
       const ux = face * dx / length, uy = dy / length;
       const arcadeSize = Game.mode === 'beatemup' ? .8 : 1 * reachMul;
-      const back = 50 * arcadeSize, front = (this.state === 'kick' && active ? 138 : 98) * arcadeSize;
+      const back = 50 * arcadeSize;
+      let front;
+      if (active && this.state === 'special') {
+        const pulse = this.superPulse();
+        front = (pulse === 2 ? Moves.staffSpecial.slamFront : Moves.staffSpecial.spinFront) * arcadeSize;
+      } else if (active && this.state === 'kick') {
+        front = Moves.staffKick.front * arcadeSize;
+      } else {
+        front = Moves.staffPunch.front * arcadeSize;
+      }
       return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
     }
     if (weapon === 'blade') {
@@ -2078,6 +2173,74 @@ class Fx {
       const ox = x - face * 18 * s + i * face * 9 * s;
       if (!Fx.allowed(ox, gy)) continue;
       Fx.list.push({kind:'dust', x:ox, y:gy, life:.16 + Fx.random() * .04, max:.2, r0:3 / sc, r1:(9 * s) / sc});
+    }
+  }
+  static staffSuperSpin(x, y, face, s) {
+    const sc = Game.scale || 1;
+    const wind = '#BFE9FF', teal = '#2DD4BF';
+    const life = .133 + Fx.random() * .067;
+    const alpha = .4 + Fx.random() * .3;
+    if (Fx.allowed(x, y)) {
+      Fx.list.push({kind:'windRing', x, y, r0:(18 * s) / sc, r1:(46 * s) / sc, life, max:life, color:wind, alpha, width:(2.5 + Fx.random() * 1.5) / sc});
+      Fx.list.push({kind:'windRing', x, y, r0:(8 * s) / sc, r1:(28 * s) / sc, life, max:life, color:teal, alpha:alpha * .65, width:(1.2 + Fx.random()) / sc});
+    }
+    // Lightning crackles along the staff and jumps around the ring.
+    Fx.staffLightning(x, y, face, s, 3 + Math.floor(Fx.random() * 3));
+  }
+  static staffLightning(x, y, face, s, count) {
+    const sc = Game.scale || 1;
+    const core = '#E0F7FF', glow = '#7DD3FC';
+    for (let i = 0; i < count; i++) {
+      const len = (14 + Fx.random() * 22) * s;
+      const ang = Fx.random() * Math.PI * 2;
+      const sx = x + Math.cos(ang) * (10 + Fx.random() * 18) * s;
+      const sy = y + Math.sin(ang) * (6 + Fx.random() * 12) * s;
+      const seg = 2 + Math.floor(Fx.random() * 2);
+      const pts = [[sx, sy]];
+      for (let j = 1; j <= seg; j++) {
+        pts.push([sx + Math.cos(ang + (Fx.random() - .5) * .9) * len * (j / seg) * face,
+                  sy + Math.sin(ang + (Fx.random() - .5) * .9) * len * (j / seg)]);
+      }
+      if (!Fx.allowed(sx, sy) && !Fx.allowed(pts[pts.length - 1][0], pts[pts.length - 1][1])) continue;
+      Fx.list.push({kind:'crack', x:sx, y:sy, pts, life:.12 + Fx.random() * .06, max:.18, color:glow, alpha:.6 + Fx.random() * .25, width:(1.2 + Fx.random() * .8) / sc});
+      Fx.list.push({kind:'crack', x:sx, y:sy, pts, life:.12 + Fx.random() * .06, max:.18, color:core, alpha:.8 + Fx.random() * .2, width:.6 / sc});
+    }
+  }
+  static staffSuperSlam(x, y, face, s, groundY = null) {
+    const sc = Game.scale || 1;
+    const crackC = '#FFF3C4', core = '#E0F7FF', glow = '#7DD3FC';
+    const gy = groundY != null ? groundY : y;
+    // Sky bolt striking the impact point.
+    const boltLife = .133 + Fx.random() * .067;
+    const topY = gy - (90 + Fx.random() * 40) * s;
+    const seg = 4 + Math.floor(Fx.random() * 3);
+    const pts = [[x, gy]];
+    for (let j = 1; j < seg; j++) {
+      pts.push([x + face * (Fx.random() - .5) * 30 * s * (1 - j / seg),
+                gy - (gy - topY) * (j / seg) + (Fx.random() - .5) * 20 * s]);
+    }
+    pts.push([x + face * (Fx.random() - .5) * 10 * s, topY]);
+    if (Fx.allowed(x, gy) || Fx.allowed(pts[pts.length - 1][0], pts[pts.length - 1][1])) {
+      Fx.list.push({kind:'crack', x, y:gy, pts, life:boltLife, max:boltLife, color:glow, alpha:.65 + Fx.random() * .2, width:(2 + Fx.random()) / sc});
+      Fx.list.push({kind:'crack', x, y:gy, pts, life:boltLife, max:boltLife, color:core, alpha:.85 + Fx.random() * .15, width:.8 / sc});
+    }
+    // Branches crawling along the ground.
+    for (let i = 0; i < 4; i++) {
+      const bx = x + face * (Fx.random() * 18 - 6) * s;
+      if (!Fx.allowed(bx, gy)) continue;
+      const len = (22 + Fx.random() * 30) * s;
+      const branchSeg = 2 + Math.floor(Fx.random() * 3);
+      const bpts = [[bx, gy]];
+      for (let j = 1; j <= branchSeg; j++) {
+        bpts.push([bx + face * len * (j / branchSeg), gy + (Fx.random() - .5) * 8 * s]);
+      }
+      Fx.list.push({kind:'crack', x:bx, y:gy, pts:bpts, life:.12 + Fx.random() * .06, max:.18, color:crackC, alpha:.5 + Fx.random() * .3, width:(1.2 + Fx.random() * .8) / sc});
+    }
+    // Dust puffs around the impact.
+    for (let i = 0; i < 6; i++) {
+      const ox = x + face * (Fx.random() * 50 - 15) * s;
+      if (!Fx.allowed(ox, gy)) continue;
+      Fx.list.push({kind:'dust', x:ox, y:gy, life:.14 + Fx.random() * .06, max:.2, r0:(3 * s) / sc, r1:(11 * s) / sc});
     }
   }
   static wardGuard(x, y, profile) {
@@ -3075,6 +3238,12 @@ class BeatEmUp {
           else if (hit.pulse === 1) { Fx.karateSuperKickMid(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
           else if (hit.pulse === 2) { Fx.karateSuperKickHigh(camX, cy, attacker.f.face, k, BeatEmUp.withDepth(target, () => target.f.groundY())); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
+        } else if (hit.special && attacker.f.classProfile?.weapon === 'staff') {
+          const camX = cx - BeatEmUp.cameraX, k = BeatEmUp.withDepth(attacker, () => attacker.f.drawS() / 1.2);
+          const gy = BeatEmUp.withDepth(attacker, () => attacker.f.groundY() + attacker.f.y);
+          if (hit.pulse === 0 || hit.pulse === 1) { Fx.staffSuperSpin(camX, cy, attacker.f.face, k); }
+          else if (hit.pulse === 2) { Fx.staffSuperSlam(camX, gy, attacker.f.face, k, gy); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
+          if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
         } else {
           if (hit.special && !attacker.f.specialEffectDone) {
             Fx.special(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile);
@@ -4012,6 +4181,12 @@ class Game {
         else if (box.pulse === 1) { Fx.karateSuperKickMid(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
         else if (box.pulse === 2) { Fx.karateSuperKickHigh(cx, cy, me.face, k, foe.groundY()); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
+      } else if (box.special && me.classProfile?.weapon === 'staff') {
+        const k = me.drawS() / 1.2;
+        const gy = me.groundY() + me.y;
+        if (box.pulse === 0 || box.pulse === 1) { Fx.staffSuperSpin(cx, cy, me.face, k); }
+        else if (box.pulse === 2) { Fx.staffSuperSlam(cx, gy, me.face, k, gy); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
+        if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
       } else {
         if (box.special && !me.specialEffectDone) {
           Fx.special(cx, cy, me.classProfile);
@@ -4282,7 +4457,10 @@ class Game {
     ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
     ctx.fillText(Game.practiceLastMove || 'LAST LINK: —', Game.W / 2, y + 47 / sc);
     ctx.font = 'bold ' + 7.5 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#B8C5D9';
-    ctx.fillText(fighters[0].classProfile?.style === 'ward' ? 'JAB > CROSS > HOOK > RISING PALM  ·  ROLL-CANCEL' : 'NORMAL ×3  ·  NORMAL → HEAVY  ·  HEAVY → NORMAL ×2', Game.W / 2, y + 63 / sc);
+    const comboLine = fighters[0].classProfile?.weapon === 'staff' ? 'THRUST > OVERHEAD  ·  LOW SWEEP AT RANGE'
+      : fighters[0].classProfile?.style === 'ward' ? 'JAB > CROSS > HOOK > RISING PALM  ·  ROLL-CANCEL'
+      : 'NORMAL ×3  ·  NORMAL → HEAVY  ·  HEAVY → NORMAL ×2';
+    ctx.fillText(comboLine, Game.W / 2, y + 63 / sc);
     ctx.fillText('2+ HITS → SUPER (+25%)', Game.W / 2, y + 75 / sc);
     ctx.fillStyle = '#FFE16B';
     ctx.fillText('LINK STUN 25%  ·  SUPER FINISHER STUN 40%', Game.W / 2, y + 87 / sc);
