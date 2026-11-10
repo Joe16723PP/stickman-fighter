@@ -327,6 +327,7 @@ const Moves = {
     chainSu: [6, 8], chainAc: [3, 4], chainRe: [10, 14],
     chainWindow: 10,
     reach: 110, front: 110,
+    chainReach: [110, 110, 120],   // Quick Draw / Rising Cut / Crescent Cleave (plan §1)
   },
   bladeKick: {
     su: 8, ac: 4, re: 12,
@@ -1569,7 +1570,8 @@ class Fighter {
         const pulse = this.superPulse();
         if (pulse === 1) {
           this.bladeWaveSpawned = true;
-          this.bladeWaveKnockdownT = 50 * Game.STEP;
+          // Noto click: the knockdown is scheduled in FRAMES (atkT), not seconds.
+          this.bladeWaveKnockdownT = Moves.bladeSpecial.su + Moves.bladeSpecial.ac + Moves.bladeSpecial.re; // f50
           Game.spawnBladeWave(this);
         }
       }
@@ -1781,12 +1783,12 @@ class Fighter {
     this.vx = Math.sign(this.x - from.x) * atk.kb; this.atk = null; this.blocking = 0; this.dashLeft = 0;
     this.atkPhase = '';
     this.state = 'hit';
-    this.recordDamage(hpBefore - this.hp, from);
+    this.recordDamage(hpBefore - this.hp, from, !!atk.wave);
     const knockdown = atk.knockdown || (!atk.special && atk.chain === 3) || (atk.special && atk.pulse === 2 && from.classProfile?.style === 'ward');
     if (knockdown && !(Game.mode === 'practice' && !this.playerControlled)) this.startRagdoll(from, false);
     return 'hit';
   }
-  recordDamage(amount, from) {
+  recordDamage(amount, from, noBurst = false) {
     if (amount <= 0) return;
     if (this.damageBurstT <= 0) this.damageBurst = 0;
     this.damageBurst += amount;
@@ -1795,6 +1797,7 @@ class Fighter {
     // Karate super: P and QK must not trigger the burst knockdown, so the HK (which knocks down itself) can land.
     // Staff super: same rule for both spins, so only the Dragon Slam knocks down.
     else if (!this.ragdollActive && this.damageBurst >= 30 && !(Game.mode === 'practice' && !this.playerControlled)
+      && !noBurst
       && !(from?.state === 'special' && (from.classProfile?.style === 'ward' || from.classProfile?.weapon === 'staff')
         && from.superPulse() >= 0 && from.superPulse() < 2)) {
       this.damageBurst = 0;
@@ -1933,9 +1936,9 @@ class Fighter {
       }
       if (active) {
         const chain = Math.max(0, Math.min(2, this.atk?.chain || 0));
-        const reaches = [130, 130, 140];
+        const reaches = Moves.bladePunch.chainReach || [Moves.bladePunch.reach];
         const ys = [-18, 36, -50];
-        const reach = reaches[chain] * reachMul;
+        const reach = (reaches[Math.min(chain, reaches.length - 1)] || Moves.bladePunch.reach) * reachMul;
         const handOff = (hand.x - this.x) * face;
         const cutX = Math.max(10, reach - handOff);
         return {start:{x:hand.x - face * 10 * reachMul,y:hand.y + 8 * reachMul},tip:{x:hand.x + face * cutX * reachMul,y:hand.y + ys[chain] * reachMul}};
@@ -4469,7 +4472,7 @@ class Game {
         x: p.x - halfW, y: p.y - p.height / 2, w: p.width, h: p.height,
         dmg: p.dmg, kb: p.kb, stun: p.stun, chip: 0,
         special: true, pulse: 1, critical: false, comboFinisher: false, comboLink: false, chain: 0,
-        knockdown: false,
+        knockdown: false, wave: true,
       };
       const hpBefore = foe.hp;
       const kind = foe.takeHit(waveAtk, p.owner);

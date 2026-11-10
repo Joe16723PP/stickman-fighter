@@ -342,8 +342,13 @@ def run_class_checks(page):
         failures.append("staff super did not knock down")
     if 'blade' in r:
         b = r['blade']
-        if abs(b['reach']['punch'] - s['reach']['punch']) > 10:
-            failures.append(f"blade punch reach {b['reach']['punch']:.1f}px not within 10px of staff {s['reach']['punch']:.1f}px")
+        # Plan: blade punch reaches 110/110/120 (tip), shorter than staff's 130 and longer than Karate's shared 95.
+        if not (b['reach']['punch'] < s['reach']['punch'] - 10):
+            failures.append(f"blade punch reach {b['reach']['punch']:.1f}px should be shorter than staff {s['reach']['punch']:.1f}px")
+        if not (b['reach']['punch'] > k['reach']['punch'] + 20):
+            failures.append(f"blade punch reach {b['reach']['punch']:.1f}px should outrange karate {k['reach']['punch']:.1f}px")
+        if not (b['reach']['kick'] < s['reach']['kick'] - 40):
+            failures.append(f"blade kick reach {b['reach']['kick']:.1f}px should be shorter than staff {s['reach']['kick']:.1f}px")
         if b['chainCap'] != 3:
             failures.append(f"blade punch chain cap {b['chainCap']} != 3")
         if not b['super']['hpFinite']:
@@ -356,6 +361,10 @@ def run_class_checks(page):
             failures.append(f"blade super total damage {total} != 74")
         if b['super']['knockdownFrame'] < 0:
             failures.append("blade super did not knock down")
+        # Plan §4: the wave freezes the target in hitstun; the knockdown fires on the noto click at f50,
+        # not on the 46-damage wave impact (which crosses the 30-damage burst threshold).
+        elif b['super']['knockdownFrame'] < 44:
+            failures.append(f"blade super knocked down at frame {b['super']['knockdownFrame']}, expected the noto frame (~50)")
         if b['parry6']['dummyHP'] > 99.9 or b['parry6']['playerMeter'] <= 5:
             failures.append(f"blade 6f parry failed: dummyHP={b['parry6']['dummyHP']:.1f} meter={b['parry6']['playerMeter']:.1f}")
         if b['parry9']['playerHP'] > 99.5 or b['parry9']['dummyHP'] < 99.9:
