@@ -2948,6 +2948,13 @@ class BeatEmUp {
   }
   static wave = 0;
   static waveTotal = 3;
+  static waveSpawnQueue = [];
+  static waveSpawnTimer = 0;
+  static pacing = {
+    spawnInterval: 0.35,
+    attackTell: { regular: 0.42, heavy: 0.55 },
+    attackRecovery: { regular: 0.82, agile: 0.62, heavy: 1.05 },
+  };
   static locked = 1;
   static showGo = 0;
   static goArmed = 0;
@@ -3080,6 +3087,8 @@ class BeatEmUp {
     BeatEmUp.stage = 1;
     BeatEmUp.loadStageBackgrounds(1);
     BeatEmUp.wave = 0;
+    BeatEmUp.waveSpawnQueue = [];
+    BeatEmUp.waveSpawnTimer = 0;
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
     BeatEmUp.goArmed = 0;
@@ -3125,6 +3134,8 @@ class BeatEmUp {
     BeatEmUp.lockL = 0; BeatEmUp.lockR = Game.W * .95;
     BeatEmUp.spawnX = Game.W * .7; BeatEmUp.worldMax = Game.W * 4.2;
     BeatEmUp.locked = 1; BeatEmUp.showGo = 0; BeatEmUp.goArmed = 0;
+    BeatEmUp.waveSpawnQueue = [];
+    BeatEmUp.waveSpawnTimer = 0;
     BeatEmUp.boss = null; BeatEmUp.stageOver = 0;
     BeatEmUp.items = [];
     BeatEmUp.downPending = 0; BeatEmUp.downTimer = 0;
@@ -3224,6 +3235,8 @@ class BeatEmUp {
     BeatEmUp.lockL = BeatEmUp.cameraX;
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
+    BeatEmUp.waveSpawnQueue = [];
+    BeatEmUp.waveSpawnTimer = 0;
     const defs = BeatEmUp.waveDefs(n);
     const enemyDelta = BeatEmUp.difficulty.extraEnemies;
     if (enemyDelta < 0 && defs.length > 1) defs.pop();
@@ -3239,15 +3252,27 @@ class BeatEmUp {
       depth: Math.max(.12, Math.min(.9, 1 - d.depth)),
     }));
     defs.push(...reinforcements);
-    for (const d of defs) {
-      // Keep reinforcements in the newly revealed area instead of popping in behind the player.
-      const x = BeatEmUp.lockL + Game.W * Math.max(n === 2 ? .12 : .42, d.ox);
-      BeatEmUp.cast.push(BeatEmUp.makeEnemy(d.kind, x, d.depth));
-    }
+    BeatEmUp.waveSpawnQueue = defs;
     Game.phase = 'intro';
     Game.banner = retry ? 'LIFE LOST' : 'WAVE ' + n;
     Game.bannerT = BeatEmUp.stageIntroT || 1.1;
     Game.fighting = 0;
+  }
+
+  static updateWaveSpawns(dt) {
+    if (!BeatEmUp.waveSpawnQueue.length) {
+      BeatEmUp.waveSpawnTimer = 0;
+      return;
+    }
+    BeatEmUp.waveSpawnTimer -= dt;
+    while (BeatEmUp.waveSpawnQueue.length && BeatEmUp.waveSpawnTimer <= 0) {
+      const d = BeatEmUp.waveSpawnQueue.shift();
+      // Keep reinforcements in the newly revealed area instead of popping in behind the player.
+      const x = BeatEmUp.lockL + Game.W * Math.max(BeatEmUp.wave === 2 ? .12 : .42, d.ox);
+      BeatEmUp.cast.push(BeatEmUp.makeEnemy(d.kind, x, d.depth));
+      BeatEmUp.waveSpawnTimer += BeatEmUp.pacing.spawnInterval;
+    }
+    if (!BeatEmUp.waveSpawnQueue.length) BeatEmUp.waveSpawnTimer = 0;
   }
 
   static startBoss(retry = false) {
@@ -3258,6 +3283,8 @@ class BeatEmUp {
     BeatEmUp.lockL = BeatEmUp.cameraX;
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
+    BeatEmUp.waveSpawnQueue = [];
+    BeatEmUp.waveSpawnTimer = 0;
     BeatEmUp.bossProjectiles = [];
     const boss = BeatEmUp.makeEnemy('boss', BeatEmUp.lockL + Game.W * 0.62, 0.55);
     BeatEmUp.bossMaxHp = boss.f.hp;
@@ -3451,6 +3478,7 @@ class BeatEmUp {
       return;
     }
     BeatEmUp.updateItems(dt, player);
+    BeatEmUp.updateWaveSpawns(dt);
     BeatEmUp.comboT = Math.max(0, BeatEmUp.comboT - dt);
     if (BeatEmUp.comboT <= 0) BeatEmUp.combo = 0;
     BeatEmUp.eventT = Math.max(0, BeatEmUp.eventT - dt);
@@ -3566,7 +3594,11 @@ class BeatEmUp {
         ai.tellT = Math.max(0, ai.tellT - dt);
         if (ai.tellT <= 0) {
           Input.pad[1][ai.tellMove] = 1;
-          ai.cool = e.kind === 'boss' ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate : e.kind === 'runner' || e.kind === 'tough' ? .52 : e.kind === 'heavy' ? .95 : .7;
+          ai.cool = e.kind === 'boss'
+            ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
+            : e.kind === 'runner' || e.kind === 'tough' ? BeatEmUp.pacing.attackRecovery.agile
+              : e.kind === 'heavy' ? BeatEmUp.pacing.attackRecovery.heavy
+                : BeatEmUp.pacing.attackRecovery.regular;
           ai.tellMove = ''; ai.tellKind = '';
         }
         BeatEmUp._driveEnemyPad(e, player, dt);
@@ -3622,7 +3654,8 @@ class BeatEmUp {
           else if (e.kind === 'runner' || e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
           else move = Math.random() < .72 ? 'punch' : 'kick';
           label = move === 'special' ? 'CHARGE' : move.toUpperCase();
-          tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate) : e.kind === 'heavy' ? .48 : .34;
+          tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
+            : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }
         ai.tellMove = move; ai.tellKind = label; ai.tellT = tell;
       }
@@ -3735,6 +3768,7 @@ class BeatEmUp {
 
   static checkWaveState() {
     if (Game.phase !== 'fight') return;
+    if (BeatEmUp.waveSpawnQueue.length) return;
     if (BeatEmUp.enemiesAlive().length > 0) return;
     if (BeatEmUp.wave >= 1 && BeatEmUp.wave <= 3) {
       if (!BeatEmUp.goArmed) {
