@@ -4509,6 +4509,9 @@ class Game {
     Game.paused = false; Game.actionMenuOpen = false;
     Game.mode = 'practice';
     Input.syncMode();
+    Game.phase = 'intro'; Game.banner = 'PRACTICE'; Game.bannerT = .9;
+    Game.syncControls();
+    Game.fit();
     Game.round = 1; Game.wins = [0, 0]; Game.matchOver = 0; Game.winner = '';
     const player = fighters[0], dummy = fighters[1];
     player.setClass(Game.selectedClass);
@@ -4522,7 +4525,6 @@ class Game {
     Game.stop = 0; Game.shake = 0; Game.fighting = 0; Game.matchOver = 0;
     Input.pad[1] = {}; Input.was[1] = {};
     Fx.clear(); Bot.reset();
-    Game.phase = 'intro'; Game.banner = 'PRACTICE'; Game.bannerT = .9;
     Game.syncSpecialBtn(); Game.syncControls();
   }
   static resetPracticeDummy(clearCombo = true) {
@@ -4823,6 +4825,20 @@ class Game {
     if (Game.minX > Game.maxX) { // ultra-narrow: keep a usable centre strip
       const mid = Game.W * .5, half = Math.max(40, (hiBtn - loBtn) * .5);
       Game.minX = mid - half; Game.maxX = mid + half;
+    }
+    if (Game.mode === 'practice') {
+      // Game.W has a 640-unit minimum, so in portrait the logical arena can be
+      // wider than the canvas actually shows. Keep Training spawns in the
+      // visible canvas width, even when the ordinary control-safe lane misses it.
+      const visibleRight = Math.min(Game.W, Game.canvas.width / (dpr * scale));
+      const visibleMin = Math.max(0, Game.minX);
+      const visibleMax = Math.min(visibleRight, Game.maxX);
+      if (visibleMin <= visibleMax) {
+        Game.minX = visibleMin; Game.maxX = visibleMax;
+      } else {
+        const inset = Math.min(REACH, visibleRight / 2);
+        Game.minX = inset; Game.maxX = visibleRight - inset;
+      }
     }
     if (Game.phase === 'title') {
       Game.placeTitleFighters();
