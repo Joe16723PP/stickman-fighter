@@ -1,9 +1,9 @@
 /* Difficulty tuning table — single source of truth */
 const Diff = {
   // Retuned for Moves timing (punch su7/re11, kick su11) + layout lane; restore 10/90, 77/23, 96/4 @ seed 0xC0FFEE42
-  easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.42, aggro: 0.26, cool: 1.10 },
-  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.44, mistake: 0.09, aggro: 0.80, cool: 0.48 },
-  hard:   { react: 0.14, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.92, cool: 0.28 },
+  easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.42, aggro: 0.26, cool: 1.10, damage: 1 },
+  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.44, mistake: 0.09, aggro: 0.80, cool: 0.48, damage: 1 },
+  hard:   { react: 0.23, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.92, cool: 0.28, damage: 1.4 },
 };
 
 const ArcadeDiff = {
@@ -1432,7 +1432,10 @@ class Fighter {
       const multiplier = kind === 'special' ? (this.classProfile?.superPower || 1)
         : kind === 'kick' ? (this.classProfile?.kick || 1)
           : (this.classProfile?.punch || 1);
-      this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1) * this.damageMultiplier;
+      const difficultyDamage = !this.playerControlled && Game.mode === '1v1'
+        ? (Diff[Game.level]?.damage ?? 1) : 1;
+      this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1) * this.damageMultiplier * difficultyDamage;
+      if (difficultyDamage !== 1 && this.atk.chip != null) this.atk.chip *= difficultyDamage;
       const attackBoost = this.playerControlled && this.attackBoostT > 0 ? BeatEmUp.energyDrinkDamageMultiplier : 1;
       this.atk.dmg *= attackBoost;
       if (this.atk.chip != null) this.atk.chip *= attackBoost;

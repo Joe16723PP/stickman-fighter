@@ -1,7 +1,7 @@
 {
   "seed": "0xc0ffee42",
   "rounds_per_level": 100,
-  "digest": "e1f4e789ebfcd07f5e6ed77b7857f489446c6c1795ca0019524c9c3766342df8",
+  "digest": "e66abe41ab11b4e9a5710d66b85818405f74dfc4430dbfd043ad93c7f447f346",
   "wins": {
     "easy": {
       "player": 92,
@@ -12,8 +12,8 @@
       "cpu": 82
     },
     "hard": {
-      "player": 9,
-      "cpu": 91
+      "player": 7,
+      "cpu": 93
     }
   }
 }
