@@ -164,6 +164,7 @@ BLADE_SUPER = '''() => {
   };
   owner.atkT = owner.atk.su + 1;
   const quick = owner.strike();
+  if (!quick) return {pass:false,debug:{state:owner.state,atkT:owner.atkT,atk:owner.atk,weapon:owner.classProfile?.weapon,meter:owner.meter,pulse:owner.superPulse()}};
   overlap(quick); Game.resolve(); const afterQuick = target.hp;
   Game.resolve(); const afterQuickDuplicate = target.hp;
   owner.atkT = owner.atk.su + BladeSuper.QUICK_DRAW_FRAMES + 1;
