@@ -1675,11 +1675,27 @@ class Fighter {
   staffDepthCoordinate(fighter = this) {
     return Game.mode === 'beatemup' ? BeatEmUp.floorDepthPx(fighter.depth) : fighter.groundY();
   }
+  staffNormalAttackReach() {
+    const previousPose = this.pose;
+    let geometry;
+    try {
+      this.pose = Pose.punchStrike(true, this.classProfile, 0);
+      geometry = this.weaponGeometry(this.combatBones(), true, Moves.staffPunch.front);
+    } finally {
+      this.pose = previousPose;
+    }
+    const forward = Math.max((geometry.start.x - this.x) * this.face, (geometry.tip.x - this.x) * this.face);
+    return Math.max(0, forward) + 8 * this.drawS();
+  }
   staffSpinRadius() {
     const b = this.combatBones();
     const gripCenterX = (b.la.x + b.ra.x) / 2;
     const visibleTipRadius = Math.abs(gripCenterX - this.x) + Fighter.STAFF_WEAPON_LENGTH * .5 * this.staffWeaponScale();
-    return Math.min(Moves.staffSpecial.spinFront * this.staffWeaponScale(), visibleTipRadius);
+    const normalReach = this.staffNormalAttackReach();
+    // Reserve one normal weapon-collider radius beyond its measured reach so
+    // the circular super is unambiguously wider than the ordinary thrust.
+    const normalReachMargin = 8 * this.drawS();
+    return Math.max(Moves.staffSpecial.spinFront * this.staffWeaponScale(), visibleTipRadius, normalReach + normalReachMargin);
   }
   staffSlamPoint() {
     const geo = this.visualWeaponGeometry(this.combatBones());
@@ -1722,7 +1738,7 @@ class Fighter {
     const k = this.drawS() / Fighter.S;
     if (pulse < 2) {
       const b = this.combatBones();
-      const centerX = (b.la.x + b.ra.x) / 2;
+      const centerX = this.x;
       const centerY = (b.la.y + b.ra.y) / 2;
       const geo = this.visualWeaponGeometry(b);
       const staffAngle = Math.atan2(geo.tip.y - geo.start.y, geo.tip.x - geo.start.x);
@@ -2303,7 +2319,7 @@ class Fighter {
     return dx;
   }
   weaponGeometry(b, active = !!(this.atk && this.atkT > this.atk.su &&
-    (this.state === 'special' || this.state === 'punch' || this.state === 'kick'))) {
+    (this.state === 'special' || this.state === 'punch' || this.state === 'kick')), staffFrontOverride = null) {
     const weapon = this.classProfile?.weapon || this.weaponType;
     if (!weapon) return null;
     const hand = b.ra, face = this.face;
@@ -2344,6 +2360,7 @@ class Fighter {
       } else {
         front = Moves.staffPunch.front * arcadeSize;
       }
+      if (staffFrontOverride != null) front = staffFrontOverride * arcadeSize;
       return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
     }
     if (weapon === 'blade') {
