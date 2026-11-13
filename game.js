@@ -1009,6 +1009,14 @@ class Pose {
       la:d(100), le:d(35), ra:d(-70), re:d(40),
       ll:d(110), lk:d(5), rl:d(-35), rk:d(40), hipBob:0};
   }
+  static bladeSuperVertical(profile = null) {
+    const d = Pose.deg;
+    return {chest:d(16),neck:d(-2),head:d(-4),la:d(-118),le:d(-42),ra:d(-138),re:d(-26),ll:d(22),lk:d(18),rl:d(-24),rk:d(22),hipBob:0,shPull:2};
+  }
+  static bladeSuperPause(profile = null) {
+    const d = Pose.deg;
+    return {chest:d(4),neck:d(-1),head:d(-2),la:d(-98),le:d(-70),ra:d(-124),re:d(-48),ll:d(18),lk:d(16),rl:d(-18),rk:d(18),hipBob:0,shPull:4};
+  }
   static specialFinish(profile = null, comboFinisher = false, face = 1) {
     if (profile?.weapon === 'staff') return Pose.staffSuperFinish(profile, face);
     if (profile?.weapon === 'blade') return Pose.specialDash(profile, comboFinisher);
@@ -1520,7 +1528,9 @@ class Fighter {
       // Player specials release quickly; CPU specials telegraph longer to give players a dodge window.
       if (kind === 'special') {
         if (this.classProfile?.weapon === 'blade') {
-          this.atk.su = 24; this.atk.ac = 2; this.atk.re = 24;
+          this.atk.su = BladeSuper.CHARGE_FRAMES;
+          this.atk.ac = BladeSuper.QUICK_DRAW_FRAMES + BladeSuper.PAUSE_FRAMES + BladeSuper.VERTICAL_SLASH_FRAMES;
+          this.atk.re = BladeSuper.RECOVERY_FRAMES;
         } else if (this.classProfile?.style === 'ward') {
           this.atk.su = this.playerControlled ? 10 : Math.round(1.25 / Game.STEP);
           this.atk.ac = 15; this.atk.re = 18;
@@ -1586,11 +1596,11 @@ class Fighter {
           this.atk.chip /= hitCount;
         }
         if (this.classProfile?.weapon === 'blade') {
-          this.atk.hitCount = 2;
-          this.atk.dmg = 74;
+          this.atk.hitCount = 3;
+          this.atk.dmg = BladeSuper.QUICK_DRAW_DAMAGE + BladeSuper.VERTICAL_SLASH_DAMAGE + BladeSuper.WAVE_DAMAGE;
           this.atk.chip = 0;
-          this.atk.superFractions = [28 / 74, 46 / 74];
-          this.atk.stun = 80;
+          this.atk.superFractions = [BladeSuper.QUICK_DRAW_DAMAGE, BladeSuper.VERTICAL_SLASH_DAMAGE, BladeSuper.WAVE_DAMAGE].map(damage => damage / this.atk.dmg);
+          this.atk.stun = BladeSuper.NOTO_FRAME + 30;
         }
       }
     }
@@ -1653,7 +1663,7 @@ class Fighter {
   superPulse() {
     const a = this.atk;
     if (!a || this.state !== 'special') return -1;
-    if (this.classProfile?.weapon === 'blade') return this.atkT > a.su && this.atkT <= a.su + a.ac ? 0 : -1;
+    if (this.classProfile?.weapon === 'blade') return BladeSuper.pulseForFrame(this.atkT - a.su);
     if (this.classProfile?.style === 'ward') {
       const off = this.atkT - a.su;
       if (off >= 1 && off <= 3) return 0;
@@ -1799,8 +1809,12 @@ class Fighter {
       if (this.classProfile?.weapon === 'blade') {
         if (t <= a.su) {
           if (this.atkPhase !== 'blade-tame') { this.aim('blade-tame', Pose.specialWind(this.classProfile), a.su * Game.STEP); this.atkPhase = 'blade-tame'; }
+        } else if (t <= a.su + BladeSuper.QUICK_DRAW_FRAMES) {
+          if (this.atkPhase !== 'blade-draw') { this.aim('blade-draw', Pose.specialDash(this.classProfile), BladeSuper.QUICK_DRAW_FRAMES * Game.STEP); this.atkPhase = 'blade-draw'; }
+        } else if (t <= a.su + BladeSuper.QUICK_DRAW_FRAMES + BladeSuper.PAUSE_FRAMES) {
+          if (this.atkPhase !== 'blade-pause') { this.aim('blade-pause', Pose.bladeSuperPause(this.classProfile), BladeSuper.PAUSE_FRAMES * Game.STEP); this.atkPhase = 'blade-pause'; }
         } else if (t <= a.su + a.ac) {
-          if (this.atkPhase !== 'blade-draw') { this.aim('blade-draw', Pose.specialDash(this.classProfile), 2 * Game.STEP); this.atkPhase = 'blade-draw'; }
+          if (this.atkPhase !== 'blade-vertical') { this.aim('blade-vertical', Pose.bladeSuperVertical(this.classProfile), BladeSuper.VERTICAL_SLASH_FRAMES * Game.STEP); this.atkPhase = 'blade-vertical'; }
         } else if (t < a.su + a.ac + a.re) {
           if (this.atkPhase !== 'blade-chiburi') { this.aim('blade-chiburi', Pose.specialWind(this.classProfile), 10 * Game.STEP); this.atkPhase = 'blade-chiburi'; }
         } else if (this.atkPhase !== 'blade-noto') { this.aim('blade-noto', Pose.idle(this.classProfile), 14 * Game.STEP); this.atkPhase = 'blade-noto'; }
@@ -1967,7 +1981,7 @@ class Fighter {
       const a = this.atk, tot = a.su + a.ac + a.re;
       if (this.bladeSuper) {
         this.x = this.bladeSuper.originX; this.depth = this.bladeSuper.depth; this.vx = 0;
-        if (this.atkT === a.su + a.ac) BladeSuper.launch(this.bladeSuper);
+        if (this.atkT === a.su + BladeSuper.QUICK_DRAW_FRAMES + BladeSuper.PAUSE_FRAMES + 1) BladeSuper.launch(this.bladeSuper);
         if (this.atkT === a.su + a.ac + a.re) BladeSuper.noto(this.bladeSuper);
       }
       if (this.state === 'special' && this.atkT <= a.su) {
@@ -2012,7 +2026,7 @@ class Fighter {
         if (this.classProfile?.weapon === 'blade') this.bladeSuper = null;
         this.specialOriginX = null; this.specialOriginDepth = null; this.specialFxPulse = -1;
       }
-      if (this.bladeSuper && this.atkT < a.su + a.ac) this.face = other.x >= this.x ? 1 : -1;
+      if (this.bladeSuper && this.atkT < a.su + BladeSuper.QUICK_DRAW_FRAMES + BladeSuper.PAUSE_FRAMES + 1) this.face = other.x >= this.x ? 1 : -1;
       else if (this.atk && this.state === 'special' && this.classProfile?.weapon === 'blade') this.face = this.bladeSuper?.face ?? this.face;
       else if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
@@ -2097,20 +2111,30 @@ class Fighter {
     const hitW = 42 * sizeMul, hitH = 135 * sizeMul;
     this.hitbox.x = this.x - hitW / 2; this.hitbox.y = this.groundY() + this.y - hitH; this.hitbox.w = hitW; this.hitbox.h = hitH;
   }
+  bladeSuperVerticalGeometry() {
+    const bones = this.combatBones(), grip = {x:(bones.la.x + bones.ra.x) / 2, y:(bones.la.y + bones.ra.y) / 2};
+    const progress = BladeSuper.verticalProgress(this.atkT - this.atk.su);
+    const dir = this.face;
+    const start = {x:grip.x + dir * 38 * this.drawS(), y:grip.y - 72 * this.drawS()};
+    const end = {x:grip.x + dir * (24 - 12 * progress) * this.drawS(), y:grip.y + (18 + 68 * progress) * this.drawS()};
+    return {start,tip:end};
+  }
   strike() {
     if (!this.atk || (this.hitDone && this.state !== 'special')) return null;
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
     if (this.state === 'special' && this.classProfile?.weapon === 'blade') {
-      const geometry = this.weaponGeometry(this.combatBones(), true);
+      const pulse = this.superPulse();
+      if (pulse < 0) return null;
+      const geometry = pulse === 1 ? this.bladeSuperVerticalGeometry() : this.weaponGeometry(this.combatBones(), true);
       if (!geometry) return null;
-      const r = 7 * this.drawS(), start = geometry.start, end = geometry.tip;
+      const r = pulse === 1 ? 10 * this.drawS() : 7 * this.drawS(), start = geometry.start, end = geometry.tip;
       return {
         x:Math.min(start.x,end.x)-r, y:Math.min(start.y,end.y)-r,
         w:Math.abs(end.x-start.x)+r*2, h:Math.abs(end.y-start.y)+r*2,
-        segment:{x1:start.x,y1:start.y,x2:end.x,y2:end.y,r}, dmg:28, kb:a.kb,
-        stun:a.stun, chip:0, special:true, pulse:0, critical:!!a.critical,
+        segment:{x1:start.x,y1:start.y,x2:end.x,y2:end.y,r}, dmg:pulse === 0 ? BladeSuper.QUICK_DRAW_DAMAGE : BladeSuper.VERTICAL_SLASH_DAMAGE, kb:a.kb,
+        stun:a.stun, chip:0, special:true, pulse, critical:!!a.critical,
         comboFinisher:!!a.comboFinisher, comboLink:!!a.linked, chain:0, deferKnockdown:true,
       };
     }
@@ -2364,6 +2388,7 @@ class Fighter {
       return {start:{x:rear.x - ux * back,y:rear.y - uy * back},tip:{x:lead.x + ux * front,y:lead.y + uy * front}};
     }
     if (weapon === 'blade') {
+      if (active && this.state === 'special' && this.superPulse() === 1) return this.bladeSuperVerticalGeometry();
       const grip = {x:(b.la.x + b.ra.x) / 2,y:(b.la.y + b.ra.y) / 2};
       if (this.state === 'kick' && this.atk) {
         const rest = {x:face * 22,y:-82}, slash = {x:face * (active ? 112 : 78),y:46};
@@ -3244,12 +3269,32 @@ class Fx {
 class BladeSuper {
   static sequences = [];
   static waves = [];
+  static CHARGE_FRAMES = 24;
+  static QUICK_DRAW_FRAMES = 3;
+  static PAUSE_FRAMES = 3;
+  static VERTICAL_SLASH_FRAMES = 3;
+  static RECOVERY_FRAMES = 24;
+  static NOTO_FRAME = this.CHARGE_FRAMES + this.QUICK_DRAW_FRAMES + this.PAUSE_FRAMES + this.VERTICAL_SLASH_FRAMES + this.RECOVERY_FRAMES;
+  static QUICK_DRAW_DAMAGE = 20;
+  static VERTICAL_SLASH_DAMAGE = 24;
+  static WAVE_DAMAGE = 30;
   static RANGE = 420;
   static SPEED = 900;
+  static pulseForFrame(frame) {
+    if (frame > this.CHARGE_FRAMES && frame <= this.CHARGE_FRAMES + this.QUICK_DRAW_FRAMES) return 0;
+    if (frame > this.CHARGE_FRAMES + this.QUICK_DRAW_FRAMES + this.PAUSE_FRAMES
+      && frame <= this.CHARGE_FRAMES + this.QUICK_DRAW_FRAMES + this.PAUSE_FRAMES + this.VERTICAL_SLASH_FRAMES) return 1;
+    return -1;
+  }
+  static verticalProgress(frame) {
+    const start = this.CHARGE_FRAMES + this.QUICK_DRAW_FRAMES + this.PAUSE_FRAMES;
+    return Math.max(0, Math.min(1, (frame - start) / this.VERTICAL_SLASH_FRAMES));
+  }
   static begin(owner) {
     const sequence = {
       owner, originX:owner.x, depth:owner.depth, face:owner.face,
-      age:0, launched:false, notoDone:false, meleeHits:new Set(), waveHits:new Set(), targetsHit:new Set(),
+      age:0, launched:false, quickDrawEffectDone:false, notoDone:false,
+      quickDrawHits:new Set(), verticalSlashHits:new Set(), waveHits:new Set(), targetsHit:new Set(),
     };
     BladeSuper.sequences.push(sequence);
     return sequence;
@@ -3269,8 +3314,11 @@ class BladeSuper {
     Sfx.play('super-dash', sequence.owner.classProfile);
     const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
     const groundY = sequence.owner.groundY() + sequence.owner.y;
-    BladeSuper.fxSlash(startX - cameraX, groundY - 52 * sequence.owner.drawS(), startX + sequence.face * 56 - cameraX,
-      groundY - 52 * sequence.owner.drawS(), '#38BDF8', 4);
+    const slashX = startX - cameraX + sequence.face * 20 * sequence.scale;
+    BladeSuper.fxSlash(slashX, groundY - 110 * sequence.scale, slashX - sequence.face * 16 * sequence.scale,
+      groundY - 12 * sequence.scale, '#F0F9FF', 5);
+    BladeSuper.fxSlash(startX - cameraX, groundY - 52 * sequence.scale, startX + sequence.face * 22 * sequence.scale,
+      groundY - 52 * sequence.scale, '#38BDF8', 4);
   }
   static targets(sequence) {
     if (Game.mode === 'beatemup') {
@@ -3289,14 +3337,16 @@ class BladeSuper {
     const owner = sequence.owner, fighter = BladeSuper.fighter(target);
     if (fighter.hp <= 0 || (fighter.playerControlled && fighter.invincibleT > 0)
       || !fighter.grounded || fighter.dodgeT > 0 || !BladeSuper.laneMatches(sequence, target)) return;
-    const hits = wave ? sequence.waveHits : sequence.meleeHits;
+    const component = wave ? 'wave' : sequence.owner.superPulse() === 0 ? 'quickDraw' : 'verticalSlash';
+    const hits = wave ? sequence.waveHits : component === 'quickDraw' ? sequence.quickDrawHits : sequence.verticalSlashHits;
     if (hits.has(target)) return;
     hits.add(target);
     const attack = {
-      dmg:wave ? 46 : 28, kb:wave ? 390 : 180, stun:wave ? 80 : 24, chip:0,
-      special:true, pulse:wave ? 1 : 0, critical:!!owner.atk?.critical,
+      dmg:wave ? this.WAVE_DAMAGE : component === 'quickDraw' ? this.QUICK_DRAW_DAMAGE : this.VERTICAL_SLASH_DAMAGE,
+      kb:wave ? 390 : 180, stun:owner.atk?.stun || this.NOTO_FRAME + 30, chip:0,
+      special:true, pulse:wave ? 2 : component === 'quickDraw' ? 0 : 1, critical:!!owner.atk?.critical,
       comboFinisher:!!owner.atk?.comboFinisher, knockdown:false,
-      deferKnockdown:wave,
+      deferKnockdown:true,
     };
     const hpBefore = fighter.hp;
     const kind = Game.mode === 'beatemup' ? BeatEmUp.withDepth(target, () => fighter.takeHit(attack, owner)) : fighter.takeHit(attack, owner);
@@ -3357,7 +3407,15 @@ class BladeSuper {
   static update(dt) {
     for (const sequence of BladeSuper.sequences) {
       sequence.age += dt / Game.STEP;
-      if (!sequence.notoDone && sequence.age >= 50) BladeSuper.noto(sequence);
+      if (!sequence.quickDrawEffectDone && sequence.age >= this.CHARGE_FRAMES + 1) {
+        sequence.quickDrawEffectDone = true;
+        const geometry = sequence.owner.weaponGeometry(sequence.owner.combatBones(), true);
+        if (geometry) {
+          const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
+          BladeSuper.fxSlash(geometry.start.x - cameraX, geometry.start.y, geometry.tip.x - cameraX, geometry.tip.y, '#F0F9FF', 4);
+        }
+      }
+      if (!sequence.notoDone && sequence.age >= this.NOTO_FRAME) BladeSuper.noto(sequence);
     }
     for (const wave of BladeSuper.waves) {
       if (!wave.active) continue;
@@ -4286,8 +4344,9 @@ class BeatEmUp {
         const hpBefore = target.f.hp;
         let kind = 'hit';
         BeatEmUp.withDepth(target, () => { kind = target.f.takeHit(hit, attacker.f); });
-        if (hit.pulse === 0 && attacker.f.bladeSuper && kind === 'hit' && target.f.hp > 0) {
-          attacker.f.bladeSuper.meleeHits.add(target);
+        if (hit.pulse <= 1 && attacker.f.bladeSuper && kind === 'hit' && target.f.hp > 0) {
+          const landed = hit.pulse === 0 ? attacker.f.bladeSuper.quickDrawHits : attacker.f.bladeSuper.verticalSlashHits;
+          landed.add(target);
           attacker.f.bladeSuper.targetsHit.add(target);
         }
         if (target.kind === 'thrower' && (kind === 'hit' || kind === 'armored')) {
@@ -5271,8 +5330,9 @@ class Game {
       if (box.special) me.hitTargets.set(foe, box.pulse);
       const hpBefore = foe.hp;
       const kind = foe.takeHit(box, me);
-      if (box.pulse === 0 && me.bladeSuper && kind === 'hit' && foe.hp > 0) {
-        me.bladeSuper.meleeHits.add(foe);
+      if (box.pulse <= 1 && me.bladeSuper && kind === 'hit' && foe.hp > 0) {
+        const landed = box.pulse === 0 ? me.bladeSuper.quickDrawHits : me.bladeSuper.verticalSlashHits;
+        landed.add(foe);
         me.bladeSuper.targetsHit.add(foe);
       }
       const damage = Math.round((hpBefore - foe.hp) * 10) / 10;
