@@ -2233,10 +2233,34 @@ class Fighter {
       ? {start:{x:hand.x - face * 10 * reachMul,y:hand.y + 8 * reachMul},tip:{x:hand.x + face * 82 * reachMul,y:hand.y - 18 * reachMul}}
       : {start:{x:hand.x - face * 8 * reachMul,y:hand.y + 12 * reachMul},tip:{x:hand.x + face * 24 * reachMul,y:hand.y - 82 * reachMul}};
   }
+  visualWeaponGeometry(b) {
+    const weapon = this.classProfile?.weapon || this.weaponType;
+    if (weapon !== 'staff') return this.weaponGeometry(b);
+
+    // Hit geometry varies with move reach. Keep the rendered staff rigid by
+    // deriving its angle from the two grips, then drawing a fixed-length shaft
+    // around their midpoint; combat continues to use weaponGeometry().
+    const leftGrip = b.la, rightGrip = b.ra;
+    let dx = leftGrip.x - rightGrip.x, dy = leftGrip.y - rightGrip.y;
+    let gripSpan = Math.hypot(dx, dy);
+    if (gripSpan < 10) {
+      dx = Math.cos(this.state === 'kick' ? .72 : 0);
+      dy = Math.sin(this.state === 'kick' ? .72 : 0);
+      gripSpan = 1;
+    }
+    const ux = dx / gripSpan, uy = dy / gripSpan;
+    const center = {x:(leftGrip.x + rightGrip.x) / 2, y:(leftGrip.y + rightGrip.y) / 2};
+    const scale = Game.mode === 'beatemup' ? .8 : this.depthScale();
+    const halfLength = 102.5 * scale;
+    return {
+      start: {x:center.x - ux * halfLength, y:center.y - uy * halfLength},
+      tip: {x:center.x + ux * halfLength, y:center.y + uy * halfLength},
+    };
+  }
   drawWeapon(ctx, b) {
     const weapon = this.classProfile?.weapon || this.weaponType;
     if (!weapon) return;
-    const {start,tip} = this.weaponGeometry(b);
+    const {start,tip} = this.visualWeaponGeometry(b);
     ctx.save(); ctx.lineCap = 'square'; ctx.lineJoin = 'bevel';
     if (weapon === 'stick') {
       ctx.lineCap = 'round';
@@ -2357,7 +2381,7 @@ class Fighter {
     ctx.shadowBlur = 12 / (Game.scale || 1);
     ctx.lineCap = 'round';
     if (weapon) {
-      const {start,tip} = this.weaponGeometry(b);
+      const {start,tip} = this.visualWeaponGeometry(b);
       ctx.lineWidth = (weapon === 'knife' ? 13 : 17) * this.drawS();
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
       ctx.globalAlpha = .42 * pulse;
