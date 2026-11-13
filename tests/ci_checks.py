@@ -147,6 +147,85 @@ CLEARANCE = '''() => {
   return out;
 }'''
 
+BLADE_SUPER = '''() => {
+  Game.mode = '1v1'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  Game.minX = 0; Game.maxX = Game.W; Game.wins = [0,0];
+  BladeSuper.clear(); if (Fx.clear) Fx.clear();
+  if (Input.syncMode) Input.syncMode();
+  const owner = fighters[0], target = fighters[1];
+  owner.setClass('blade'); owner.reset(Game.W * .35, 1); owner.playerControlled = true;
+  target.setClass(null); target.reset(Game.W * .7, -1); target.playerControlled = false;
+  owner.depth = target.depth = .5; owner.meter = 100; owner.startAtk('special');
+  owner.face = 1; owner.pose = Pose.specialDash(owner.classProfile); owner.poseFrom = owner.poseTo = owner.pose;
+  owner.blendT = owner.blendDur = 0;
+  const overlap = box => {
+    const seg=box.segment, x=(seg.x1+seg.x2)/2, y=(seg.y1+seg.y2)/2;
+    target.hitbox={x:x-5,y:y-5,w:10,h:10};
+  };
+  owner.atkT = owner.atk.su + 1;
+  const quick = owner.strike();
+  if (!quick) return {pass:false,debug:{state:owner.state,atkT:owner.atkT,atk:owner.atk,weapon:owner.classProfile?.weapon,meter:owner.meter,pulse:owner.superPulse()}};
+  overlap(quick); Game.resolve(); const afterQuick = target.hp;
+  Game.resolve(); const afterQuickDuplicate = target.hp;
+  owner.atkT = owner.atk.su + BladeSuper.QUICK_DRAW_FRAMES + 1;
+  const pause = owner.strike();
+  owner.atkT = owner.atk.su + BladeSuper.QUICK_DRAW_FRAMES + BladeSuper.PAUSE_FRAMES + 1;
+  owner.pose = Pose.bladeSuperVertical(owner.classProfile); owner.poseFrom = owner.poseTo = owner.pose;
+  owner.blendT = owner.blendDur = 0;
+  const vertical = owner.strike();
+  overlap(vertical); Game.resolve(); const afterVertical = target.hp;
+  Game.resolve(); const afterVerticalDuplicate = target.hp;
+  const launchAt = owner.atkT;
+  BladeSuper.launch(owner.bladeSuper);
+  const locked = {face:owner.bladeSuper.face,depth:owner.bladeSuper.depth,x:owner.bladeSuper.originX};
+  owner.face = -1; owner.depth = .9; owner.x += 50;
+  BladeSuper.update(Game.STEP);
+  const wave = BladeSuper.waves[0];
+  const launched = wave && {face:wave.sequence.face,depth:wave.sequence.depth,startX:wave.startX,travel:Math.abs(wave.x-wave.startX)};
+  const sequence = owner.bladeSuper;
+  owner.face = locked.face; owner.depth = locked.depth; owner.x = locked.x;
+  target.depth = locked.depth; target.ragdollActive = false; target.grounded = true; target.dodgeT = 0;
+  const targetEntry = target;
+  BladeSuper.hit(sequence,targetEntry,true); const afterWave = target.hp;
+  BladeSuper.hit(sequence,targetEntry,true); const afterWaveDuplicate = target.hp;
+  const pierceTarget = new Fighter(Game.W*.8,'#EF4444',-1,'PIERCE'); pierceTarget.reset(Game.W*.8,-1); pierceTarget.depth=locked.depth;
+  const offLaneTarget = new Fighter(Game.W*.82,'#EF4444',-1,'OFF LANE'); offLaneTarget.reset(Game.W*.82,-1); offLaneTarget.depth=Math.min(1,locked.depth+.5);
+  const offLaneHp=offLaneTarget.hp;
+  const lateWaveTarget = new Fighter(Game.W*.85,'#EF4444',-1,'LATE WAVE'); lateWaveTarget.reset(Game.W*.85,-1); lateWaveTarget.depth=locked.depth;
+  target.x = Game.W * .95; pierceTarget.x = wave.startX + 75; offLaneTarget.x = wave.startX + 125; lateWaveTarget.x = wave.startX + 350;
+  fighters.push(pierceTarget,offLaneTarget,lateWaveTarget);
+  for (let i=0;i<8;i++) BladeSuper.update(Game.STEP);
+  const piercedDuringTravel = pierceTarget.hp===70 && offLaneTarget.hp===offLaneHp;
+  BladeSuper.hit(sequence,pierceTarget,true); BladeSuper.hit(sequence,offLaneTarget,true);
+  owner.atkT=owner.atk.su+owner.atk.ac+owner.atk.re;
+  BladeSuper.noto(sequence);
+  const notoKnockdown=sequence.notoDone && target.ragdollActive;
+  for (let i=0;i<16;i++) BladeSuper.update(Game.STEP);
+  const frameProbe = {
+    charge:owner.atk.su, quickDraw:BladeSuper.QUICK_DRAW_FRAMES, pause:BladeSuper.PAUSE_FRAMES,
+    vertical:BladeSuper.VERTICAL_SLASH_FRAMES, recovery:owner.atk.re, noto:BladeSuper.NOTO_FRAME,
+    total:owner.atk.su+owner.atk.ac+owner.atk.re,
+    pulseAt:[24,25,27,28,30,31,33,34].map(f=>BladeSuper.pulseForFrame(f)),
+  };
+  return {
+    frameProbe, quick:quick&&{pulse:quick.pulse,damage:quick.dmg}, pause:pause===null,
+    vertical:vertical&&{pulse:vertical.pulse,damage:vertical.dmg,vertical:vertical.segment.y2>vertical.segment.y1},
+    launchAt, wave:launched, locked, hp:{afterQuick,afterQuickDuplicate,afterVertical,afterVerticalDuplicate,afterWave,afterWaveDuplicate},
+    piercing: piercedDuringTravel && pierceTarget.hp===70, offLane:offLaneTarget.hp===offLaneHp,
+    notoKnockdown, lateWave:lateWaveTarget.hp===70,
+    pass:frameProbe.charge===24 && frameProbe.quickDraw===3 && frameProbe.pause===3 && frameProbe.vertical===3
+      && frameProbe.recovery===24 && frameProbe.noto===57 && frameProbe.total===57
+      && frameProbe.pulseAt.join(',')==='-1,0,0,-1,-1,1,1,-1'
+      && quick?.pulse===0 && quick?.dmg===20 && pause===null
+      && vertical?.pulse===1 && vertical?.dmg===24 && vertical.segment.y2>vertical.segment.y1
+      && launchAt===31 && locked.face===1 && locked.depth===.5 && locked.x===Game.W*.35
+      && launched?.face===locked.face && launched?.depth===locked.depth && launched.travel===15
+      && afterQuick===80 && afterQuickDuplicate===80 && afterVertical===56 && afterVerticalDuplicate===56
+      && afterWave===26 && afterWaveDuplicate===26 && pierceTarget.hp===70 && offLaneTarget.hp===offLaneHp
+      && notoKnockdown && lateWaveTarget.hp===70 && BladeSuper.RANGE===420,
+  };
+}'''
+
 STAFF_AOE = '''() => {
   const out = {orientations:[]};
   Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1;
@@ -250,6 +329,10 @@ def main():
             print('staff AoE harness', json.dumps(staff_aoe))
             if not staff_aoe['pass']:
                 failures.append('Staff AoE harness failed: expected all in-radius positions to take 24 per spin, per-pulse dedupe, off-lane/outside misses, symmetric facing, and Slam-only knockdown')
+            blade_super = page.evaluate(BLADE_SUPER)
+            print('blade Super harness', json.dumps(blade_super))
+            if not blade_super['pass']:
+                failures.append('Blade Super harness failed: expected 24/3/3/3/24-frame sequence, 20/24/30 independent damage, piercing, lane lock, and Noto timing')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
