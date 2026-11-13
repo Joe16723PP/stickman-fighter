@@ -9,13 +9,13 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 1,
         "title": "ARCADE BLOCKADE",
-        "storyBeat": "The crew blocks the street to keep outsiders away.",
+        "storyBeat": "The crew blocks the street while a knife thrower watches from behind the melee line.",
         "enemyFocus": [
-          "regular",
+          "thrower",
           "regular",
           "regular"
         ],
-        "visualCue": "Arcade signs flicker as the crew steps into the street."
+        "visualCue": "An arcade sign flashes as the thrower winds up behind the street crew."
       },
       {
         "wave": 2,

@@ -49,7 +49,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', runner: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', boss: '#F04458' },
+  enemy: { regular: '#FF4F5E', runner: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -268,6 +268,77 @@ class BossSignature {
   }
 }
 
+class EnemyProjectile {
+  static speed = 315;
+  static range = 560;
+  static tell = .5;
+  static recovery = .9;
+  static cooldown = 2.5;
+  static get damage() { return Moves.punch.dmg * EnemyWeaponProfiles.freehand.damage * .65; }
+
+  static launch(owner, player) {
+    const face = player.f.x >= owner.f.x ? 1 : -1;
+    owner.f.face = face;
+    const depth = player.depth;
+    const originY = BeatEmUp.floorDepthPx(depth) - 48 * BeatEmUp.depthToScale(depth);
+    BeatEmUp.enemyProjectiles.push({
+      x: owner.f.x + face * 24 * owner.f.drawS(), y: originY,
+      depth, face, speed: EnemyProjectile.speed, range: EnemyProjectile.range,
+      distance: 0, life: EnemyProjectile.range / EnemyProjectile.speed,
+      damage: EnemyProjectile.damage * BeatEmUp.difficulty.damage,
+      width: 20, height: 10, owner: owner.f,
+    });
+  }
+
+  static update(dt, player) {
+    if (!player) return;
+    for (let i = BeatEmUp.enemyProjectiles.length - 1; i >= 0; i--) {
+      const p = BeatEmUp.enemyProjectiles[i];
+      p.distance += p.speed * dt;
+      p.life -= dt;
+      p.x += p.face * p.speed * dt;
+      if (p.life <= 0 || p.distance >= p.range || p.x < 0 || p.x > BeatEmUp.worldMax || p.owner.hp <= 0) {
+        BeatEmUp.enemyProjectiles.splice(i, 1); continue;
+      }
+      if (!BeatEmUp.depthClose(p.depth, player.depth)) continue;
+      const box = { x: p.x - p.width / 2, y: p.y - p.height / 2, w: p.width, h: p.height };
+      if (!Game.hitTest(box, player.f.hitbox)) continue;
+      const hit = {
+        ...box, dmg: p.damage, kb: 110, stun: 6, chip: 0,
+        special: false, blockable: true, critical: false,
+        comboFinisher: false, comboLink: false, chain: 0,
+      };
+      const hpBefore = player.f.hp;
+      const kind = BeatEmUp.withDepth(player, () => player.f.takeHit(hit, p.owner));
+      const damage = Math.round((hpBefore - player.f.hp) * 10) / 10;
+      Fx.damage(box.x + box.w / 2 - BeatEmUp.cameraX, box.y, damage, kind === 'block');
+      if (kind === 'block') Fx.blocked(box.x + box.w / 2 - BeatEmUp.cameraX, box.y);
+      else {
+        Fx.hit(box.x + box.w / 2 - BeatEmUp.cameraX, box.y);
+        Sfx.play('player-heavy-hit', player.f.classProfile);
+      }
+      BeatEmUp.enemyProjectiles.splice(i, 1);
+    }
+  }
+
+  static draw(ctx) {
+    const camX = BeatEmUp.cameraX;
+    for (const p of BeatEmUp.enemyProjectiles) {
+      ctx.save();
+      ctx.translate(p.x - camX, p.y);
+      if (p.face < 0) ctx.scale(-1, 1);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(196,181,253,.55)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-7, 0); ctx.stroke();
+      ctx.fillStyle = '#DCE6F5'; ctx.strokeStyle = '#20232C'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-7, -3); ctx.lineTo(11, 0); ctx.lineTo(-7, 3); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#7C3AED'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-12, -4); ctx.lineTo(-12, 4); ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
 // Weapon loadouts trade attack speed for damage. Archetypes determine whether they carry one.
 const EnemyWeaponProfiles = {
   freehand: { weapon: null, attackSpeed: 1, damage: .85 },
@@ -279,6 +350,7 @@ const EnemyArchetypes = {
   runner: { health: 75, weaponChance: .2, specialDamage: .25, specialGain: .25 },
   tough: { health: 125, weaponChance: .2, specialDamage: .25, specialGain: .25 },
   heavy: { health: 145, weaponChance: .5, specialDamage: .45, specialGain: .45 },
+  thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
   boss: { health: 220, weaponChance: 1, specialDamage: 1, specialGain: 1 },
 };
 
@@ -668,6 +740,18 @@ class Pose {
       ward: {chest:d(-5),neck:d(2),head:d(1),la:d(-136),le:d(-66),ra:d(-112),re:d(-72),shPull:0,ll:d(30),lk:d(24),rl:d(-28),rk:d(26),hipBob:0},
     };
     return stances[profile?.style] || stances.rush;
+  }
+  static throwWindup() {
+    const d = Pose.deg;
+    return {chest:d(-10),neck:d(3),head:d(2),la:d(-112),le:d(-50),ra:d(148),re:d(108),ll:d(26),lk:d(18),rl:d(-24),rk:d(22),hipBob:0,shPull:7};
+  }
+  static throwRelease() {
+    const d = Pose.deg;
+    return {chest:d(-16),neck:d(2),head:d(1),la:d(-118),le:d(-54),ra:d(82),re:d(18),ll:d(34),lk:d(20),rl:d(-30),rk:d(24),hipBob:-1,shPull:0};
+  }
+  static throwRecovery() {
+    const d = Pose.deg;
+    return {chest:d(5),neck:d(-1),head:d(2),la:d(-96),le:d(-74),ra:d(52),re:d(-24),ll:d(20),lk:d(14),rl:d(-18),rk:d(18),hipBob:0,shPull:0};
   }
   static roll(profile = null) {
     const d = Pose.deg;
@@ -1200,7 +1284,7 @@ class Fighter {
     this.pose = Pose.idle(this.classProfile); this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose);
     this.blendT = 1; this.blendDur = .08; this.poseKey = 'idle';
     this.hp = 100; this.chip = 100; this.stun = 0; this.flash = 0; this.blocking = 0;
-    this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0; this.specialVisual = null; this.enemyThrowPose = null;
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0; this.wardShieldT = 0;
     this.hitConfirmed = 0; this.comboHits = 0; this.comboTimer = 0; this.comboStunEffectT = 0;
     this.dodgeT = 0; this.dodgeCooldown = 0; this.rollVx = 0;
@@ -1777,6 +1861,15 @@ class Fighter {
         this.atk = null; this.state = 'idle'; this.dashLeft = 0; this.atkPhase = '';
       }
       if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
+      this.clamp(other); return;
+    }
+    if (this.enemyThrowPose) {
+      const pose = this.enemyThrowPose === 'windup' ? Pose.throwWindup()
+        : this.enemyThrowPose === 'release' ? Pose.throwRelease() : Pose.throwRecovery();
+      this.vx = 0; this.state = 'idle';
+      this.aim('enemy-throw-' + this.enemyThrowPose, pose, .1);
+      this.tickPose(dt);
+      this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
     if (this.specialVisual) {
@@ -2938,6 +3031,7 @@ class BeatEmUp {
   static cast = [];
   static items = [];
   static bossProjectiles = [];
+  static enemyProjectiles = [];
   static medkitDropChance = .25;
   static energyDrinkDropChance = .12;
   static energyDrinkDamageMultiplier = 1.5;
@@ -3147,6 +3241,7 @@ class BeatEmUp {
     BeatEmUp.cast = [];
     BeatEmUp.items = [];
     BeatEmUp.bossProjectiles = [];
+    BeatEmUp.enemyProjectiles = [];
     BeatEmUp.baseS = Fighter.S * .8;
     BeatEmUp.lockL = 0;
     BeatEmUp.lockR = Game.W * 0.92;
@@ -3272,18 +3367,20 @@ class BeatEmUp {
     BeatEmUp.lockL = BeatEmUp.cameraX;
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
+    BeatEmUp.enemyProjectiles = [];
     BeatEmUp.waveSpawnQueue = [];
     BeatEmUp.waveSpawnTimer = 0;
     const defs = BeatEmUp.waveDefs(n);
     const enemyDelta = BeatEmUp.difficulty.extraEnemies;
     if (enemyDelta < 0 && defs.length > 1) defs.pop();
     if (enemyDelta > 0 && defs.length) {
-      const source = defs[(BeatEmUp.stage + n) % defs.length];
+      const candidate = defs[(BeatEmUp.stage + n) % defs.length];
+      const source = candidate.kind === 'thrower' ? defs.find(d => d.kind !== 'thrower') || candidate : candidate;
       defs.push({ kind: source.kind, ox: .84, depth: n === 2 ? .48 : .35 });
     }
     // Double each difficulty's final authored lineup while preserving its
     // enemy mix. Put the second group across the lane to reduce spawn overlap.
-    const reinforcements = defs.map((d, index) => ({
+    const reinforcements = defs.filter(d => d.kind !== 'thrower').map((d, index) => ({
       kind: d.kind,
       ox: index % 2 ? .9 : .46,
       depth: Math.max(.12, Math.min(.9, 1 - d.depth)),
@@ -3320,6 +3417,7 @@ class BeatEmUp {
     BeatEmUp.lockL = BeatEmUp.cameraX;
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
+    BeatEmUp.enemyProjectiles = [];
     BeatEmUp.waveSpawnQueue = [];
     BeatEmUp.waveSpawnTimer = 0;
     BeatEmUp.bossProjectiles = [];
@@ -3366,6 +3464,7 @@ class BeatEmUp {
 
   static playerDown() {
     if (BeatEmUp.downPending) return;
+    BeatEmUp.enemyProjectiles = [];
     const player = BeatEmUp.playerEntry();
     if (player) {
       BeatEmUp.downX = player.f.x;
@@ -3593,6 +3692,7 @@ class BeatEmUp {
 
     BeatEmUp.resolveHits();
     BossSignature.updateProjectiles(dt, player);
+    EnemyProjectile.update(dt, player);
     BeatEmUp.checkWaveState();
 
     if (!BeatEmUp.stageOver && Game.timer <= 0) BeatEmUp.loseStage();
@@ -3607,7 +3707,11 @@ class BeatEmUp {
       return score(a) - score(b);
     });
     const boss = sorted.find(e => e.kind === 'boss');
-    const attackers = boss ? new Set([boss]) : new Set(sorted.slice(0, 2));
+    const ranged = sorted.find(e => e.kind === 'thrower');
+    const attackers = boss ? new Set([boss]) : new Set([
+      ...(ranged ? [ranged] : []),
+      ...sorted.filter(e => e !== ranged).slice(0, ranged ? 1 : 2),
+    ]);
     for (const e of alive) {
       const ai = e.ai;
       ai.cool = Math.max(0, ai.cool - dt);
@@ -3626,6 +3730,12 @@ class BeatEmUp {
       Input.pad[1].left = 0; Input.pad[1].right = 0;
       Input.pad[1].punch = 0; Input.pad[1].kick = 0;
       Input.pad[1].block = 0; Input.pad[1].special = 0;
+
+      if (e.kind === 'thrower') {
+        BeatEmUp.updateThrowerAI(e, player, dt, attackers.has(e));
+        BeatEmUp._driveEnemyPad(e, player, dt);
+        continue;
+      }
 
       if (ai.tellT > 0) {
         ai.tellT = Math.max(0, ai.tellT - dt);
@@ -3702,6 +3812,54 @@ class BeatEmUp {
     Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
   }
 
+  static updateThrowerAI(e, player, dt, canAttack) {
+    const ai = e.ai;
+    if (ai.throwPhase === 'windup') {
+      if (!Game.fighting || Game.phase !== 'fight') {
+        ai.throwPhase = ''; ai.tellT = 0; ai.tellKind = ''; e.f.enemyThrowPose = null;
+        return;
+      }
+      ai.tellT = Math.max(0, ai.tellT - dt);
+      if (ai.tellT <= 0) {
+        EnemyProjectile.launch(e, player);
+        ai.throwPhase = 'release'; ai.throwReleaseT = .14;
+        ai.recoveryT = EnemyProjectile.recovery;
+        ai.cool = EnemyProjectile.cooldown;
+        ai.tellKind = '';
+      }
+      e.f.enemyThrowPose = ai.throwPhase;
+      return;
+    }
+    if (ai.throwPhase === 'release') {
+      ai.throwReleaseT = Math.max(0, ai.throwReleaseT - dt);
+      if (ai.throwReleaseT <= 0) ai.throwPhase = 'recovery';
+      e.f.enemyThrowPose = ai.throwPhase;
+      return;
+    }
+    if (ai.throwPhase === 'recovery') {
+      ai.recoveryT = Math.max(0, ai.recoveryT - dt);
+      if (ai.recoveryT <= 0) ai.throwPhase = '';
+      e.f.enemyThrowPose = ai.throwPhase || null;
+      if (ai.throwPhase) return;
+    } else {
+      e.f.enemyThrowPose = null;
+    }
+
+    const side = e.f.x >= player.f.x ? 1 : -1;
+    const desiredX = Math.max(BeatEmUp.lockL + 90, Math.min(BeatEmUp.lockR - 70, player.f.x + side * 260));
+    if (e.f.x < desiredX - 12) Input.pad[1].right = 1;
+    else if (e.f.x > desiredX + 12) Input.pad[1].left = 1;
+    if (e.depth < player.depth - .035) e.depth = Math.min(player.depth, e.depth + .72 * dt);
+    else if (e.depth > player.depth + .035) e.depth = Math.max(player.depth, e.depth - .72 * dt);
+
+    const dist = Math.abs(e.f.x - player.f.x);
+    if (canAttack && Game.fighting && Game.phase === 'fight' && ai.cool <= 0
+      && dist >= 175 && dist <= 420 && BeatEmUp.depthClose(e.depth, player.depth)) {
+      ai.throwPhase = 'windup'; ai.tellT = EnemyProjectile.tell; ai.tellKind = 'THROW';
+      e.f.enemyThrowPose = 'windup';
+    }
+  }
+
   static _driveEnemyPad(e, player, dt) {
     // Enemy updates happen in main loop; here we stash desired pad on entry
     e._pad = {
@@ -3739,6 +3897,10 @@ class BeatEmUp {
         const hpBefore = target.f.hp;
         let kind = 'hit';
         BeatEmUp.withDepth(target, () => { kind = target.f.takeHit(hit, attacker.f); });
+        if (target.kind === 'thrower' && (kind === 'hit' || kind === 'armored')) {
+          target.ai.throwPhase = ''; target.ai.tellT = 0; target.ai.tellKind = '';
+          target.ai.cool = Math.max(target.ai.cool, .8); target.f.enemyThrowPose = null;
+        }
         const damage = Math.round((hpBefore - target.f.hp) * 10) / 10;
         const confirmed = attacker.f.confirmHit(kind, damage);
         const specialFirst = hit.special && !attacker.f.specialEffectDone;
@@ -4006,7 +4168,7 @@ class BeatEmUp {
       const showAlert = entry.ai && (entry.ai.tellT > 0 || entry.ai.phaseCallout > 0);
       // Repeated rookie/regular labels stack into noise when a wave crowds
       // around the player. Keep identity labels for the player and boss only.
-      if (showAlert || (entry.kind !== 'boss' && entry.role !== 'player')) entry.f.tag = '';
+      if (showAlert || (entry.kind !== 'boss' && entry.kind !== 'thrower' && entry.role !== 'player')) entry.f.tag = '';
       if (entry.bossProfile && entry.ai && entry.ai.tellMove === 'special' && entry.ai.tellT > 0) {
         entry.f.weaponFlashT = entry.ai.tellT;
         entry.f.weaponFlashColor = BossSignatures[entry.bossProfile.signature.key]?.color || '#FBBF24';
@@ -4021,7 +4183,7 @@ class BeatEmUp {
         const pulse = .78 + .22 * Math.sin(performance.now() * .018);
         const labelY = head.y - 24 / Game.scale;
         ctx.globalAlpha = pulse;
-        ctx.fillStyle = entry.kind === 'boss' ? '#FBBF24' : '#FF665F';
+        ctx.fillStyle = entry.kind === 'boss' ? '#FBBF24' : entry.kind === 'thrower' ? '#C4B5FD' : '#FF665F';
         ctx.beginPath(); ctx.arc(head.x, labelY, 11 / Game.scale, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#11131A'; ctx.font = 'bold ' + 12 / Game.scale + 'px system-ui,sans-serif';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', head.x, labelY + 1 / Game.scale);
@@ -4137,6 +4299,7 @@ class BeatEmUp {
       .sort((a, b) => a.depth - b.depth);
     for (const e of ordered) BeatEmUp.drawFighter(ctx, e);
     BossSignature.drawProjectiles(ctx);
+    EnemyProjectile.draw(ctx);
     Fx.draw(ctx);
     BeatEmUp.bars(ctx);
     if (BeatEmUp.showGo) {
