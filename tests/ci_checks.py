@@ -147,6 +147,69 @@ CLEARANCE = '''() => {
   return out;
 }'''
 
+STAFF_AOE = '''() => {
+  const out = {orientations:[]};
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0;
+  BeatEmUp.stageOver = 0; BeatEmUp.cast = []; BeatEmUp.score = 0; BeatEmUp.combo = 0; BeatEmUp.comboT = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.stop = 0; Game.shake = 0;
+  Game.GROUND = Game.H * .72;
+  const laneStep = BeatEmUp.DEPTH_HIT_PX / (Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP));
+  const makeOwner = face => {
+    const f = fighters[0]; f.setClass('staff'); f.reset(500, face); f.depth = .55; f.face = face;
+    f.state = 'special'; f.pose = Pose.staffSuperSpin(f.classProfile, 0, face, false);
+    f.atk = {su:16,ac:19,re:22,dmg:86,kb:390,stun:22,chip:0,hitCount:3,
+      hitDurations:[4,4,5],hitDelays:[0,7,14],hitDamages:[24,24,38],
+      superFractions:[24/86,24/86,38/86],critical:false};
+    f.atkT = 17; f.hitDone = 0; f.hitTargets = new Map(); f.specialMeterTargets = new Set(); f.specialEffectDone = 1;
+    const entry = {f,depth:f.depth,role:'player',kind:'player',scaleMul:1,ai:null};
+    return entry;
+  };
+  const makeTarget = (x, depth, label) => {
+    const f = new Fighter(x,'#EF4444',-1,'AOE TEST'); f.reset(x,-1); f.depth = depth;
+    f.grounded = true; f.dodgeT = 0; f.invincibleT = 0;
+    const entry = {f,depth,role:'enemy',kind:'regular',scaleMul:1,ai:null,label};
+    BeatEmUp.withDepth(entry, () => f.clamp());
+    return entry;
+  };
+  for (const face of [1,-1]) {
+    const owner = makeOwner(face);
+    const metrics = BeatEmUp.withDepth(owner, () => ({
+      normal:owner.f.staffNormalAttackReach(), radius:owner.f.staffSpinRadius(),
+      hit:owner.f.staffSpecialHitbox(0),
+    }));
+    const r = metrics.radius, x = owner.f.x, d = owner.depth;
+    const targets = [
+      makeTarget(x + r * .72,d,'right'), makeTarget(x - r * .72,d,'left'),
+      makeTarget(x,d + laneStep * .72,'front-lane'), makeTarget(x,d - laneStep * .72,'rear-lane'),
+      makeTarget(x + r + 5,d,'outside'), makeTarget(x,d + laneStep * 1.1,'off-lane'),
+    ];
+    BeatEmUp.cast = [owner,...targets];
+    BeatEmUp.resolveHits();
+    const first = Object.fromEntries(targets.map(target => [target.label,target.f.hp]));
+    BeatEmUp.resolveHits();
+    const duplicate = Object.fromEntries(targets.map(target => [target.label,target.f.hp]));
+    owner.f.atkT = 24;
+    BeatEmUp.resolveHits();
+    const second = Object.fromEntries(targets.map(target => [target.label,target.f.hp]));
+    out.orientations.push({face,normal:metrics.normal,radius:r,first,duplicate,second});
+  }
+  const owner = makeOwner(1); owner.f.pose = Pose.staffSuperSlam(owner.f.classProfile,1); owner.f.atkT = 31;
+  const slam = BeatEmUp.withDepth(owner, () => owner.f.strike());
+  const slamTarget = makeTarget(slam.centerX + Math.max(1,slam.radius * .5),owner.depth,'slam');
+  BeatEmUp.cast = [owner,slamTarget]; BeatEmUp.resolveHits();
+  out.slam = {radius:slam.radius,damage:86*owner.f.atk.superFractions[2],pulse:slam.pulse,
+    knockdown:slam.knockdown,hp:slamTarget.f.hp,ragdoll:slamTarget.f.ragdollActive};
+  out.pass = out.orientations.every(test => test.radius > test.normal
+    && ['right','left','front-lane','rear-lane'].every(key => test.first[key] === 76 && test.duplicate[key] === 76 && test.second[key] === 52)
+    && test.first.outside === 100 && test.first['off-lane'] === 100)
+    && out.orientations.every(test => Math.abs(test.radius-out.orientations[0].radius) < .01)
+    && out.slam.pulse === 2 && out.slam.damage === 38 && out.slam.knockdown
+    && out.slam.hp === 62 && out.slam.ragdoll;
+  BeatEmUp.cast = [];
+  return out;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -183,6 +246,10 @@ def main():
                 base = json.loads(BASELINE.read_text())
                 if base['digest'] != digest:
                     failures.append(f"parity digest {digest} != baseline {base['digest']} (baseline wins {base['wins']}, now {wins})")
+            staff_aoe = page.evaluate(STAFF_AOE)
+            print('staff AoE harness', json.dumps(staff_aoe))
+            if not staff_aoe['pass']:
+                failures.append('Staff AoE harness failed: expected all in-radius positions to take 24 per spin, per-pulse dedupe, off-lane/outside misses, symmetric facing, and Slam-only knockdown')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
