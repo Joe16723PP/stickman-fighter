@@ -12,7 +12,7 @@
 
 Usage: python3 tests/ci_checks.py [--update-baseline]
 """
-import json, hashlib, subprocess, sys, time, socket
+import json, hashlib, math, subprocess, sys, time, socket
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -147,8 +147,231 @@ CLEARANCE = '''() => {
   return out;
 }'''
 
+CLASS_CHECKS = '''() => {
+  const results = {};
+  const bladeReady = !!(FighterClasses.blade && FighterClasses.blade.parryWindow);
+
+  function clearInput() {
+    Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.was[0][a] = 0; });
+    Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    Input.tapped[0] = {}; Input.tapped[1] = {};
+  }
+
+  function setup(cls) {
+    Game.mode = '1v1'; Game.phase = 'fight'; Game.fighting = 1;
+    Game.selectClass(cls);
+    fighters[0].setClass(cls);
+    fighters[0].color = FighterClasses[cls].color;
+    fighters[0].tag = 'YOU'; fighters[0].playerControlled = true;
+    fighters[1].setClass(null);
+    fighters[1].color = '#AEB5C8'; fighters[1].tag = 'CPU';
+    fighters[1].hp = 100; fighters[1].meter = 0;
+    fighters[1].ragdollActive = false; fighters[1].stun = 0;
+    fighters[0].depth = 1; fighters[1].depth = 1;
+    clearInput();
+  }
+
+  function resetPositions(dist) {
+    const startX = Game.minX + (Game.maxX - Game.minX) * 0.25;
+    fighters[0].reset(startX, 1);
+    fighters[1].reset(startX + dist, -1);
+    fighters[0].depth = 1; fighters[1].depth = 1;
+    fighters[0].hp = 100; fighters[1].hp = 100;
+    fighters[1].stun = 0; fighters[1].ragdollActive = false;
+    clearInput();
+  }
+
+  function advance(frames) {
+    const step = Game.STEP;
+    for (let i = 0; i < frames; i++) {
+      if (Game.stop > 0) { Game.stop -= step; continue; }
+      fighters[0].update(step, fighters[1], 0);
+      fighters[1].update(step, fighters[0], 1);
+      Game.updateProjectiles(step);
+      Game.resolve();
+    }
+  }
+
+  function startMove(slot, move) {
+    Input.pad[slot][move] = 1;
+    Input.tapped[slot][move] = 1;
+  }
+
+  function measureReach(cls, move) {
+    let lo = 0, hi = 360;
+    for (let iter = 0; iter < 12; iter++) {
+      const mid = (lo + hi) / 2;
+      setup(cls);
+      resetPositions(mid);
+      const startHP = fighters[1].hp;
+      startMove(0, move);
+      advance(1);
+      Input.pad[0][move] = 0;
+      let hit = false;
+      for (let f = 0; f < 80; f++) {
+        advance(1);
+        if (fighters[1].hp < startHP - 0.05) { hit = true; break; }
+        if (!fighters[0].atk && f > 5) break;
+      }
+      if (hit) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+
+  function measureChainCap(cls) {
+    setup(cls);
+    resetPositions(60);
+    return fighters[0].punchChainMax();
+  }
+
+  function measureSuper(cls) {
+    setup(cls);
+    resetPositions(90);
+    fighters[0].meter = 100;
+    const startHP = fighters[1].hp;
+    startMove(0, 'special');
+    advance(1);
+    Input.pad[0].special = 0;
+    const pulses = [];
+    const pulseDamage = {};
+    let currentPulse = -1, lastHP = startHP;
+    let knockdownFrame = -1;
+    for (let f = 0; f < 120; f++) {
+      advance(1);
+      const pulse = fighters[0].state === 'special' ? fighters[0].superPulse() : -1;
+      if (pulse !== currentPulse) {
+        currentPulse = pulse;
+        if (pulse >= 0) {
+          pulses.push({frame: f, pulse});
+          pulseDamage[pulse] = 0;
+        }
+      }
+      if (currentPulse >= 0 && fighters[1].hp < lastHP) {
+        pulseDamage[currentPulse] += lastHP - fighters[1].hp;
+        lastHP = fighters[1].hp;
+      }
+      if (fighters[1].ragdollActive && knockdownFrame < 0) knockdownFrame = f;
+      if (!fighters[0].atk && f > 5) break;
+    }
+    const totalDamage = startHP - fighters[1].hp;
+    return {pulses, pulseDamage, totalDamage, knockdownFrame, hpFinite: isFinite(fighters[1].hp)};
+  }
+
+  function testParryGap(gap) {
+    setup('blade');
+    resetPositions(80);
+    fighters[1].setClass('freehand');
+    fighters[1].color = '#EF4444';
+    fighters[1].hp = 100; fighters[0].hp = 100; fighters[0].meter = 0;
+    Input.pad[0].block = 1; Input.tapped[0].block = 1; advance(1);
+    for (let f = 1; f < gap - 5; f++) advance(1);
+    startMove(1, 'punch'); advance(1); Input.pad[1].punch = 0;
+    for (let f = gap - 4; f < 25; f++) advance(1);
+    return {dummyHP: fighters[1].hp, playerHP: fighters[0].hp, playerMeter: fighters[0].meter, dummyStun: fighters[1].stun};
+  }
+
+  function testParryLockout() {
+    setup('blade');
+    resetPositions(80);
+    fighters[1].setClass('freehand');
+    fighters[1].color = '#EF4444';
+    fighters[0].meter = 0;
+    Input.pad[0].block = 1; Input.tapped[0].block = 1; advance(1);
+    startMove(1, 'punch'); advance(1); Input.pad[1].punch = 0;
+    for (let f = 2; f < 17; f++) advance(1);
+    const meterAfterFirst = fighters[0].meter;
+    Input.pad[0].block = 0; advance(1);
+    Input.pad[0].block = 1; Input.tapped[0].block = 1; advance(1);
+    for (let f = 19; f < 24; f++) advance(1);
+    startMove(1, 'punch'); advance(1); Input.pad[1].punch = 0;
+    for (let f = 25; f < 40; f++) advance(1);
+    const meterAfterSecond = fighters[0].meter;
+    return {meterAfterFirst, meterAfterSecond};
+  }
+
+  results.karate = {
+    reach: {punch: measureReach('freehand','punch'), kick: measureReach('freehand','kick')},
+    chainCap: measureChainCap('freehand'),
+    super: measureSuper('freehand'),
+  };
+  results.staff = {
+    reach: {punch: measureReach('staff','punch'), kick: measureReach('staff','kick')},
+    chainCap: measureChainCap('staff'),
+    super: measureSuper('staff'),
+  };
+  if (bladeReady) {
+    results.blade = {
+      reach: {punch: measureReach('blade','punch'), kick: measureReach('blade','kick')},
+      chainCap: measureChainCap('blade'),
+      super: measureSuper('blade'),
+        parry6: testParryGap(6),
+        parry9: testParryGap(9),
+      lockout: testParryLockout(),
+    };
+  }
+  return results;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+
+def run_class_checks(page):
+    r = page.evaluate(CLASS_CHECKS)
+    print('classes', json.dumps(r))
+    failures = []
+    k = r['karate']; s = r['staff']
+    if s['reach']['punch'] < k['reach']['punch'] + 40:
+        failures.append(f"staff punch reach {s['reach']['punch']:.1f}px not >= karate {k['reach']['punch']:.1f}px + 40")
+    if s['reach']['kick'] < k['reach']['kick'] + 80:
+        failures.append(f"staff kick reach {s['reach']['kick']:.1f}px not >= karate {k['reach']['kick']:.1f}px + 80")
+    if k['chainCap'] != 4:
+        failures.append(f"karate punch chain cap {k['chainCap']} != 4")
+    if s['chainCap'] != 2:
+        failures.append(f"staff punch chain cap {s['chainCap']} != 2")
+    for cls, data in [('karate', k), ('staff', s)]:
+        if not data['super']['hpFinite']:
+            failures.append(f"{cls} super left dummy HP non-finite")
+        for p, d in data['super']['pulseDamage'].items():
+            if d is None or not math.isfinite(d):
+                failures.append(f"{cls} super pulse {p} damage {d} is not finite")
+        total = round(sum(data['super']['pulseDamage'].values()), 1)
+        expected = 66 if cls == 'karate' else 86
+        if abs(total - expected) > 0.5:
+            failures.append(f"{cls} super total damage {total} != {expected}")
+    if s['super']['knockdownFrame'] < 0:
+        failures.append("staff super did not knock down")
+    if 'blade' in r:
+        b = r['blade']
+        # Plan: blade punch reaches 110/110/120 (tip), shorter than staff's 130 and longer than Karate's shared 95.
+        if not (b['reach']['punch'] < s['reach']['punch'] - 10):
+            failures.append(f"blade punch reach {b['reach']['punch']:.1f}px should be shorter than staff {s['reach']['punch']:.1f}px")
+        if not (b['reach']['punch'] > k['reach']['punch'] + 20):
+            failures.append(f"blade punch reach {b['reach']['punch']:.1f}px should outrange karate {k['reach']['punch']:.1f}px")
+        if not (b['reach']['kick'] < s['reach']['kick'] - 40):
+            failures.append(f"blade kick reach {b['reach']['kick']:.1f}px should be shorter than staff {s['reach']['kick']:.1f}px")
+        if b['chainCap'] != 3:
+            failures.append(f"blade punch chain cap {b['chainCap']} != 3")
+        if not b['super']['hpFinite']:
+            failures.append("blade super left dummy HP non-finite")
+        for p, d in b['super']['pulseDamage'].items():
+            if d is None or not math.isfinite(d):
+                failures.append(f"blade super pulse {p} damage {d} is not finite")
+        total = round(sum(b['super']['pulseDamage'].values()), 1)
+        if abs(total - 74) > 0.5:
+            failures.append(f"blade super total damage {total} != 74")
+        if b['super']['knockdownFrame'] < 0:
+            failures.append("blade super did not knock down")
+        # Plan §4: the wave freezes the target in hitstun; the knockdown fires on the noto click at f50,
+        # not on the 46-damage wave impact (which crosses the 30-damage burst threshold).
+        elif b['super']['knockdownFrame'] < 44:
+            failures.append(f"blade super knocked down at frame {b['super']['knockdownFrame']}, expected the noto frame (~50)")
+        if b['parry6']['dummyHP'] > 99.9 or b['parry6']['playerMeter'] <= 5:
+            failures.append(f"blade 6f parry failed: dummyHP={b['parry6']['dummyHP']:.1f} meter={b['parry6']['playerMeter']:.1f}")
+        if b['parry9']['playerHP'] > 99.5 or b['parry9']['dummyHP'] < 99.9:
+            failures.append(f"blade 9f block failed: playerHP={b['parry9']['playerHP']:.1f} dummyHP={b['parry9']['dummyHP']:.1f}")
+        if b['lockout']['meterAfterSecond'] > b['lockout']['meterAfterFirst'] + 1:
+            failures.append(f"blade parry lockout failed: first={b['lockout']['meterAfterFirst']:.1f} second={b['lockout']['meterAfterSecond']:.1f}")
+    return failures
 
 def main():
     port = free_port()
@@ -183,6 +406,7 @@ def main():
                 base = json.loads(BASELINE.read_text())
                 if base['digest'] != digest:
                     failures.append(f"parity digest {digest} != baseline {base['digest']} (baseline wins {base['wins']}, now {wins})")
+            failures.extend(run_class_checks(page))
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
