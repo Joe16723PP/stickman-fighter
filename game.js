@@ -53,6 +53,221 @@ const CpuHotColors = {
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
+/* Boss loadouts — stage-settings.js profiles point to these weapons. */
+const BossWeapons = {
+  knuckles:    { damageMultiplier: 1, reach: 95,  color: '#FBBF24' },
+  anchorChain: { damageMultiplier: 1, reach: 230, color: '#8EDFFF' },
+  cleavers:    { damageMultiplier: 1, reach: 100, color: '#FF7A7A' },
+  sledgehammer:{ damageMultiplier: 1, reach: 150, color: '#FF9F43' },
+  shieldBaton: { damageMultiplier: 1, reach: 110, color: '#7CEBFF' },
+};
+
+/* Boss signature move tuning. Base values are before BossHardness / difficulty multipliers. */
+const BossSignatures = {
+  bossBlockParty:  { label: 'BLOCK PARTY',  color: '#FBBF24', fractions: [6/24, 6/24, 12/24], guardBreak: [false, false, true], advance: 140, hitCount: 3 },
+  bossDockHaulIn:  { label: 'HAUL IN',      color: '#8EDFFF', reach: 230, hookFrames: 8, pullFrames: 10, pull: 150, smashDmg: 14, guardBreak: true, hitCount: 1 },
+  bossMarketToss:  { label: "BUTCHER'S TOSS", color: '#FF7A7A', projectileSpeed: 700, projectileRange: 500, projectileDmg: 12, flurryDmg: 4, flurryHits: 4, reach: 100, hitCount: 4 },
+  bossForgeQuake:  { label: 'FORGE QUAKE',  color: '#FF9F43', projectileSpeed: 600, projectileRange: 420, depthGap: 30, dmg: 16, hitCount: 0 },
+  bossShieldCharge:{ label: 'SHIELD WALL',  color: '#7CEBFF', charge: 300, dmg: 14, guardBreak: true, hitCount: 1 },
+};
+
+/* Boss signature controller. Projectiles live on BeatEmUp.bossProjectiles. */
+class BossSignature {
+  static entryFor(f) { return BeatEmUp.cast.find(e => e.f === f); }
+  static start(f) {
+    const key = f.bossProfile.signature.key;
+    const sig = BossSignatures[key];
+    f.sigKey = key;
+    f.sigProjectileSpawned = false;
+    f.sigHooked = false;
+    f.sigTarget = null;
+    f.sigFlurryRemaining = sig.flurryHits || 0;
+    f.sigPullFrames = 0;
+    f.dashLeft = sig.advance || sig.charge || 0;
+    f.blocking = 0;
+    const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
+    Fx.superCharge(f.x - cameraX, f.groundY() + f.y - 44 * f.drawS(), f.bossProfile);
+  }
+  static update(f, dt) {
+    if (!f.atk || f.state !== 'special' || !f.bossProfile) return;
+    const key = f.bossProfile.signature.key;
+    const sig = BossSignatures[key];
+    const a = f.atk;
+    const t = f.atkT;
+    if (key === 'bossShieldCharge' && t <= a.su) f.blocking = 1;
+    if (t > a.su && t <= a.su + a.ac) {
+      const activeFrame = t - a.su;
+      if (key === 'bossMarketToss' && !f.sigProjectileSpawned) {
+        f.sigProjectileSpawned = true;
+        const entry = this.entryFor(f);
+        const damage = sig.projectileDmg * BossHardness.damage * BeatEmUp.difficulty.damage;
+        this.spawnProjectile({
+          kind: 'cleaver', x: f.x, y: f.groundY() + f.y - 58 * f.drawS(),
+          depth: entry ? entry.depth : f.depth, face: f.face, speed: sig.projectileSpeed, range: sig.projectileRange,
+          damage, width: 18, height: 22, owner: f,
+        });
+      }
+      if (key === 'bossForgeQuake' && activeFrame === 8 && !f.sigProjectileSpawned) {
+        f.sigProjectileSpawned = true;
+        const entry = this.entryFor(f);
+        const damage = sig.dmg * BossHardness.damage * BeatEmUp.difficulty.damage;
+        this.spawnProjectile({
+          kind: 'shockwave', x: f.x, y: f.groundY() + f.y,
+          depth: entry ? entry.depth : f.depth, face: f.face, speed: sig.projectileSpeed, range: sig.projectileRange,
+          damage, width: 44, height: 10, owner: f,
+        });
+      }
+      if (key === 'bossDockHaulIn') {
+        const player = BeatEmUp.playerEntry();
+        if (player && !f.sigHooked && activeFrame <= sig.hookFrames) {
+          const dx = Math.abs(f.x - player.f.x);
+          if (dx <= sig.reach && BeatEmUp.depthClose(this.entryFor(f)?.depth ?? f.depth, player.depth)) {
+            f.sigHooked = true;
+            f.sigTarget = player.f;
+          }
+        }
+        if (f.sigHooked && f.sigTarget && activeFrame > sig.hookFrames && activeFrame <= sig.hookFrames + sig.pullFrames) {
+          const target = f.sigTarget;
+          const dx = f.x - target.x;
+          const dist = Math.abs(dx);
+          if (dist > 8) target.x += Math.sign(dx) * Math.min(dist - 8, sig.pull / sig.pullFrames);
+        }
+      }
+    }
+  }
+  static drivePose(f, dt) {
+    const a = f.atk, t = f.atkT;
+    const key = f.bossProfile.signature.key;
+    if (t <= a.su) {
+      if (f.atkPhase !== 'sw') {
+        const pose = key === 'bossShieldCharge' ? Pose.block(null) : Pose.specialWind(null);
+        f.aim('sw', pose, a.su * Game.STEP);
+        f.atkPhase = 'sw';
+      }
+    } else if (t <= a.su + a.ac) {
+      if (f.atkPhase !== 'ss') {
+        f.aim('ss', Pose.specialDash(null), .05);
+        f.atkPhase = 'ss';
+      }
+    } else if (f.atkPhase !== 'sr') {
+      f.aim('sr', Pose.idle(null), a.re * Game.STEP);
+      f.atkPhase = 'sr';
+    }
+  }
+  static weaponHitbox(f, opts) {
+    const geo = f.weaponGeometry(f.combatBones(), true);
+    if (!geo) return null;
+    const { start, tip } = geo;
+    const r = 10 * f.drawS();
+    const x = Math.min(start.x, tip.x) - r, y = Math.min(start.y, tip.y) - r;
+    const w = Math.abs(tip.x - start.x) + r * 2, h = Math.abs(tip.y - start.y) + r * 2;
+    return {
+      x, y, w, h, segment: { x1: start.x, y1: start.y, x2: tip.x, y2: tip.y, r },
+      chip: 0, special: true, critical: false, comboFinisher: false, comboLink: false, chain: 0,
+      ...opts,
+    };
+  }
+  static strike(f, pulse) {
+    const key = f.bossProfile.signature.key;
+    const sig = BossSignatures[key];
+    const a = f.atk;
+    const t = f.atkT - a.su;
+    if (t <= 0 || t > a.ac) return null;
+    if (key === 'bossBlockParty') {
+      const slot = Math.min(sig.hitCount - 1, Math.floor((t - 1) / Math.max(1, a.ac / sig.hitCount)));
+      if (slot !== pulse) return null;
+      return this.weaponHitbox(f, {
+        dmg: a.dmg * sig.fractions[slot],
+        kb: a.kb * (slot === sig.hitCount - 1 ? 1.2 : .8),
+        stun: a.stun,
+        guardBreak: sig.guardBreak[slot],
+        blockable: !sig.guardBreak[slot],
+        pulse: slot,
+      });
+    }
+    if (key === 'bossShieldCharge') {
+      return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, guardBreak: sig.guardBreak, pulse: 0 });
+    }
+    if (key === 'bossDockHaulIn') {
+      const smashStart = a.ac - 6;
+      if (t < smashStart) return null;
+      return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, guardBreak: sig.guardBreak, pulse: 0 });
+    }
+    if (key === 'bossMarketToss') {
+      if (!f.sigProjectileSpawned || BeatEmUp.bossProjectiles.some(p => p.kind === 'cleaver' && p.owner === f)) return null;
+      if (f.sigFlurryRemaining <= 0) return null;
+      const player = BeatEmUp.playerEntry();
+      if (!player) return null;
+      const dx = Math.abs(f.x - player.f.x);
+      if (dx > sig.reach || !BeatEmUp.depthClose(this.entryFor(f)?.depth ?? f.depth, player.depth)) return null;
+      f.sigFlurryRemaining--;
+      const flurryDmg = sig.flurryDmg * BossHardness.damage * BeatEmUp.difficulty.damage;
+      return this.weaponHitbox(f, { dmg: flurryDmg, kb: a.kb * .5, stun: Math.max(6, a.stun * .5), pulse: f.sigFlurryRemaining });
+    }
+    return null;
+  }
+  static spawnProjectile(p) { BeatEmUp.bossProjectiles.push(p); }
+  static updateProjectiles(dt, player) {
+    if (!player) return;
+    for (let i = BeatEmUp.bossProjectiles.length - 1; i >= 0; i--) {
+      const p = BeatEmUp.bossProjectiles[i];
+      p.x += p.face * p.speed * dt;
+      if (p.startX == null) p.startX = p.x - p.face * p.speed * dt;
+      if (Math.abs(p.x - p.startX) >= p.range) { BeatEmUp.bossProjectiles.splice(i, 1); continue; }
+      if (p.hit) continue;
+      const laneGap = Math.abs(BeatEmUp.floorDepthPx(p.depth) - BeatEmUp.floorDepthPx(player.depth));
+      const maxGap = p.kind === 'shockwave' ? BossSignatures.bossForgeQuake.depthGap : BeatEmUp.DEPTH_HIT_PX;
+      if (laneGap > maxGap) continue;
+      const hitW = p.width * (p.kind === 'shockwave' ? 1 : .8);
+      const px = p.x - hitW / 2, py = p.kind === 'shockwave' ? p.y - p.height : p.y - p.height / 2;
+      const box = { x: px, y: py, w: hitW, h: p.height };
+      if (!Game.hitTest(box, player.f.hitbox)) continue;
+      p.hit = true;
+      const hit = {
+        x: box.x, y: box.y, w: box.w, h: box.h,
+        dmg: p.damage, kb: p.kind === 'shockwave' ? 260 : 160, stun: p.kind === 'shockwave' ? 16 : 8,
+        chip: 0, special: p.kind === 'shockwave', blockable: p.kind === 'shockwave',
+        critical: false, comboFinisher: false, comboLink: false, chain: 0,
+      };
+      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      const kind = player.f.takeHit(hit, p.owner);
+      if (kind === 'block') { Fx.blocked(cx, cy); }
+      else if (kind === 'armored') { Fx.hit(cx, cy); }
+      else { Fx.hit(cx, cy); Sfx.play(p.kind === 'shockwave' ? 'super-hit' : 'player-heavy-hit', player.f.classProfile); }
+      Game.stop = .05; Game.shake = .08; Game.shMag = 3;
+      BeatEmUp.bossProjectiles.splice(i, 1);
+    }
+  }
+  static drawProjectiles(ctx) {
+    const camX = BeatEmUp.cameraX;
+    for (const p of BeatEmUp.bossProjectiles) {
+      ctx.save();
+      ctx.translate(p.x - camX, p.y);
+      if (p.face < 0) ctx.scale(-1, 1);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (p.kind === 'cleaver') {
+        ctx.strokeStyle = '#E8ECF2'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(10, -4); ctx.lineTo(10, 8); ctx.lineTo(-6, 4); ctx.closePath(); ctx.stroke();
+        ctx.fillStyle = '#B9C5D4'; ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(10, -4); ctx.lineTo(10, 8); ctx.lineTo(-6, 4); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#20232C'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-8, 2); ctx.lineTo(-2, 2); ctx.stroke();
+      } else if (p.kind === 'shockwave') {
+        ctx.strokeStyle = '#FF9F43'; ctx.lineWidth = 4;
+        ctx.shadowColor = '#FF9F43'; ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.moveTo(-p.width / 2, 0);
+        ctx.lineTo(p.width / 2, -6);
+        ctx.lineTo(p.width / 2, 4);
+        ctx.lineTo(-p.width / 2, 10);
+        ctx.closePath(); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,159,67,.25)'; ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    }
+  }
+}
+
 // Weapon loadouts trade attack speed for damage. Archetypes determine whether they carry one.
 const EnemyWeaponProfiles = {
   freehand: { weapon: null, attackSpeed: 1, damage: .85 },
@@ -317,6 +532,23 @@ const Moves = {
     hitDamages: [24, 24, 38],
     reach: 210, spinFront: 130, slamFront: 180,
   },
+  // Boss normals — base values before BossHardness / difficulty multipliers.
+  bossBlockJab:   { su: 6, ac: 3, re: 10, dmg: 5,  kb: 120, stun: 8,  reach: 95 },
+  bossBlockHook:  { su: 9, ac: 4, re: 13, dmg: 9,  kb: 180, stun: 12, reach: 95 },
+  bossDockLash:   { su: 8, ac: 4, re: 14, dmg: 10, kb: 140, stun: 10, reach: 230 },
+  bossDockSwing:  { su: 11, ac: 5, re: 16, dmg: 12, kb: 200, stun: 14, reach: 230 },
+  bossMarketChop: { su: 6, ac: 3, re: 10, dmg: 6,  kb: 130, stun: 8,  reach: 100 },
+  bossMarketCross:{ su: 9, ac: 4, re: 12, dmg: 8,  kb: 160, stun: 11, reach: 100 },
+  bossIronOverhead:{ su: 14, ac: 5, re: 20, dmg: 16, kb: 260, stun: 18, reach: 150, armored: true },
+  bossIronSweep:  { su: 10, ac: 4, re: 15, dmg: 12, kb: 220, stun: 14, reach: 150 },
+  bossTunnelBaton:{ su: 7, ac: 3, re: 11, dmg: 8,  kb: 140, stun: 10, reach: 110 },
+  bossTunnelBash: { su: 11, ac: 4, re: 15, dmg: 10, kb: 190, stun: 13, reach: 110 },
+  // Boss signatures — base values before BossHardness / difficulty multipliers.
+  bossBlockParty:  { su: 10, ac: 9,  re: 16, dmg: 24, kb: 200, stun: 14, reach: 95,  hitCount: 3 },
+  bossDockHaulIn:  { su: 14, ac: 24, re: 16, dmg: 14, kb: 240, stun: 16, reach: 230, hitCount: 1 },
+  bossMarketToss:  { su: 12, ac: 60, re: 18, dmg: 28, kb: 180, stun: 12, reach: 100, hitCount: 4 },
+  bossForgeQuake:  { su: 16, ac: 18, re: 20, dmg: 16, kb: 260, stun: 18, reach: 150, hitCount: 0 },
+  bossShieldCharge:{ su: 18, ac: 20, re: 18, dmg: 14, kb: 240, stun: 16, reach: 110, hitCount: 1 },
 };
 
 /** Resolved attack snapshot used by Fighter (reads Moves). */
@@ -953,6 +1185,7 @@ class Fighter {
     this.color = color; this.tag = tag; this.playerControlled = tag === 'YOU';
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
+    this.bossProfile = null;
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
@@ -1123,6 +1356,33 @@ class Fighter {
     return {hip, sh, head, hr, la, ra, ll, rl, x0, x1, y0, y1};
   }
   startAtk(kind) {
+    if (this.bossProfile) {
+      const profile = this.bossProfile;
+      let key, state;
+      if (kind === 'punch') { key = profile.normal1.key; state = profile.normal1.state; }
+      else if (kind === 'kick') { key = profile.normal2.key; state = profile.normal2.state; }
+      else if (kind === 'special') { key = profile.signature.key; state = 'special'; }
+      else return;
+      const m = Moves[key];
+      if (!m) return;
+      this.atk = {
+        su: m.su, ac: m.ac, re: m.re,
+        dmg: m.dmg, kb: m.kb, stun: m.stun, chip: m.chip || 0,
+        kind, reach: m.reach, armored: !!m.armored, hitCount: m.hitCount == null ? 1 : m.hitCount,
+      };
+      this.atk.dmg *= this.damageMultiplier;
+      this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = state; this.blocking = 0;
+      this.chain = 0; this.chainArmed = 0; this.dashLeft = 0;
+      this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+      this.atkPhase = '';
+      if (kind === 'special') {
+        BossSignature.start(this, key);
+        Sfx.play('super-charge', this.bossProfile);
+      } else {
+        Sfx.play(state === 'kick' ? 'kick' : 'punch', this.bossProfile);
+      }
+      return;
+    }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -1280,6 +1540,7 @@ class Fighter {
     const a = this.atk, t = this.atkT;
     // Visual phases read su/ac/re from this.atk (Moves via Atk.of) — chain hits use chainSu/Ac/Re
     if (this.state === 'special') {
+      if (this.bossProfile) { BossSignature.drivePose(this, dt); return; }
       if (this.classProfile?.style === 'ward') {
         if (t <= a.su) {
           if (this.atkPhase !== 'sw') { this.aim('sw', Pose.specialWind(this.classProfile, a.comboFinisher), a.su * Game.STEP); this.atkPhase = 'sw'; }
@@ -1476,6 +1737,7 @@ class Fighter {
       }
       this.driveAtkPose(dt);
       this.tickPose(dt);
+      if (this.bossProfile && this.state === 'special') BossSignature.update(this, dt);
       this.x += this.roundhouseStep(other);
       if (this.state === 'special' && this.atkT > a.su && this.atkT <= a.su + a.ac && this.dashLeft > 0) {
         const step = this.dashLeft / Math.max(1, a.su + a.ac - this.atkT + 1);
@@ -1553,8 +1815,9 @@ class Fighter {
     if (!this.atk || (this.hitDone && this.state !== 'special')) return null;
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
+    if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
     const weapon = this.classProfile?.weapon || this.weaponType;
-    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade' || weapon === 'stick' || weapon === 'knife')));
+    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade' || weapon === 'stick' || weapon === 'knife' || BossWeapons[weapon])));
     if (weaponAttack) {
       const geometry = this.weaponGeometry(this.combatBones(), true);
       if (geometry) {
@@ -1621,7 +1884,15 @@ class Fighter {
     const chargingSpecial = this.state === 'special' && this.atk && this.atkT <= this.atk.su;
     const frontal = (from.x - this.x) * this.face > 0;
     const warded = this.wardShieldT > 0 && this.classProfile?.style === 'ward';
-    if (this.blocking && frontal && !atk.special) {
+    if (this.atk?.armored && this.atkT <= this.atk.su) {
+      const hpBefore = this.hp;
+      this.hp = Math.max(0, this.hp - atk.dmg * .5 * (warded ? .55 : 1));
+      this.flash = .08;
+      Sfx.play('hit', this.classProfile);
+      this.recordDamage(hpBefore - this.hp, from);
+      return 'armored';
+    }
+    if (this.blocking && frontal && (!atk.special || atk.blockable) && !(atk.guardBreak && frontal)) {
       Sfx.play('block', this.classProfile);
       const dmg = (atk.special ? atk.chip : atk.dmg * .2) * (warded ? .55 : 1);
       const hpBefore = this.hp;
@@ -1796,6 +2067,35 @@ class Fighter {
       }
       return {start:grip,tip:{x:grip.x + face * 22 * reachMul,y:grip.y - 82}};
     }
+    const bossWeapon = BossWeapons[weapon];
+    if (bossWeapon) {
+      const reach = bossWeapon.reach * reachMul;
+      const start = { x: hand.x - face * 4 * reachMul, y: hand.y + 6 * reachMul };
+      if (weapon === 'anchorChain') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 12 * reachMul }
+          : { x: hand.x + face * 38 * reachMul, y: hand.y - 44 * reachMul } };
+      }
+      if (weapon === 'cleavers') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 16 * reachMul }
+          : { x: hand.x + face * 22 * reachMul, y: hand.y - 70 * reachMul } };
+      }
+      if (weapon === 'sledgehammer') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 22 * reachMul }
+          : { x: hand.x + face * 18 * reachMul, y: hand.y - 82 * reachMul } };
+      }
+      if (weapon === 'shieldBaton') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 10 * reachMul }
+          : { x: hand.x + face * 20 * reachMul, y: hand.y - 66 * reachMul } };
+      }
+      // knuckles and fallback boss weapons
+      return { start, tip: active
+        ? { x: hand.x + face * reach, y: hand.y - 10 * reachMul }
+        : { x: hand.x + face * 18 * reachMul, y: hand.y - 62 * reachMul } };
+    }
     return active
       ? {start:{x:hand.x - face * 10 * reachMul,y:hand.y + 8 * reachMul},tip:{x:hand.x + face * 82 * reachMul,y:hand.y - 18 * reachMul}}
       : {start:{x:hand.x - face * 8 * reachMul,y:hand.y + 12 * reachMul},tip:{x:hand.x + face * 24 * reachMul,y:hand.y - 82 * reachMul}};
@@ -1838,6 +2138,8 @@ class Fighter {
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
       ctx.strokeStyle = '#CBD5E1'; ctx.lineWidth = 2.5 * arcadeSize;
       for (const p of [start,tip]) { ctx.beginPath(); ctx.arc(p.x,p.y,4 * arcadeSize,0,Math.PI*2); ctx.stroke(); }
+    } else if (BossWeapons[weapon]) {
+      this.drawBossWeapon(ctx, b, weapon, start, tip);
     } else {
       const grip = {x:start.x - this.face * 13,y:start.y + 3};
       const dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx,dy) || 1;
@@ -1849,6 +2151,65 @@ class Fighter {
       ctx.beginPath(); ctx.moveTo(start.x,start.y); ctx.lineTo(tip.x - this.face * 8,tip.y + 2); ctx.stroke();
       ctx.strokeStyle = this.classProfile?.accent || '#FBBF24'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(start.x - dy / len * 9,start.y + dx / len * 9); ctx.lineTo(start.x + dy / len * 9,start.y - dx / len * 9); ctx.stroke();
+    }
+    if (this.weaponFlashT > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, this.weaponFlashT / .15);
+      ctx.strokeStyle = this.weaponFlashColor || '#FFFFFF';
+      ctx.lineWidth = 6 * this.drawS();
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  drawBossWeapon(ctx, b, weapon, start, tip) {
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (weapon === 'knuckles') {
+      const hand = b.ra, f = this.face, s = this.drawS();
+      ctx.fillStyle = '#C9A227'; ctx.strokeStyle = '#3D3118'; ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) {
+        const ox = (i - 1) * 8 * s;
+        ctx.beginPath(); ctx.arc(hand.x + f * ox, hand.y - 2 * s, 5 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+    } else if (weapon === 'anchorChain') {
+      ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y);
+      if (this.sigHooked && this.sigTarget) {
+        const tb = this.sigTarget.bones ? this.sigTarget.bones() : null;
+        if (tb) ctx.lineTo(tb.chest.x, tb.chest.y);
+        else ctx.lineTo(tip.x, tip.y);
+      } else ctx.lineTo(tip.x, tip.y);
+      ctx.stroke();
+      ctx.fillStyle = '#4B5563'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(tip.x, tip.y, 10 * this.drawS(), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    } else if (weapon === 'cleavers') {
+      const f = this.face, s = this.drawS();
+      ctx.fillStyle = '#D1D5DB'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
+      for (let i = -1; i <= 1; i += 2) {
+        ctx.save();
+        ctx.translate(tip.x, tip.y);
+        ctx.rotate(i * .35);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(f * 22 * s, -4 * s); ctx.lineTo(f * 18 * s, 14 * s); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+    } else if (weapon === 'sledgehammer') {
+      const f = this.face, s = this.drawS();
+      ctx.strokeStyle = '#4B3621'; ctx.lineWidth = 6 * s;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+      ctx.fillStyle = '#9CA3AF'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
+      const hw = 18 * s, hh = 12 * s;
+      ctx.fillRect(tip.x - hw / 2, tip.y - hh, hw, hh * 2); ctx.strokeRect(tip.x - hw / 2, tip.y - hh, hw, hh * 2);
+    } else if (weapon === 'shieldBaton') {
+      const f = this.face, s = this.drawS();
+      const sh = b.la;
+      ctx.fillStyle = '#1F2937'; ctx.strokeStyle = '#374151'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(sh.x - f * 4 * s, sh.y + 6 * s, 16 * s, 24 * s, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 4 * s;
+      ctx.beginPath(); ctx.moveTo(sh.x - f * 4 * s, sh.y - 14 * s); ctx.lineTo(sh.x - f * 4 * s, sh.y + 26 * s); ctx.stroke();
+      ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 5 * s;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
     }
     ctx.restore();
   }
@@ -1946,6 +2307,59 @@ class Fighter {
     }
     ctx.restore();
   }
+  drawAccessory(ctx, b) {
+    if (!this.bossProfile || !this.bossProfile.accessory) return;
+    const acc = this.bossProfile.accessory;
+    const s = this.drawS(), f = this.face;
+    const headX = b.head.x, headY = b.head.y, hr = b.hr;
+    ctx.save();
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (acc.includes('flatCap')) {
+      ctx.fillStyle = '#2A2520'; ctx.strokeStyle = '#11131A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(headX, headY - hr * .2, hr * 1.2, hr * .55, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(headX + f * hr * .5, headY - hr * .1, hr * .6, hr * .25, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (acc.includes('beanie')) {
+      ctx.fillStyle = '#3D3A42'; ctx.strokeStyle = '#11131A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(headX, headY - hr * .2, hr * 1.05, hr * .55, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    if (acc.includes('helmet')) {
+      ctx.fillStyle = '#2F3A4A'; ctx.strokeStyle = '#11131A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(headX, headY - hr * .1, hr * 1.15, Math.PI, 0); ctx.fill(); ctx.stroke();
+    }
+    if (acc.includes('welderMask')) {
+      ctx.fillStyle = '#1A1D23'; ctx.strokeStyle = '#374151'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.rect(headX - hr * .9, headY - hr * .3, hr * 1.8, hr * 1.1); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#FBBF24'; ctx.globalAlpha = .6;
+      ctx.fillRect(headX - hr * .6, headY, hr * 1.2, hr * .35);
+      ctx.globalAlpha = 1;
+    }
+    if (acc.includes('vest') || acc.includes('peacoat') || acc.includes('apron') || acc.includes('glowingApron') || acc.includes('hiVis')) {
+      const chest = b.chest, w = 26 * s, h = 34 * s;
+      ctx.fillStyle = acc.includes('glowingApron') ? '#F97316' : acc.includes('hiVis') ? '#FDE047' : acc.includes('peacoat') ? '#2D3748' : acc.includes('apron') ? '#78350F' : '#5C4A3A';
+      ctx.strokeStyle = '#11131A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(chest.x - w / 2, chest.y - h / 2, w, h, 4); ctx.fill(); ctx.stroke();
+      if (acc.includes('hiVis')) {
+        ctx.strokeStyle = '#F97316'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(chest.x - w / 2 + 4, chest.y); ctx.lineTo(chest.x + w / 2 - 4, chest.y); ctx.stroke();
+      }
+      if (acc.includes('glowingApron')) {
+        ctx.globalAlpha = .4;
+        ctx.fillStyle = '#FDBA74'; ctx.beginPath(); ctx.ellipse(chest.x, chest.y + 10 * s, 10 * s, 6 * s, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+    if (acc.includes('lanternCrown')) {
+      ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 3;
+      for (let i = -1; i <= 1; i++) {
+        const lx = headX + i * 16 * s;
+        ctx.beginPath(); ctx.moveTo(lx, headY - hr - 4); ctx.lineTo(lx, headY - hr - 18); ctx.stroke();
+        ctx.fillStyle = i === 0 ? '#FEF08A' : '#FBBF24';
+        ctx.beginPath(); ctx.arc(lx, headY - hr - 22, 5 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
   draw(ctx) {
     ctx.save();
     this.drawVector(ctx);
@@ -1994,6 +2408,7 @@ class Fighter {
     ctx.fillStyle = col; ctx.beginPath(); ctx.arc(headX, headY, headRadius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,.32)';
     ctx.beginPath(); ctx.ellipse(headX - headRadius * .3, headY - headRadius * .34, headRadius * .28, headRadius * .16, -.5, 0, Math.PI * 2); ctx.fill();
+    this.drawAccessory(ctx,b);
     this.drawWeapon(ctx,b);
     this.drawReadyLightning(ctx,b);
     this.drawAttackBoostAura(ctx,b);
@@ -2482,6 +2897,7 @@ class BeatEmUp {
   static skyOffset = 0;
   static cast = [];
   static items = [];
+  static bossProjectiles = [];
   static medkitDropChance = .25;
   static energyDrinkDropChance = .12;
   static energyDrinkDamageMultiplier = 1.5;
@@ -2681,6 +3097,7 @@ class BeatEmUp {
     Game.timer = BeatEmUp.RUN_SECONDS;
     BeatEmUp.cast = [];
     BeatEmUp.items = [];
+    BeatEmUp.bossProjectiles = [];
     BeatEmUp.baseS = Fighter.S * .8;
     BeatEmUp.lockL = 0;
     BeatEmUp.lockR = Game.W * 0.92;
@@ -2728,12 +3145,32 @@ class BeatEmUp {
   static makeEnemy(kind, x, depth) {
     const f = new Fighter(x, CpuHotColors.enemy[kind] || CpuHotColors.enemy.regular, -1, '');
     const archetype = EnemyArchetypes[kind] || EnemyArchetypes.regular;
-    const armed = Math.random() < archetype.weaponChance;
-    const weaponKey = armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand';
-    const loadout = EnemyWeaponProfiles[weaponKey];
-    f.weaponType = loadout.weapon;
-    f.attackSpeed = loadout.attackSpeed;
-    f.damageMultiplier = loadout.damage;
+    let scaleMul = kind === 'boss' ? 1.25 : kind === 'heavy' ? 1.12 : 1;
+    if (kind === 'boss') {
+      const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
+      const profile = chapter?.boss?.profile;
+      if (profile) {
+        f.bossProfile = profile;
+        f.weaponType = profile.weapon;
+        f.damageMultiplier = (BossWeapons[profile.weapon]?.damageMultiplier) || 1;
+        f.attackSpeed = 1;
+        scaleMul = profile.scale;
+      } else {
+        const armed = Math.random() < archetype.weaponChance;
+        const weaponKey = armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand';
+        const loadout = EnemyWeaponProfiles[weaponKey];
+        f.weaponType = loadout.weapon;
+        f.attackSpeed = loadout.attackSpeed;
+        f.damageMultiplier = loadout.damage;
+      }
+    } else {
+      const armed = Math.random() < archetype.weaponChance;
+      const weaponKey = armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand';
+      const loadout = EnemyWeaponProfiles[weaponKey];
+      f.weaponType = loadout.weapon;
+      f.attackSpeed = loadout.attackSpeed;
+      f.damageMultiplier = loadout.damage;
+    }
     f.specialDamageMultiplier = archetype.specialDamage;
     f.meterGainMultiplier = archetype.specialGain;
     f.tag = kind === 'regular' ? 'ROOKIE' : kind.toUpperCase();
@@ -2742,7 +3179,6 @@ class BeatEmUp {
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
-    const scaleMul = kind === 'boss' ? 1.25 : kind === 'heavy' ? 1.12 : 1;
     const speedMul = kind === 'runner' || kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1;
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
@@ -2819,11 +3255,12 @@ class BeatEmUp {
     BeatEmUp.lockL = BeatEmUp.cameraX;
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
+    BeatEmUp.bossProjectiles = [];
     const boss = BeatEmUp.makeEnemy('boss', BeatEmUp.lockL + Game.W * 0.62, 0.55);
     BeatEmUp.bossMaxHp = boss.f.hp;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
     boss.f.tag = chapter.boss.name;
-    boss.f.color = CpuHotColors.bosses[BeatEmUp.stage - 1];
+    boss.f.color = chapter.boss.profile?.color || CpuHotColors.bosses[BeatEmUp.stage - 1];
     boss.f.meter = 100;
     BeatEmUp.boss = boss;
     BeatEmUp.cast.push(boss);
@@ -3087,6 +3524,7 @@ class BeatEmUp {
     }
 
     BeatEmUp.resolveHits();
+    BossSignature.updateProjectiles(dt, player);
     BeatEmUp.checkWaveState();
 
     if (!BeatEmUp.stageOver && Game.timer <= 0) BeatEmUp.loseStage();
@@ -3151,22 +3589,39 @@ class BeatEmUp {
       // Match depth then close in
       if (e.depth < player.depth - 0.05) e.depth = Math.min(1, e.depth + 0.85 * dt);
       else if (e.depth > player.depth + 0.05) e.depth = Math.max(0, e.depth - 0.85 * dt);
-      const reach = Moves.punch.reach + 10;
+      const reach = e.bossProfile ? e.bossProfile.reach : Moves.punch.reach + 10;
       if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
       } else if (ai.cool <= 0 && depthGap < 0.2) {
-        let move;
-        const canSpecial = e.f.specialDamageMultiplier > 0 && e.f.meter >= 100
-          && (e.kind !== 'boss' || ai.phase >= 2);
-        const specialChance = e.kind === 'boss' ? .24 : .12;
-        if (canSpecial && Math.random() < specialChance) move = 'special';
-        else if (e.kind === 'heavy') move = Math.random() < .7 ? 'kick' : 'punch';
-        else if (e.kind === 'runner' || e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
-        else move = Math.random() < .72 ? 'punch' : 'kick';
-        ai.tellMove = move;
-        ai.tellKind = move === 'special' ? 'CHARGE' : move.toUpperCase();
-        ai.tellT = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate) : e.kind === 'heavy' ? .48 : .34;
+        let move, label, tell;
+        if (e.bossProfile) {
+          const profile = e.bossProfile;
+          const canSpecial = ai.phase >= 2 && e.f.meter >= 100;
+          const specialChance = .24;
+          if (canSpecial && Math.random() < specialChance) {
+            move = 'special';
+            label = profile.signature.label;
+            tell = Math.max(profile.signature.tellMin, profile.signature.tellBase * (ai.phase === 3 ? profile.signature.phase3TellMul : 1) / BossHardness.rate);
+            if (profile.weapon === 'shieldBaton') Input.pad[1].block = 1;
+          } else {
+            const useN1 = Math.random() < .55;
+            move = useN1 ? profile.normal1.state : profile.normal2.state;
+            label = useN1 ? profile.normal1.label : profile.normal2.label;
+            tell = Math.max(BossHardness.tellMin, .72 / BossHardness.rate);
+          }
+        } else {
+          const canSpecial = e.f.specialDamageMultiplier > 0 && e.f.meter >= 100
+            && (e.kind !== 'boss' || ai.phase >= 2);
+          const specialChance = e.kind === 'boss' ? .24 : .12;
+          if (canSpecial && Math.random() < specialChance) move = 'special';
+          else if (e.kind === 'heavy') move = Math.random() < .7 ? 'kick' : 'punch';
+          else if (e.kind === 'runner' || e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
+          else move = Math.random() < .72 ? 'punch' : 'kick';
+          label = move === 'special' ? 'CHARGE' : move.toUpperCase();
+          tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate) : e.kind === 'heavy' ? .48 : .34;
+        }
+        ai.tellMove = move; ai.tellKind = label; ai.tellT = tell;
       }
       BeatEmUp._driveEnemyPad(e, player, dt);
     }
@@ -3478,6 +3933,12 @@ class BeatEmUp {
       // Repeated rookie/regular labels stack into noise when a wave crowds
       // around the player. Keep identity labels for the player and boss only.
       if (showAlert || (entry.kind !== 'boss' && entry.role !== 'player')) entry.f.tag = '';
+      if (entry.bossProfile && entry.ai && entry.ai.tellMove === 'special' && entry.ai.tellT > 0) {
+        entry.f.weaponFlashT = entry.ai.tellT;
+        entry.f.weaponFlashColor = BossSignatures[entry.bossProfile.signature.key]?.color || '#FBBF24';
+      } else {
+        entry.f.weaponFlashT = 0;
+      }
       entry.f.draw(ctx);
       entry.f.tag = drawTag;
       if (entry.ai && entry.ai.tellT > 0) {
@@ -3601,6 +4062,7 @@ class BeatEmUp {
     const ordered = BeatEmUp.cast.filter(e => e.f.hp > 0 || e.role === 'player' || (e.f.ragdollKO && e.f.ragdollElapsed < 2)).slice()
       .sort((a, b) => a.depth - b.depth);
     for (const e of ordered) BeatEmUp.drawFighter(ctx, e);
+    BossSignature.drawProjectiles(ctx);
     Fx.draw(ctx);
     BeatEmUp.bars(ctx);
     if (BeatEmUp.showGo) {
