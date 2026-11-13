@@ -603,6 +603,7 @@ const Moves = {
     hitDelays: [0, 7, 14],
     hitDamages: [24, 24, 38],
     reach: 210, spinFront: 130, slamFront: 180,
+    slamGroundCrackReach: 52,
   },
   // Boss normals — base values before BossHardness / difficulty multipliers.
   bossBlockJab:   { su: 6, ac: 3, re: 10, dmg: 5,  kb: 120, stun: 8,  reach: 95 },
@@ -1008,8 +1009,8 @@ class Pose {
       la:d(100), le:d(35), ra:d(-70), re:d(40),
       ll:d(110), lk:d(5), rl:d(-35), rk:d(40), hipBob:0};
   }
-  static specialFinish(profile = null, comboFinisher = false) {
-    if (profile?.weapon === 'staff') return Pose.staffSuperSlam(profile);
+  static specialFinish(profile = null, comboFinisher = false, face = 1) {
+    if (profile?.weapon === 'staff') return Pose.staffSuperFinish(profile, face);
     if (profile?.weapon === 'blade') return Pose.specialDash(profile, comboFinisher);
     if (profile?.style === 'ward') return Pose.karateSuperKickHigh(profile);
     return Pose.specialDash(profile, comboFinisher);
@@ -1063,22 +1064,33 @@ class Pose {
       la:d(-95), le:d(-20), ra:d(-95), re:d(-20),
       ll:d(70), lk:d(20), rl:d(-80), rk:d(30), hipBob:8};
   }
-  /** Dragon Staff Spin poses: windup, two spin sweeps, and the ground slam. */
+  /** Place both hands along a rigid staff axis with a two-link arm solve. */
+  static staffSuperGrip(profile, angle, face = 1, chest = -6, legs = [32,18,-32,18], hipBob = 0) {
+    const limb = 18 * 1.2, gripHalf = 14, facing = face || 1, fv = -facing;
+    const axisX = Math.cos(angle) * facing, axisY = Math.sin(angle);
+    const solve = (x, y, bend) => {
+      const distance = Math.hypot(x, y);
+      const elbow = bend * Math.acos(Math.max(-1, Math.min(1, (distance * distance - 2 * limb * limb) / (2 * limb * limb))));
+      const shoulder = Math.atan2(x, y) - Math.atan2(Math.sin(elbow), 1 + Math.cos(elbow));
+      return [shoulder / fv * 180 / Math.PI, elbow / fv * 180 / Math.PI];
+    };
+    const left = solve(-axisX * gripHalf, -axisY * gripHalf, -1);
+    const right = solve(axisX * gripHalf, axisY * gripHalf, 1);
+    return Pose.staffGrip(chest, [left[0], left[1], right[0], right[1]], legs, hipBob);
+  }
+  /** Dragon Staff Spin poses: windup, two rotating sweeps, slam, and finish. */
   static staffSuperWind(profile = null) {
-    const d = Pose.deg;
     return Pose.staffGrip(-6,[-128,-30,16,52],[40,22,-42,22],0);
   }
-  static staffSuperSpin1(profile = null) {
-    const d = Pose.deg;
-    return Pose.staffGrip(-16,[-78,22,-24,-118],[52,28,-54,32],-3);
+  static staffSuperSpin(profile = null, angle = 0, face = 1, secondSweep = false) {
+    return Pose.staffSuperGrip(profile, angle, face, secondSweep ? 5 : -8,
+      secondSweep ? [48,22,-48,22] : [40,20,-40,20], secondSweep ? -4 : -2);
   }
-  static staffSuperSpin2(profile = null) {
-    const d = Pose.deg;
-    return Pose.staffGrip(10,[-150,-34,-86,-50],[55,30,-52,30],-2);
+  static staffSuperSlam(profile = null, face = 1) {
+    return Pose.staffSuperGrip(profile, Math.PI / 3, face, 18, [46,22,-46,22], -4);
   }
-  static staffSuperSlam(profile = null) {
-    const d = Pose.deg;
-    return Pose.staffGrip(32,[-92,12,-12,-132],[48,26,-50,28],-4);
+  static staffSuperFinish(profile = null, face = 1) {
+    return Pose.staffSuperGrip(profile, -Math.PI / 5, face, -4, [28,14,-28,14], 0);
   }
 }
 
@@ -1263,6 +1275,7 @@ class Bot {
 
 class Fighter {
   static S = 1.2;
+  static STAFF_WEAPON_LENGTH = 205;
   static ARM = 18 * 1.2;
   static LEG = 20 * 1.2;
   static TORSO = 22 * 1.2;
@@ -1285,6 +1298,7 @@ class Fighter {
     this.blendT = 1; this.blendDur = .08; this.poseKey = 'idle';
     this.hp = 100; this.chip = 100; this.stun = 0; this.flash = 0; this.blocking = 0;
     this.atk = null; this.atkT = 0; this.hitDone = 0; this.dashLeft = 0; this.specialVisual = null; this.enemyThrowPose = null;
+    this.specialOriginX = null; this.specialOriginDepth = null; this.specialFxPulse = -1;
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0; this.wardShieldT = 0;
     this.hitConfirmed = 0; this.comboHits = 0; this.comboTimer = 0; this.comboStunEffectT = 0;
     this.dodgeT = 0; this.dodgeCooldown = 0; this.rollVx = 0;
@@ -1477,7 +1491,12 @@ class Fighter {
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
-      this.meter = 0; this.dashLeft = Game.W * (this.classProfile?.dash || .14);
+      this.meter = 0;
+      const staffSuper = this.classProfile?.weapon === 'staff';
+      this.dashLeft = staffSuper ? 0 : Game.W * (this.classProfile?.dash || .14);
+      this.specialOriginX = staffSuper ? this.x : null;
+      this.specialOriginDepth = staffSuper ? this.depth : null;
+      this.specialFxPulse = -1;
       this.chain = 0; this.chainArmed = 0;
     } else if (kind === 'punch') {
       const m = Moves.punch;
@@ -1572,10 +1591,12 @@ class Fighter {
       this.specialVisual = visualDuration ? {
         elapsed: 0,
         duration: visualDuration,
-        finishPose: Pose.specialFinish(this.classProfile, !!this.atk?.comboFinisher),
+        finishPose: Pose.specialFinish(this.classProfile, !!this.atk?.comboFinisher, this.face),
       } : null;
       const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
+      const fxStart = Fx.list.length;
       Fx.superCharge(this.x - cameraX, this.groundY() + this.y - 44 * this.drawS(), this.classProfile);
+      if (this.classProfile?.weapon === 'staff') Fx.tagStaffSuper(this, fxStart);
       Sfx.play('super-charge', this.classProfile);
     } else if (kind === 'kick') Sfx.play('kick', this.classProfile);
     else Sfx.play('punch', this.classProfile);
@@ -1637,6 +1658,69 @@ class Fighter {
     const hitCount = a.hitCount || 1;
     return Math.min(hitCount - 1, Math.floor((this.atkT - a.su - 1) / Math.max(1, a.ac / hitCount)));
   }
+  staffWeaponScale() { return Game.mode === 'beatemup' ? .8 : this.depthScale(); }
+  staffDepthCoordinate(fighter = this) {
+    return Game.mode === 'beatemup' ? BeatEmUp.floorDepthPx(fighter.depth) : fighter.groundY();
+  }
+  staffSpinRadius() {
+    const b = this.combatBones();
+    const gripCenterX = (b.la.x + b.ra.x) / 2;
+    const visibleTipRadius = Math.abs(gripCenterX - this.x) + Fighter.STAFF_WEAPON_LENGTH * .5 * this.staffWeaponScale();
+    return Math.min(Moves.staffSpecial.spinFront * this.staffWeaponScale(), visibleTipRadius);
+  }
+  staffSlamPoint() {
+    const geo = this.visualWeaponGeometry(this.combatBones());
+    return geo.start.y >= geo.tip.y ? geo.start : geo.tip;
+  }
+  staffSpecialHitbox(pulse) {
+    const depthY = this.staffDepthCoordinate();
+    let centerX = this.x, radius = this.staffSpinRadius();
+    if (pulse === 2) {
+      const point = this.staffSlamPoint();
+      centerX = point.x;
+      const reach = Moves.staffSpecial.slamFront * this.staffWeaponScale();
+      const effectReach = Moves.staffSpecial.slamGroundCrackReach * (this.drawS() / Fighter.S);
+      radius = Math.max(0, Math.min(effectReach, reach - Math.abs(centerX - this.x)));
+    }
+    const fraction = this.atk.superFractions ? this.atk.superFractions[pulse] : 1;
+    return {
+      x:centerX, y:depthY, w:0, h:0, radial:true,
+      centerX, centerDepthY:depthY, radius,
+      depthTolerance:Game.mode === 'beatemup' ? BeatEmUp.DEPTH_HIT_PX : Depth.HIT_PX,
+      dmg:this.atk.dmg * fraction, kb:this.atk.kb, stun:this.atk.stun, chip:this.atk.chip || 0,
+      special:true, pulse, critical:!!this.atk.critical, comboFinisher:!!this.atk.comboFinisher,
+      comboLink:!!this.atk.linked, chain:this.atk.chain || 0, knockdown:pulse === 2,
+    };
+  }
+  static staffRadialHits(hit, attacker, target) {
+    const targetFighter = target.f || target;
+    const targetDepthY = Game.mode === 'beatemup' ? BeatEmUp.floorDepthPx(target.depth) : targetFighter.groundY();
+    const laneGap = targetDepthY - hit.centerDepthY;
+    if (Math.abs(laneGap) > hit.depthTolerance) return false;
+    const dx = targetFighter.x - hit.centerX;
+    return dx * dx + laneGap * laneGap <= hit.radius * hit.radius;
+  }
+  playStaffSuperPulseFx() {
+    const pulse = this.superPulse();
+    if (pulse < 0) { this.specialFxPulse = -1; return; }
+    if (this.specialFxPulse === pulse) return;
+    this.specialFxPulse = pulse;
+    const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
+    const k = this.drawS() / Fighter.S;
+    if (pulse < 2) {
+      const b = this.combatBones();
+      const centerX = (b.la.x + b.ra.x) / 2;
+      const centerY = (b.la.y + b.ra.y) / 2;
+      const geo = this.visualWeaponGeometry(b);
+      const staffAngle = Math.atan2(geo.tip.y - geo.start.y, geo.tip.x - geo.start.x);
+      Fx.staffSuperSpin(centerX - cameraX, centerY, this.face, k, this.staffSpinRadius(), this, staffAngle);
+    } else {
+      const point = this.staffSlamPoint();
+      const groundY = this.groundY() + this.y;
+      Fx.staffSuperSlam(point.x - cameraX, groundY, this.face, k, groundY, this);
+      Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4;
+    }
+  }
   driveAtkPose(dt) {
     const a = this.atk, t = this.atkT;
     // Visual phases read su/ac/re from this.atk (Moves via Atk.of) — chain hits use chainSu/Ac/Re
@@ -1660,16 +1744,26 @@ class Fighter {
       if (this.classProfile?.weapon === 'staff') {
         if (t <= a.su) {
           if (this.atkPhase !== 'ssw') { this.aim('ssw', Pose.staffSuperWind(this.classProfile), a.su * Game.STEP); this.atkPhase = 'ssw'; }
-        } else if (t <= a.su + 4) {
-          if (this.atkPhase !== 'ss1') { this.aim('ss1', Pose.staffSuperSpin1(this.classProfile), .05); this.atkPhase = 'ss1'; Sfx.play('super-dash', this.classProfile); }
+        } else if (t <= a.su + 4 || (t >= a.su + 8 && t <= a.su + 11)) {
+          const secondSweep = t >= a.su + 8;
+          const phaseStart = secondSweep ? a.su + 8 : a.su + 1;
+          const frame = t - phaseStart;
+          const duration = secondSweep ? a.hitDurations[1] : a.hitDurations[0];
+          const progress = Math.min(1, (frame + 1) / duration);
+          const turns = secondSweep ? 1.5 : 1;
+          const key = `${secondSweep ? 'ss2' : 'ss1'}-${frame}`;
+          if (!this.atkPhase.startsWith(secondSweep ? 'ss2-' : 'ss1-')) Sfx.play('super-dash', this.classProfile);
+          this.aim(key, Pose.staffSuperSpin(this.classProfile, Math.PI * 2 * turns * progress, this.face, secondSweep), Game.STEP);
+          this.atkPhase = key;
         } else if (t <= a.su + 7) {
-          if (this.atkPhase !== 'ss1b') { this.aim('ss1b', Pose.staffSuperSpin2(this.classProfile), 3 * Game.STEP); this.atkPhase = 'ss1b'; }
-        } else if (t <= a.su + 11) {
-          if (this.atkPhase !== 'ss2') { this.aim('ss2', Pose.staffSuperSpin2(this.classProfile), .05); this.atkPhase = 'ss2'; Sfx.play('super-dash', this.classProfile); }
+          if (this.atkPhase !== 'ssgap') { this.aim('ssgap', Pose.staffSuperWind(this.classProfile), 3 * Game.STEP); this.atkPhase = 'ssgap'; }
         } else if (t <= a.su + 14) {
-          if (this.atkPhase !== 'ss2b') { this.aim('ss2b', Pose.staffSuperSlam(this.classProfile), 3 * Game.STEP); this.atkPhase = 'ss2b'; }
+          if (this.atkPhase !== 'ssl-prep') {
+            this.aim('ssl-prep', Pose.staffSuperSlam(this.classProfile, this.face), 3 * Game.STEP);
+            this.atkPhase = 'ssl-prep'; Sfx.play('super-dash', this.classProfile);
+          }
         } else if (t <= a.su + 19) {
-          if (this.atkPhase !== 'ssl') { this.aim('ssl', Pose.staffSuperSlam(this.classProfile), .05); this.atkPhase = 'ssl'; Sfx.play('super-dash', this.classProfile); }
+          if (this.atkPhase !== 'ssl') { this.aim('ssl', Pose.staffSuperSlam(this.classProfile, this.face), .05); this.atkPhase = 'ssl'; }
         } else if (this.atkPhase !== 'sr') { this.aim('sr', this.specialVisual?.finishPose || Pose.idle(this.classProfile), a.re * Game.STEP); this.atkPhase = 'sr'; }
         return;
       }
@@ -1735,6 +1829,7 @@ class Fighter {
     const axis = (Input.held(slot, 'right') ? 1 : 0) - (Input.held(slot, 'left') ? 1 : 0);
     const direction = axis || (other.x >= this.x ? -1 : 1);
     this.specialVisual = null;
+    Fx.clearStaffSuper(this);
     this.atk = null; this.atkT = 0; this.atkPhase = ''; this.dashLeft = 0;
     this.chain = 0; this.chainArmed = 0; this.blocking = 0;
     this.dodgeT = .48; this.dodgeCooldown = 1.05; this.rollVx = direction * 460;
@@ -1771,8 +1866,10 @@ class Fighter {
     if (this.chip > this.hp) this.chip = Math.max(this.hp, this.chip - (100 * dt / .3));
     this.animT += dt;
     if (this.specialVisual) this.specialVisual.elapsed += dt;
+    const staffSuperActive = this.state === 'special' && this.classProfile?.weapon === 'staff' && !!this.atk;
     // Lane change input for 1v1 / practice (P1 only; dummy and CPU stay or are driven by Bot).
-    if (Game.fighting && this.playerControlled && !this.ragdollActive && (Game.mode === '1v1' || Game.mode === 'practice')) {
+    if (staffSuperActive && this.specialOriginDepth != null) this.depth = this.specialOriginDepth;
+    else if (Game.fighting && this.playerControlled && !this.ragdollActive && (Game.mode === '1v1' || Game.mode === 'practice')) {
       let dy = 0;
       if (Input.depthHeld('up', slot)) dy -= 1;
       if (Input.depthHeld('down', slot)) dy += 1;
@@ -1834,7 +1931,9 @@ class Fighter {
         if (this.specialChargeFxT <= 0) {
           const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
           const progress = Math.min(1, this.atkT / a.su);
+          const fxStart = Fx.list.length;
           Fx.chargePulse(this.x - cameraX, this.groundY() + this.y - 44 * this.drawS(), this.classProfile, progress);
+          if (this.classProfile?.weapon === 'staff') Fx.tagStaffSuper(this, fxStart);
           this.specialChargeFxT = .14;
         }
       }
@@ -1842,7 +1941,11 @@ class Fighter {
       this.tickPose(dt);
       if (this.bossProfile && this.state === 'special') BossSignature.update(this, dt);
       this.x += this.roundhouseStep(other);
-      if (this.state === 'special' && this.atkT > a.su && this.atkT <= a.su + a.ac && this.dashLeft > 0) {
+      if (this.state === 'special' && this.classProfile?.weapon === 'staff') {
+        if (this.specialOriginX != null) this.x = this.specialOriginX;
+        this.vx = 0;
+        this.playStaffSuperPulseFx();
+      } else if (this.state === 'special' && this.atkT > a.su && this.atkT <= a.su + a.ac && this.dashLeft > 0) {
         const step = this.dashLeft / Math.max(1, a.su + a.ac - this.atkT + 1);
         const move = Math.min(step, this.dashLeft);
         this.x += this.face * move; this.dashLeft -= move; this.vx = 0;
@@ -1858,7 +1961,9 @@ class Fighter {
         if (this.state === 'punch' && this.hitDone && this.chain + 1 < this.punchChainMax())
           this.chainArmed = Moves.punch.chainWindow;
         else { this.chain = 0; this.chainArmed = 0; }
+        if (this.classProfile?.weapon === 'staff' && this.state === 'special') Fx.clearStaffSuper(this);
         this.atk = null; this.state = 'idle'; this.dashLeft = 0; this.atkPhase = '';
+        this.specialOriginX = null; this.specialOriginDepth = null; this.specialFxPulse = -1;
       }
       if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
@@ -1877,12 +1982,13 @@ class Fighter {
       const cancelFinish = Input.held(slot, 'left') || Input.held(slot, 'right')
         || Input.depthHeld('up', slot) || Input.depthHeld('down', slot)
         || Input.held(slot, 'block') || edgePending('punch') || edgePending('kick') || edgePending('special');
-      if (cancelFinish) this.specialVisual = null;
+      if (cancelFinish) { this.specialVisual = null; Fx.clearStaffSuper(this); }
       else {
         const remaining = this.specialVisual.duration - this.specialVisual.elapsed;
         this.state = 'idle'; this.vx = 0;
         if (remaining <= 0.12) {
           this.specialVisual = null;
+          Fx.clearStaffSuper(this);
           this.aim('idle', Pose.idle(this.classProfile), Math.max(Game.STEP, remaining));
         } else {
           this.aim('special-finish', this.specialVisual.finishPose, Math.min(.12, remaining));
@@ -1947,6 +2053,10 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
+    if (this.state === 'special' && this.classProfile?.weapon === 'staff') {
+      const pulse = this.superPulse();
+      return pulse < 0 ? null : this.staffSpecialHitbox(pulse);
+    }
     const weapon = this.classProfile?.weapon || this.weaponType;
     const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade' || weapon === 'stick' || weapon === 'knife' || BossWeapons[weapon])));
     if (weaponAttack) {
@@ -2041,6 +2151,10 @@ class Fighter {
       return 'armored';
     }
     this.stun = atk.stun;
+    if (this.classProfile?.weapon === 'staff' && this.state === 'special') {
+      Fx.clearStaffSuper(this);
+      this.specialOriginX = null; this.specialOriginDepth = null; this.specialFxPulse = -1;
+    }
     this.specialVisual = null;
     if (warded) {
       const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
@@ -2082,6 +2196,8 @@ class Fighter {
     if (lethal && this.playerControlled) Sfx.play('player-die', this.classProfile);
     this.ragdollActive = true; this.ragdollKO = lethal; this.ragdollElapsed = 0; this.koT = 0;
     this.ragdollFrom = Pose.copy(this.pose);
+    Fx.clearStaffSuper(this);
+    this.specialOriginX = null; this.specialOriginDepth = null; this.specialFxPulse = -1;
     this.specialVisual = null;
     this.ragdollDirection = Math.sign(this.x - (from?.x ?? this.x + this.face)) || -this.face;
     this.ragdollAngle = 0;
@@ -2251,7 +2367,7 @@ class Fighter {
     const ux = dx / gripSpan, uy = dy / gripSpan;
     const center = {x:(leftGrip.x + rightGrip.x) / 2, y:(leftGrip.y + rightGrip.y) / 2};
     const scale = Game.mode === 'beatemup' ? .8 : this.depthScale();
-    const halfLength = 102.5 * scale;
+    const halfLength = Fighter.STAFF_WEAPON_LENGTH * .5 * scale;
     return {
       start: {x:center.x - ux * halfLength, y:center.y - uy * halfLength},
       tip: {x:center.x + ux * halfLength, y:center.y + uy * halfLength},
@@ -2647,6 +2763,13 @@ class Fx {
     }
     return true;
   }
+  static tagStaffSuper(owner, fromIndex) {
+    for (let i = fromIndex; i < Fx.list.length; i++) Fx.list[i].staffSuperOwner = owner;
+  }
+  static clearStaffSuper(owner) {
+    if (Fx.list.some(effect => effect.staffSuperOwner === owner))
+      Fx.list = Fx.list.filter(effect => effect.staffSuperOwner !== owner);
+  }
   static sparks(x, y, n, color, alpha, life) {
     if (!Fx.allowed(x, y)) return;
     const sc = Game.scale || 1, len = 10 / sc;
@@ -2752,26 +2875,33 @@ class Fx {
       Fx.list.push({kind:'dust', x:ox, y:gy, life:.16 + Fx.random() * .04, max:.2, r0:3 / sc, r1:(9 * s) / sc});
     }
   }
-  static staffSuperSpin(x, y, face, s) {
+  static staffSuperSpin(x, y, face, s, radius = 46 * s, owner = null, staffAngle = 0) {
     const sc = Game.scale || 1;
     const wind = '#BFE9FF', teal = '#2DD4BF';
     const life = .133 + Fx.random() * .067;
     const alpha = .4 + Fx.random() * .3;
+    const fxStart = Fx.list.length;
     if (Fx.allowed(x, y)) {
-      Fx.list.push({kind:'windRing', x, y, r0:(18 * s) / sc, r1:(46 * s) / sc, life, max:life, color:wind, alpha, width:(2.5 + Fx.random() * 1.5) / sc});
-      Fx.list.push({kind:'windRing', x, y, r0:(8 * s) / sc, r1:(28 * s) / sc, life, max:life, color:teal, alpha:alpha * .65, width:(1.2 + Fx.random()) / sc});
+      Fx.list.push({kind:'windRing', x, y, r0:radius * .72, r1:radius, life, max:life, color:wind, alpha, width:(2.5 + Fx.random() * 1.5) / sc});
+      Fx.list.push({kind:'windRing', x, y, r0:radius * .28, r1:radius * .66, life, max:life, color:teal, alpha:alpha * .65, width:(1.2 + Fx.random()) / sc});
     }
     // Lightning crackles along the staff and jumps around the ring.
-    Fx.staffLightning(x, y, face, s, 3 + Math.floor(Fx.random() * 3));
+    Fx.staffLightning(x, y, face, s, 3 + Math.floor(Fx.random() * 3), radius, staffAngle);
+    if (owner) Fx.tagStaffSuper(owner, fxStart);
   }
-  static staffLightning(x, y, face, s, count) {
+  static staffLightning(x, y, face, s, count, radius = 46 * s, staffAngle = 0) {
     const sc = Game.scale || 1;
     const core = '#E0F7FF', glow = '#7DD3FC';
     for (let i = 0; i < count; i++) {
-      const len = (14 + Fx.random() * 22) * s;
-      const ang = Fx.random() * Math.PI * 2;
-      const sx = x + Math.cos(ang) * (10 + Fx.random() * 18) * s;
-      const sy = y + Math.sin(ang) * (6 + Fx.random() * 12) * s;
+      const onStaff = i === 0;
+      const ang = onStaff ? staffAngle : Fx.random() * Math.PI * 2;
+      const len = onStaff ? (18 + Fx.random() * 24) * s : (14 + Fx.random() * 22) * s;
+      const sx = onStaff
+        ? x + Math.cos(ang) * (Fx.random() - .5) * radius * .72
+        : x + Math.cos(ang) * radius * (.72 + Fx.random() * .16);
+      const sy = onStaff
+        ? y + Math.sin(ang) * (Fx.random() - .5) * radius * .72
+        : y + Math.sin(ang) * radius * (.72 + Fx.random() * .16);
       const seg = 2 + Math.floor(Fx.random() * 2);
       const pts = [[sx, sy]];
       for (let j = 1; j <= seg; j++) {
@@ -2783,10 +2913,11 @@ class Fx {
       Fx.list.push({kind:'crack', x:sx, y:sy, pts, life:.12 + Fx.random() * .06, max:.18, color:core, alpha:.8 + Fx.random() * .2, width:.6 / sc});
     }
   }
-  static staffSuperSlam(x, y, face, s, groundY = null) {
+  static staffSuperSlam(x, y, face, s, groundY = null, owner = null) {
     const sc = Game.scale || 1;
     const crackC = '#FFF3C4', core = '#E0F7FF', glow = '#7DD3FC';
     const gy = groundY != null ? groundY : y;
+    const fxStart = Fx.list.length;
     // Sky bolt striking the impact point.
     const boltLife = .133 + Fx.random() * .067;
     const topY = gy - (90 + Fx.random() * 40) * s;
@@ -2805,7 +2936,8 @@ class Fx {
     for (let i = 0; i < 4; i++) {
       const bx = x + face * (Fx.random() * 18 - 6) * s;
       if (!Fx.allowed(bx, gy)) continue;
-      const len = (22 + Fx.random() * 30) * s;
+      const minReach = Moves.staffSpecial.slamGroundCrackReach * .42;
+      const len = (minReach + Fx.random() * (Moves.staffSpecial.slamGroundCrackReach - minReach)) * s;
       const branchSeg = 2 + Math.floor(Fx.random() * 3);
       const bpts = [[bx, gy]];
       for (let j = 1; j <= branchSeg; j++) {
@@ -2819,6 +2951,7 @@ class Fx {
       if (!Fx.allowed(ox, gy)) continue;
       Fx.list.push({kind:'dust', x:ox, y:gy, life:.14 + Fx.random() * .06, max:.2, r0:(3 * s) / sc, r1:(11 * s) / sc});
     }
+    if (owner) Fx.tagStaffSuper(owner, fxStart);
   }
   static wardGuard(x, y, profile) {
     const sc = Game.scale || 1, color = profile?.accent || '#C4B5FD';
@@ -3908,13 +4041,16 @@ class BeatEmUp {
         const pulse = atk ? attacker.f.superPulse() : 0;
         if (attacker.f.state === 'special' && attacker.f.hitTargets.get(target) === pulse) continue;
         if (atk && attacker.f.state === 'special' && (!target.f.grounded || target.f.dodgeT > 0)) continue;
-        if (!BeatEmUp.depthClose(attacker.depth, target.depth)) continue;
+        const staffRadialAttack = attacker.f.state === 'special' && attacker.f.classProfile?.weapon === 'staff';
+        if (!staffRadialAttack && !BeatEmUp.depthClose(attacker.depth, target.depth)) continue;
         let hit = null;
         BeatEmUp.withDepth(attacker, () => { hit = attacker.f.strike(); });
         if (!hit) continue;
         let th = null;
         BeatEmUp.withDepth(target, () => { th = { x: target.f.hitbox.x, y: target.f.hitbox.y, w: target.f.hitbox.w, h: target.f.hitbox.h }; });
-        if (!th || !Game.hitTest(hit, th)) continue;
+        if (!th || (hit.radial
+          ? !Fighter.staffRadialHits(hit, attacker.f, target)
+          : !Game.hitTest(hit, th))) continue;
         if (target.f.playerControlled && target.f.invincibleT > 0) continue;
         attacker.f.hitDone = 1;
         if (hit.special) attacker.f.hitTargets.set(target, hit.pulse);
@@ -3931,7 +4067,8 @@ class BeatEmUp {
         attacker.f.gainMeter(hit.special ? 0 : hit.dmg * 2.5);
         if (!hit.special || !attacker.f.specialMeterTargets.has(target)) target.f.gainMeter(hit.special ? 12 : hit.dmg * 1.5);
         if (hit.special) attacker.f.specialMeterTargets.add(target);
-        const cx = hit.x + hit.w / 2, cy = hit.y + hit.h / 2;
+        const cx = hit.radial ? th.x + th.w / 2 : hit.x + hit.w / 2;
+        const cy = hit.radial ? th.y + th.h / 2 : hit.y + hit.h / 2;
         if (attacker.role === 'player') Game.tryComboStun(
           attacker.f, target.f, hit, kind, confirmed, cx - BeatEmUp.cameraX, cy - 58
         );
@@ -3958,10 +4095,6 @@ class BeatEmUp {
           else if (hit.pulse === 2) { Fx.karateSuperKickHigh(camX, cy, attacker.f.face, k, BeatEmUp.withDepth(target, () => target.f.groundY())); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
         } else if (hit.special && attacker.f.classProfile?.weapon === 'staff') {
-          const camX = cx - BeatEmUp.cameraX, k = BeatEmUp.withDepth(attacker, () => attacker.f.drawS() / 1.2);
-          const gy = BeatEmUp.withDepth(attacker, () => attacker.f.groundY() + attacker.f.y);
-          if (hit.pulse === 0 || hit.pulse === 1) { Fx.staffSuperSpin(camX, cy, attacker.f.face, k); }
-          else if (hit.pulse === 2) { Fx.staffSuperSlam(camX, gy, attacker.f.face, k, gy); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
         } else {
           if (hit.special && !attacker.f.specialEffectDone) {
@@ -4896,8 +5029,8 @@ class Game {
       if (!box || foe.hp <= 0) continue;
       if (box.special && me.hitTargets.get(foe) === box.pulse) continue;
       if (box.special && (!foe.grounded || foe.dodgeT > 0)) continue;
-      if (Math.abs(me.groundY() - foe.groundY()) > Depth.HIT_PX + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
-      if (!Game.hitTest(box, foe.hitbox)) continue;
+      if (!box.radial && Math.abs(me.groundY() - foe.groundY()) > Depth.HIT_PX + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
+      if (box.radial ? !Fighter.staffRadialHits(box, me, foe) : !Game.hitTest(box, foe.hitbox)) continue;
       if (foe.playerControlled && foe.invincibleT > 0) continue;
       me.hitDone = 1;
       if (box.special) me.hitTargets.set(foe, box.pulse);
@@ -4918,7 +5051,8 @@ class Game {
       me.gainMeter(box.special ? 0 : box.dmg * 2.5);
       if (!box.special || !me.specialMeterTargets.has(foe)) foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       if (box.special) me.specialMeterTargets.add(foe);
-      const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+      const cx = box.radial ? foe.hitbox.x + foe.hitbox.w / 2 : box.x + box.w / 2;
+      const cy = box.radial ? foe.hitbox.y + foe.hitbox.h / 2 : box.y + box.h / 2;
       const comboStunned = i === 0 && Game.tryComboStun(me, foe, box, kind, confirmed, cx, cy - 58);
       if (comboStunned && Game.mode === 'practice') Game.practiceLastMove += ' · STUN';
       const criticalHit = !!box.critical && kind !== 'block';
@@ -4943,10 +5077,6 @@ class Game {
         else if (box.pulse === 2) { Fx.karateSuperKickHigh(cx, cy, me.face, k, foe.groundY()); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
       } else if (box.special && me.classProfile?.weapon === 'staff') {
-        const k = me.drawS() / 1.2;
-        const gy = me.groundY() + me.y;
-        if (box.pulse === 0 || box.pulse === 1) { Fx.staffSuperSpin(cx, cy, me.face, k); }
-        else if (box.pulse === 2) { Fx.staffSuperSlam(cx, gy, me.face, k, gy); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
       } else {
         if (box.special && !me.specialEffectDone) {
