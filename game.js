@@ -1663,7 +1663,7 @@ class Fighter {
   superPulse() {
     const a = this.atk;
     if (!a || this.state !== 'special') return -1;
-    if (this.classProfile?.weapon === 'blade') return BladeSuper.pulseForFrame(this.atkT - a.su);
+    if (this.classProfile?.weapon === 'blade') return BladeSuper.pulseForFrame(this.atkT);
     if (this.classProfile?.style === 'ward') {
       const off = this.atkT - a.su;
       if (off >= 1 && off <= 3) return 0;
@@ -2113,7 +2113,7 @@ class Fighter {
   }
   bladeSuperVerticalGeometry() {
     const bones = this.combatBones(), grip = {x:(bones.la.x + bones.ra.x) / 2, y:(bones.la.y + bones.ra.y) / 2};
-    const progress = BladeSuper.verticalProgress(this.atkT - this.atk.su);
+    const progress = BladeSuper.verticalProgress(this.atkT);
     const dir = this.face;
     const start = {x:grip.x + dir * 38 * this.drawS(), y:grip.y - 72 * this.drawS()};
     const end = {x:grip.x + dir * (24 - 12 * progress) * this.drawS(), y:grip.y + (18 + 68 * progress) * this.drawS()};

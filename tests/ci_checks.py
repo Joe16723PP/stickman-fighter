@@ -205,7 +205,7 @@ BLADE_SUPER = '''() => {
     charge:owner.atk.su, quickDraw:BladeSuper.QUICK_DRAW_FRAMES, pause:BladeSuper.PAUSE_FRAMES,
     vertical:BladeSuper.VERTICAL_SLASH_FRAMES, recovery:owner.atk.re, noto:BladeSuper.NOTO_FRAME,
     total:owner.atk.su+owner.atk.ac+owner.atk.re,
-    pulseAt:[0,1,3,4,6,7,9,10].map(f=>BladeSuper.pulseForFrame(f)),
+    pulseAt:[24,25,27,28,30,31,33,34].map(f=>BladeSuper.pulseForFrame(f)),
   };
   return {
     frameProbe, quick:quick&&{pulse:quick.pulse,damage:quick.dmg}, pause:pause===null,
