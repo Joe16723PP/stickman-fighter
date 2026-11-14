@@ -1461,97 +1461,112 @@ STAGE2 = r"""
 
 STAGE1_BG = r"""
 async () => {
-  // Stage 1 panorama backdrop: per-wave anchors, eased glide, unlocked follow, resets, draw window. Script only (no frames rendered).
+  // Panorama backdrops (Stage 1 Street Brawl, Stage 2 Dockyard): per-wave anchors, eased glide, unlocked follow, resets,
+  // draw window. Script only (no frames rendered). Stage 1 anchors are pinned to their PR #65 values.
   const prev = { W: Game.W, H: Game.H, stage: BeatEmUp.stage, wave: BeatEmUp.wave, mode: Game.mode, phase: Game.phase, banner: Game.banner, fighting: Game.fighting,
     locked: BeatEmUp.locked, showGo: BeatEmUp.showGo, travelT: BeatEmUp.waveTravelT, travelNext: BeatEmUp.waveTravelNext, cam: BeatEmUp.cameraX,
     startCam: BeatEmUp.waveTravelStartCam, targetCam: BeatEmUp.waveTravelTargetCam, bg: [BeatEmUp.bgX, BeatEmUp.bgTravelFrom, BeatEmUp.bgTravelTo] };
-  const P = BeatEmUp.PANO, r = { anchors: {}, glide: {}, follow: {}, draw: {} }, EPS = 1e-9;
-  const src = BeatEmUp.backgrounds[0];
-  r.src = src;
-  r.othersSame = BeatEmUp.backgrounds.slice(1).every((b, i) => b === ['stage-02-docks','stage-03-night-market','stage-04-ironworks','stage-05-undercity','stage-06-rooftop','stage-07-dojo','stage-08-skybridge','stage-09-broadcast-tower','stage-10-coliseum'].map(n => 'assets/backgrounds/' + n + '.webp')[i]);
-  // the shipped asset actually decodes at the full panorama size
-  const img = new Image(); img.src = src;
-  try { await img.decode(); r.asset = [img.naturalWidth, img.naturalHeight]; } catch (e) { r.asset = String(e); }
-  let anchorsOk = true, glideOk = true, followOk = true, drawOk = true;
-  const fake = { complete: true, naturalWidth: P.w, naturalHeight: P.h };
-  const cached = BeatEmUp.backgroundCache.get(src);
+  const EPS = 1e-9, WS = [640, 960, 1169, 1555];
+  const PINNED_S1 = { 640: [0, 723, 1310.7, 2511.7, 859.3], 960: [0, 660.8, 881.1, 2082.1, 1288.9], 1169: [0, 450.4, 600.5, 1801.5, 1569.5], 1555: [0, 61.7, 82.3, 1283.3, 2087.7] };
+  const FILES = { 1: 'assets/backgrounds/stage-01-street-brawl.webp', 2: 'assets/backgrounds/stage-02-dockyard.webp' };
+  const r = {};
+  r.othersSame = BeatEmUp.backgrounds.slice(2).every((b, i) => b === ['stage-03-night-market','stage-04-ironworks','stage-05-undercity','stage-06-rooftop','stage-07-dojo','stage-08-skybridge','stage-09-broadcast-tower','stage-10-coliseum'].map(n => 'assets/backgrounds/' + n + '.webp')[i]);
+  r.panoStages = Object.keys(BeatEmUp.PANOS).join();
+  r.noPanoElsewhere = [3, 4, 5, 6, 7, 8, 9, 10].every(st => !BeatEmUp.pano(st));
+  const stageOk = {};
+  const cachedAll = new Map(BeatEmUp.backgroundCache);
   try {
-    for (const W of [640, 960, 1169, 1555]) {
-      Game.W = W; Game.H = 540;
-      const viewW = BeatEmUp.bgViewW(), max = P.w - viewW;
-      const a = [1, 2, 3, 4].map(n => BeatEmUp.bgAnchor(n));
-      r.anchors[W] = a.map(v => +v.toFixed(1)).concat([+viewW.toFixed(1)]);
-      anchorsOk = anchorsOk && a.every(v => v >= 0 && v <= max + EPS)
-        && a[0] === 0 && a[1] > a[0] && a[2] > a[1] && a[3] > a[2]           // strictly right every step
-        && Math.abs(a[3] + viewW - P.w) < 1e-6                              // boss shows the right end
-        && a[2] + viewW <= P.seam + 1e-6                                     // wave 3 never shows the Boss segment
-        && a[1] <= P.wave2 + EPS;
-      // glide n -> n+1 through travelToWave + the camera's own smoothstep/duration; unlocked follow first
-      Game.mode = 'beatemup'; BeatEmUp.stage = 1; BeatEmUp.waveTravelT = 0;
-      let maxJump = 0, ends = [];
-      for (let n = 1; n <= 3; n++) {
-        BeatEmUp.wave = n; BeatEmUp.bgSet(n);
-        const start = BeatEmUp.bgX;
-        BeatEmUp.bgFollow(-50); followOk = followOk && BeatEmUp.bgX === start;                // never left
-        BeatEmUp.bgFollow(W * .1); followOk = followOk && BeatEmUp.bgX > start;
-        for (let k = 0; k < 200; k++) BeatEmUp.bgFollow(W * .05);
-        followOk = followOk && Math.abs(BeatEmUp.bgX - a[n]) < 1e-9;                          // capped at the next anchor
-        BeatEmUp.bgSet(n); BeatEmUp.bgFollow(W * .3);                                         // typical partial walk
-        const from = BeatEmUp.bgX;
-        BeatEmUp.cameraX = 0; BeatEmUp.worldMax = W * 4.2;
-        BeatEmUp.travelToWave(n + 1);
-        const D = BeatEmUp.waveTravelDuration, to = BeatEmUp.bgTravelTo;
-        glideOk = glideOk && BeatEmUp.bgTravelFrom === from && Math.abs(to - a[n]) < 1e-9;
-        let last = from, maxStep = 0, t = BeatEmUp.waveTravelT;
-        // exact mirror of the waveTransition step (same progress/easing/duration)
-        while (t > 0) {
-          const progress = 1 - t / D, eased = progress * progress * (3 - 2 * progress);
-          BeatEmUp.bgGlide(eased);
-          if (BeatEmUp.bgX < last - EPS) glideOk = false;
-          maxStep = Math.max(maxStep, BeatEmUp.bgX - last); last = BeatEmUp.bgX;
-          t = Math.max(0, t - Game.STEP);
+    for (const stage of [1, 2]) {
+      const P = BeatEmUp.pano(stage), src = BeatEmUp.backgrounds[stage - 1];
+      const out = { src, anchors: {}, glide: {}, draw: {} };
+      out.srcOk = src === FILES[stage] && !!P && P.w === 3371 && P.h === 725 && P.seam === 2170 && P.wave2 === 723;
+      // the shipped asset actually decodes at the full panorama size
+      const img = new Image(); img.src = src;
+      try { await img.decode(); out.asset = [img.naturalWidth, img.naturalHeight]; } catch (e) { out.asset = String(e); }
+      let anchorsOk = true, glideOk = true, followOk = true, drawOk = true;
+      const fake = { complete: true, naturalWidth: P.w, naturalHeight: P.h };
+      for (const W of WS) {
+        Game.W = W; Game.H = 540; BeatEmUp.stage = stage;
+        const viewW = BeatEmUp.bgViewW(), max = P.w - viewW;
+        const a = [1, 2, 3, 4].map(n => BeatEmUp.bgAnchor(n));
+        out.anchors[W] = a.map(v => +v.toFixed(1)).concat([+viewW.toFixed(1)]);
+        anchorsOk = anchorsOk && a.every(v => v >= 0 && v <= max + EPS)
+          && a[0] === 0 && a[1] > a[0] && a[2] > a[1] && a[3] > a[2]           // strictly right every step
+          && Math.abs(a[3] + viewW - P.w) < 1e-6                              // boss shows the right end
+          && a[2] + viewW <= P.seam + 1e-6                                     // wave 3 never shows the Boss segment
+          && a[1] <= P.wave2 + EPS
+          && out.anchors[W].join() === PINNED_S1[W].join();                    // Stage 1 unchanged; Stage 2 shares its geometry
+        // explicit stage argument agrees with the current-stage default
+        anchorsOk = anchorsOk && [1, 2, 3, 4].every(n => BeatEmUp.bgAnchor(n, W, 540, stage) === a[n - 1]);
+        // glide n -> n+1 through travelToWave + the camera's own smoothstep/duration; unlocked follow first
+        Game.mode = 'beatemup'; BeatEmUp.waveTravelT = 0;
+        let maxJump = 0; const ends = [];
+        for (let n = 1; n <= 3; n++) {
+          BeatEmUp.wave = n; BeatEmUp.bgSet(n);
+          const start = BeatEmUp.bgX;
+          BeatEmUp.bgFollow(-50); followOk = followOk && BeatEmUp.bgX === start;                // never left
+          BeatEmUp.bgFollow(W * .1); followOk = followOk && BeatEmUp.bgX > start;
+          for (let k = 0; k < 200; k++) BeatEmUp.bgFollow(W * .05);
+          followOk = followOk && Math.abs(BeatEmUp.bgX - a[n]) < 1e-9;                          // capped at the next anchor
+          BeatEmUp.bgSet(n); BeatEmUp.bgFollow(W * .3);                                         // typical partial walk
+          const from = BeatEmUp.bgX;
+          BeatEmUp.cameraX = 0; BeatEmUp.worldMax = W * 4.2;
+          BeatEmUp.travelToWave(n + 1);
+          const D = BeatEmUp.waveTravelDuration, to = BeatEmUp.bgTravelTo;
+          glideOk = glideOk && BeatEmUp.bgTravelFrom === from && Math.abs(to - a[n]) < 1e-9;
+          let last = from, maxStep = 0, t = BeatEmUp.waveTravelT;
+          // exact mirror of the waveTransition step (same progress/easing/duration)
+          while (t > 0) {
+            const progress = 1 - t / D, eased = progress * progress * (3 - 2 * progress);
+            BeatEmUp.bgGlide(eased);
+            if (BeatEmUp.bgX < last - EPS) glideOk = false;
+            maxStep = Math.max(maxStep, BeatEmUp.bgX - last); last = BeatEmUp.bgX;
+            t = Math.max(0, t - Game.STEP);
+          }
+          // eased step bound: smoothstep slope <= 1.5, so one frame <= 1.5*STEP/D of the distance
+          const bound = 1.5 * Game.STEP / D * (to - from) + 1e-6;
+          glideOk = glideOk && (to - from) >= 0 && maxStep <= bound;
+          maxJump = Math.max(maxJump, maxStep);
+          BeatEmUp.waveTravelT = 0;
+          const before = BeatEmUp.bgX;
+          BeatEmUp.bgSet(n + 1);                                                                 // startWave/startBoss land on the anchor
+          const landJump = Math.abs(BeatEmUp.bgX - before);
+          glideOk = glideOk && landJump <= bound + 1e-6;
+          ends.push(+landJump.toFixed(3));
         }
-        // eased step bound: smoothstep slope <= 1.5, so one frame <= 1.5*STEP/D of the distance
-        const bound = 1.5 * Game.STEP / D * (to - from) + 1e-6;
-        glideOk = glideOk && (to - from) >= 0 && maxStep <= bound;
-        maxJump = Math.max(maxJump, maxStep);
-        BeatEmUp.waveTravelT = 0;
-        const before = BeatEmUp.bgX;
-        BeatEmUp.bgSet(n + 1);                                                                 // startWave/startBoss land on the anchor
-        const landJump = Math.abs(BeatEmUp.bgX - before);
-        glideOk = glideOk && landJump <= bound + 1e-6;
-        ends.push(+landJump.toFixed(3));
+        out.glide[W] = { maxFrameStep: +maxJump.toFixed(2), landJumps: ends };
+        // draw: this stage uses the window
+        BeatEmUp.backgroundCache.set(src, fake);
+        const calls = [], ctx = { save() {}, restore() {}, drawImage(...args) { calls.push(args.slice(1)); } };
+        for (const n of [1, 2, 3, 4]) { BeatEmUp.bgSet(n); BeatEmUp.stage = stage; BeatEmUp.drawStageBackdrop(ctx); }
+        BeatEmUp.bgX = -100; BeatEmUp.drawStageBackdrop(ctx); BeatEmUp.bgX = 99999; BeatEmUp.drawStageBackdrop(ctx);
+        const ok1 = calls.length === 6 && calls.every(c => c.length === 8 && c[1] === 0 && Math.abs(c[2] - viewW) < 1e-9 && c[3] === P.h && c[4] === 0 && c[5] === 0 && c[6] === W && c[7] === 540)
+          && [0, 1, 2, 3].every(i => Math.abs(calls[i][0] - a[i]) < 1e-9) && calls[4][0] === 0 && Math.abs(calls[5][0] - max) < 1e-9;
+        // stages 3-10 keep the stretched draw (checked on stage 3)
+        const s3src = BeatEmUp.backgrounds[2];
+        BeatEmUp.backgroundCache.set(s3src, { complete: true, naturalWidth: 1983, naturalHeight: 793 });
+        const c3 = []; BeatEmUp.stage = 3; BeatEmUp.bgX = 500; BeatEmUp.drawStageBackdrop({ save() {}, restore() {}, drawImage(...args) { c3.push(args.slice(1)); } });
+        const ok3 = c3.length === 1 && c3[0].join() === [0, 0, W, 540].join() && BeatEmUp.bgAnchor(4, W, 540, 3) === 0;
+        out.draw[W] = ok1 && ok3;
+        drawOk = drawOk && ok1 && ok3;
       }
-      r.glide[W] = { maxFrameStep: +maxJump.toFixed(2), landJumps: ends };
-      // draw: stage 1 uses the window, stage 2 the stretched draw
-      BeatEmUp.backgroundCache.set(src, fake);
-      const calls = [], ctx = { save() {}, restore() {}, drawImage(...args) { calls.push(args.slice(1)); } };
-      for (const n of [1, 2, 3, 4]) { BeatEmUp.bgSet(n); BeatEmUp.stage = 1; BeatEmUp.drawStageBackdrop(ctx); }
-      BeatEmUp.bgX = -100; BeatEmUp.drawStageBackdrop(ctx); BeatEmUp.bgX = 99999; BeatEmUp.drawStageBackdrop(ctx);
-      const ok1 = calls.length === 6 && calls.every(c => c.length === 8 && c[1] === 0 && Math.abs(c[2] - viewW) < 1e-9 && c[3] === P.h && c[4] === 0 && c[5] === 0 && c[6] === W && c[7] === 540)
-        && [0, 1, 2, 3].every(i => Math.abs(calls[i][0] - a[i]) < 1e-9) && calls[4][0] === 0 && Math.abs(calls[5][0] - max) < 1e-9;
-      const s2 = BeatEmUp.background(1); const s2fake = { complete: true, naturalWidth: 1983, naturalHeight: 793 };
-      BeatEmUp.backgroundCache.set(BeatEmUp.backgrounds[1], s2fake);
-      const c2 = []; BeatEmUp.stage = 2; BeatEmUp.drawStageBackdrop({ save() {}, restore() {}, drawImage(...args) { c2.push(args.slice(1)); } });
-      BeatEmUp.backgroundCache.set(BeatEmUp.backgrounds[1], s2);
-      const ok2 = c2.length === 1 && c2[0].join() === [0, 0, W, 540].join();
-      r.draw[W] = ok1 && ok2;
-      drawOk = drawOk && ok1 && ok2;
+      Object.assign(out, { anchorsOk, glideOk, followOk, drawOk });
+      out.pass = out.srcOk && out.asset.join && out.asset.join() === '3371,725' && anchorsOk && glideOk && followOk && drawOk;
+      r['stage' + stage] = out;
+      stageOk[stage] = out.pass;
     }
     // resets: retry/continue (startCampaignStage) and every wave/boss start land on the anchor; resetStage zeroes
     Game.W = 960; Game.H = 540; BeatEmUp.bgX = 1234; BeatEmUp.resetStage(); r.resetStage = BeatEmUp.bgX;
-    BeatEmUp.bgX = 1234; BeatEmUp.stage = 1; BeatEmUp.bgSet(1); r.resetOk = r.resetStage === 0 && BeatEmUp.bgX === 0;
+    BeatEmUp.bgX = 1234; BeatEmUp.stage = 2; BeatEmUp.bgSet(1); r.resetOk = r.resetStage === 0 && BeatEmUp.bgX === 0;
     r.resetOk = r.resetOk && /bgSet\(1\)/.test(BeatEmUp.startCampaignStage.toString()) && /bgSet\(n\)/.test(BeatEmUp.startWave.toString()) && /bgSet\(4\)/.test(BeatEmUp.startBoss.toString());
   } finally {
-    if (cached) BeatEmUp.backgroundCache.set(src, cached); else BeatEmUp.backgroundCache.delete(src);
+    BeatEmUp.backgroundCache.clear(); cachedAll.forEach((v, k) => BeatEmUp.backgroundCache.set(k, v));
     Game.W = prev.W; Game.H = prev.H; BeatEmUp.stage = prev.stage; BeatEmUp.wave = prev.wave; Game.mode = prev.mode; Game.phase = prev.phase; Game.banner = prev.banner;
     Game.fighting = prev.fighting; BeatEmUp.locked = prev.locked; BeatEmUp.showGo = prev.showGo; BeatEmUp.waveTravelT = prev.travelT; BeatEmUp.waveTravelNext = prev.travelNext;
     BeatEmUp.cameraX = prev.cam; BeatEmUp.waveTravelStartCam = prev.startCam; BeatEmUp.waveTravelTargetCam = prev.targetCam;
     [BeatEmUp.bgX, BeatEmUp.bgTravelFrom, BeatEmUp.bgTravelTo] = prev.bg;
   }
-  r.anchorsOk = anchorsOk; r.glideOk = glideOk; r.followOk = followOk; r.drawOk = drawOk;
-  r.pass = src === 'assets/backgrounds/stage-01-street-brawl.webp' && r.othersSame && r.asset.join && r.asset.join() === '3371,725'
-    && anchorsOk && glideOk && followOk && drawOk && r.resetOk;
+  r.pass = !!(stageOk[1] && stageOk[2] && r.othersSame && r.panoStages === '1,2' && r.noPanoElsewhere && r.resetOk);
   return r;
 }
 """
@@ -1962,9 +1977,9 @@ def main():
             if not blade_super['pass']:
                 failures.append('Blade Super harness failed: expected 24/3/3/3/24-frame sequence, 20/24/30 independent damage, piercing, lane lock, and Noto timing')
             stage1_bg = page.evaluate(STAGE1_BG)
-            print('stage 1 backdrop', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
+            print('panorama backdrops', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
             if not stage1_bg['pass']:
-                failures.append('Stage 1 backdrop failed: expected backgrounds[0] = stage-01-street-brawl.webp decoding at 3371x725 (stages 2-10 unchanged), anchors W1=0 < W2 <= 723 < W3 (right edge at the 2170 join) < Boss (right end) in range for W=640/960/1169/1555, glide eased with the camera smoothstep/duration and monotonic with no frame jump above the eased step, unlocked follow never left and capped at the next anchor, resets to the wave anchor, aspect-kept source window for stage 1 and the stretched draw for stage 2')
+                failures.append('Panorama backdrop failed: expected backgrounds[0] = stage-01-street-brawl.webp and backgrounds[1] = stage-02-dockyard.webp decoding at 3371x725 (stages 3-10 unchanged, no panorama config there), for both stages anchors W1=0 < W2 <= 723 < W3 (right edge at the 2170 join) < Boss (right end) in range for W=640/960/1169/1555 and equal to the pinned Stage 1 values, glide eased with the camera smoothstep/duration and monotonic with no frame jump above the eased step, unlocked follow never left and capped at the next anchor, resets to the wave anchor, aspect-kept source window for stages 1-2 and the stretched draw for stage 3')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
