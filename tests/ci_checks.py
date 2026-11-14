@@ -340,6 +340,92 @@ LANE_COVERAGE = r"""
 }
 """
 
+BRAWLER = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  // Stats, scaled by stage and difficulty exactly like every other archetype.
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const kinds = ['regular','runner','tough','heavy','thrower','brawler'];
+  const made = Object.fromEntries(kinds.map(k => [k, BeatEmUp.makeEnemy(k, 400, .5)]));
+  const br = made.brawler, rk = made.regular;
+  r.stats = { hp: br.f.hp, expectHp: Math.round(110 * stageHealth), rookieHp: rk.f.hp, speedMul: br.speedMul, scaleMul: br.scaleMul,
+    weapon: br.f.weaponType, dmgMul: br.f.damageMultiplier, special: br.f.specialDamageMultiplier, gain: br.f.meterGainMultiplier,
+    tag: br.f.tag, combo: br.f.enemyCombo, profile: br.f.bodyProfile === ArchetypeBodyProfiles.brawler };
+  let armed = 0; for (let i = 0; i < 60; i++) if (BeatEmUp.makeEnemy('brawler', 400, .5).f.weaponType) armed++;
+  r.armedBrawlers = armed;
+  // Shared hurtbox: identical to ROOKIE, never from the profile.
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  r.hurtbox = { brawler: box(br), rookie: box(rk) };
+  // Existing archetypes: no profile, no combo, draw bones identical to gameplay bones.
+  r.noProfile = kinds.filter(k => k !== 'brawler').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
+    && BeatEmUp.withDepth(made[k], () => JSON.stringify(ArchetypeSkeleton.drawBones(made[k].f)) === JSON.stringify(made[k].f.bones())));
+  // Draw trace: a ROOKIE draws exactly like a plain Fighter that never touched the archetype code.
+  const trace = f => { const ops = []; const ctx = new Proxy({}, {
+      get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+      set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+    f.draw(ctx); return ops.join('|'); };
+  const plain = new Fighter(400, rk.f.color, -1, ''); plain.reset(400, -1); plain.tag = rk.f.tag;
+  rk.f.reset(400, -1); br.f.reset(400, -1);
+  const tr = BeatEmUp.withDepth(rk, () => ({ rookie: trace(rk.f), plain: trace(plain), brawler: trace(br.f) }));
+  r.drawUnchanged = tr.rookie === tr.plain && tr.rookie.length > 0;
+  r.brawlerProfileDrawn = tr.brawler !== tr.rookie;
+  // Jab-cross: exactly 2 hits, total = one ROOKIE punch.
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const run = e => {
+    player.reset(500, 1); player.depth = .5; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.grounded = true;
+    e.f.reset(560, -1); e.depth = .5; e.f.face = -1;
+    BeatEmUp.cast = [pEntry, e];
+    Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    e.f.startAtk('punch');
+    const tot = e.f.atk.su + e.f.atk.ac + e.f.atk.re, hits = [];
+    for (let i = 0; i < tot + 2 && e.f.atk; i++) {
+      player.x = 500; player.vx = 0; player.stun = 0; player.state = 'idle'; player.invincibleT = 0; BeatEmUp.withDepth(pEntry, () => player.clamp());
+      BeatEmUp.withDepth(e, () => { e.f.update(Game.STEP, player, 1); e.f.x = 560; });
+      if (e.f.bodyProfile) BeatEmUp.withDepth(e, () => trace(e.f)); // profile draw must survive every combo phase
+      const before = player.hp; BeatEmUp.resolveHits();
+      if (player.hp < before) hits.push({ frame: e.f.atkT, dmg: +(before - player.hp).toFixed(6) });
+    }
+    return { tot, hits, total: +(hits.reduce((s, h) => s + h.dmg, 0)).toFixed(6) };
+  };
+  r.rookiePunch = run(rk); r.jabCross = run(br);
+  const tl = EnemyCombo.timeline(EnemyCombos.jabCross);
+  r.timeline = { su: tl.su, ac: tl.ac, re: tl.re, total: tl.total, active: tl.hits.map(w => w.activeStart + '-' + w.activeEnd) };
+  // Spawns: Stage 1 has brawlers; Stages 1-3 swap exactly a third of ROOKIE slots in place; nothing else moves.
+  const orig = [[['thrower','regular','regular'],['runner','runner','regular'],['heavy','regular','heavy']],
+                [['regular','heavy','regular'],['runner','runner','heavy'],['heavy','heavy','runner']],
+                [['regular','regular','heavy'],['runner','runner','regular'],['tough','heavy','tough']]];
+  let swapped = 0, rookies = 0, inPlace = true;
+  for (let s = 0; s < 3; s++) for (let w = 0; w < 3; w++) {
+    const now = BeatEmUp.chapters[s].waves[w].enemyFocus;
+    orig[s][w].forEach((k, i) => { if (k === 'regular') { rookies++; if (now[i] === 'brawler') swapped++; } else if (now[i] !== k) inPlace = false; });
+    if (now.length !== orig[s][w].length || now.some((k, i) => k !== orig[s][w][i] && !(k === 'brawler' && orig[s][w][i] === 'regular'))) inPlace = false;
+  }
+  const laterBrawlers = BeatEmUp.chapters.slice(3).some(c => c.waves.some(w => w.enemyFocus.includes('brawler')));
+  BeatEmUp.stage = 1;
+  r.spawns = { stage1: BeatEmUp.waveDefs(1).map(d => d.kind), swapped, rookies, inPlace, laterBrawlers };
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode;
+  const s = r.stats;
+  r.pass = s.hp === s.expectHp && s.rookieHp === Math.round(100 * stageHealth) && s.speedMul === .95 && s.scaleMul === 1
+    && s.weapon === null && s.dmgMul === EnemyWeaponProfiles.freehand.damage && s.special === .25 && s.gain === .25
+    && s.tag === 'BRAWLER' && s.combo === 'jabCross' && s.profile && r.armedBrawlers === 0
+    && r.hurtbox.brawler.w === r.hurtbox.rookie.w && r.hurtbox.brawler.h === r.hurtbox.rookie.h
+    && Math.abs(r.hurtbox.rookie.w - 42) < 1e-9 && Math.abs(r.hurtbox.rookie.h - 135) < 1e-9
+    && r.noProfile && r.drawUnchanged && r.brawlerProfileDrawn
+    && r.rookiePunch.hits.length === 1 && r.jabCross.hits.length === 2
+    && r.jabCross.hits[0].frame === 8 && r.jabCross.hits[1].frame === 25
+    && Math.abs(r.jabCross.total - r.rookiePunch.total) < 1e-6 && r.rookiePunch.total > 0
+    && r.timeline.su === 7 && r.timeline.ac === 20 && r.timeline.re === 14 && r.timeline.total === 41
+    && r.spawns.stage1.includes('brawler') && r.spawns.swapped === 3 && r.spawns.rookies === 9 && r.spawns.inPlace && !r.spawns.laterBrawlers;
+  return r;
+}
+"""
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -384,6 +470,10 @@ def main():
             print('special lane coverage', json.dumps(lane_cov))
             if not lane_cov['pass']:
                 failures.append('Special lane coverage failed: expected player Staff 5 lanes at full X reach, Blade/Karate 3 lanes, CPU unchanged, 1v1 lane 36px')
+            brawler = page.evaluate(BRAWLER)
+            print('brawler archetype', json.dumps({k: v for k, v in brawler.items() if k != 'pass'}))
+            if not brawler['pass']:
+                failures.append('Brawler archetype failed: expected 110hp stage/difficulty-scaled, 0.95 speed, fists only, ROOKIE hurtbox, no profile on existing archetypes (draw unchanged), jab-cross = 2 hits totalling one ROOKIE punch, Stage 1 brawlers and a third of Stage 1-3 ROOKIE slots swapped in place')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
