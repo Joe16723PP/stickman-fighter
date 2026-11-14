@@ -39,6 +39,18 @@ const Depth = {
   // Player attacks get PLAYER_HIT_PX x average body size, floored at HIT_PX and capped at HIT_MAX_PX.
   PLAYER_HIT_PX: 22,
   HIT_MAX_PX: 36,
+  // Player Special Moves: total lanes covered, centred on the player's lane (Staff 5, Blade 3, Karate 3).
+  // One lane = the drawn guide spacing (beat 'em up: band / 4 = 43.2px; 1v1/practice: band / 2 = 36px).
+  SPECIAL_LANES: { staff: 5, blade: 3, freehand: 3 },
+  lanePx() {
+    return Game.mode === 'beatemup' ? Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP) / 4 : Depth.BAND_1V1_PX / 2;
+  },
+  /** Lane half-width for a player's Special Move, or null (not a player / no class rule): N lanes -> +/-(N/2) lanes. */
+  specialLaneTolerance(fighter) {
+    if (!fighter?.playerControlled) return null;
+    const lanes = Depth.SPECIAL_LANES[fighter.classId];
+    return lanes ? lanes / 2 * Depth.lanePx() : null;
+  },
   hitTolerance(isPlayer, sizeA = 1, sizeB = 1) {
     if (!isPlayer) return Depth.HIT_PX;
     return Math.min(Depth.HIT_MAX_PX, Math.max(Depth.HIT_PX, Depth.PLAYER_HIT_PX * ((sizeA || 1) + (sizeB || 1)) / 2));
@@ -1743,11 +1755,14 @@ class Fighter {
     const targetFighter = target.f || target;
     const targetDepthY = Game.mode === 'beatemup' ? BeatEmUp.floorDepthPx(target.depth) : targetFighter.groundY();
     const laneGap = targetDepthY - hit.centerDepthY;
-    const tolerance = Game.mode === 'beatemup'
+    const specialTolerance = Depth.specialLaneTolerance(attacker);
+    const tolerance = specialTolerance ?? (Game.mode === 'beatemup'
       ? BeatEmUp.depthHitTolerance(BeatEmUp.entryFor(attacker), target.f ? target : BeatEmUp.entryFor(targetFighter))
-      : Depth.hitTolerance(attacker.playerControlled);
-    if (Math.abs(laneGap) > tolerance) return false;
+      : Depth.hitTolerance(attacker.playerControlled));
+    if (Math.abs(laneGap) > tolerance + 1e-9) return false;
     const dx = targetFighter.x - hit.centerX;
+    // Player Staff Special: lanes are checked separately, so every covered lane gets full X reach.
+    if (specialTolerance != null) return Math.abs(dx) <= hit.radius;
     return dx * dx + laneGap * laneGap <= hit.radius * hit.radius;
   }
   playStaffSuperPulseFx() {
@@ -3339,10 +3354,11 @@ class BladeSuper {
   }
   static fighter(target) { return target.f || target; }
   static laneMatches(sequence, target) {
-    if (Game.mode === 'beatemup') return BeatEmUp.depthClose(sequence.depth, target.depth, BeatEmUp.depthHitTolerance(BeatEmUp.entryFor(sequence.owner), target));
+    const specialTolerance = Depth.specialLaneTolerance(sequence.owner);
+    if (Game.mode === 'beatemup') return BeatEmUp.depthClose(sequence.depth, target.depth, (specialTolerance ?? BeatEmUp.depthHitTolerance(BeatEmUp.entryFor(sequence.owner), target)) + 1e-9);
     const fighter = BladeSuper.fighter(target);
     const laneY = depth => Depth.toY(depth, Depth.BAND_1V1_TOP, Depth.BAND_1V1_BOT);
-    return Math.abs(laneY(sequence.depth) - laneY(fighter.depth)) <= Depth.hitTolerance(sequence.owner.playerControlled);
+    return Math.abs(laneY(sequence.depth) - laneY(fighter.depth)) <= (specialTolerance ?? Depth.hitTolerance(sequence.owner.playerControlled)) + 1e-9;
   }
   static hit(sequence, target, wave) {
     const owner = sequence.owner, fighter = BladeSuper.fighter(target);
@@ -4348,12 +4364,15 @@ class BeatEmUp {
         if (attacker.f.state === 'special' && attacker.f.hitTargets.get(target) === pulse) continue;
         if (atk && attacker.f.state === 'special' && (!target.f.grounded || target.f.dodgeT > 0)) continue;
         const staffRadialAttack = attacker.f.state === 'special' && attacker.f.classProfile?.weapon === 'staff';
-        if (!staffRadialAttack && !BeatEmUp.depthClose(attacker.depth, target.depth, BeatEmUp.depthHitTolerance(attacker, target))) continue;
+        const specialLane = attacker.f.state === 'special' && attacker.role === 'player' ? Depth.specialLaneTolerance(attacker.f) : null;
+        if (!staffRadialAttack && !BeatEmUp.depthClose(attacker.depth, target.depth, (specialLane ?? BeatEmUp.depthHitTolerance(attacker, target)) + 1e-9)) continue;
         let hit = null;
         BeatEmUp.withDepth(attacker, () => { hit = attacker.f.strike(); });
         if (!hit) continue;
         let th = null;
         BeatEmUp.withDepth(target, () => { th = { x: target.f.hitbox.x, y: target.f.hitbox.y, w: target.f.hitbox.w, h: target.f.hitbox.h }; });
+        // Player Special lanes are checked above; compare the hurtbox in the attacker's lane so off-lane targets get the same reach.
+        if (th && specialLane != null) th.y += BeatEmUp.floorDepthPx(attacker.depth) - BeatEmUp.floorDepthPx(target.depth);
         if (!th || (hit.radial
           ? !Fighter.staffRadialHits(hit, attacker.f, target)
           : !Game.hitTest(hit, th))) continue;
@@ -5342,8 +5361,12 @@ class Game {
       if (!box || foe.hp <= 0) continue;
       if (box.special && me.hitTargets.get(foe) === box.pulse) continue;
       if (box.special && (!foe.grounded || foe.dodgeT > 0)) continue;
-      if (!box.radial && Math.abs(me.groundY() - foe.groundY()) > Depth.hitTolerance(me.playerControlled) + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
-      if (box.radial ? !Fighter.staffRadialHits(box, me, foe) : !Game.hitTest(box, foe.hitbox)) continue;
+      const specialLane = box.special ? Depth.specialLaneTolerance(me) : null;
+      const laneShift = me.groundY() - foe.groundY();
+      if (!box.radial && Math.abs(laneShift) > (specialLane ?? Depth.hitTolerance(me.playerControlled)) + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
+      // Player Special lanes are checked above; compare the hurtbox in the attacker's lane so off-lane targets get the same reach.
+      const foeBox = specialLane != null ? { x:foe.hitbox.x, y:foe.hitbox.y + laneShift, w:foe.hitbox.w, h:foe.hitbox.h } : foe.hitbox;
+      if (box.radial ? !Fighter.staffRadialHits(box, me, foe) : !Game.hitTest(box, foeBox)) continue;
       if (foe.playerControlled && foe.invincibleT > 0) continue;
       me.hitDone = 1;
       if (box.special) me.hitTargets.set(foe, box.pulse);
