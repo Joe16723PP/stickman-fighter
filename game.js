@@ -69,7 +69,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', runner: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A' },
+  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -367,7 +367,8 @@ const EnemyWeaponProfiles = {
 };
 const EnemyArchetypes = {
   regular: { health: 100, weaponChance: 0, specialDamage: 0, specialGain: 0 },
-  runner: { health: 75, weaponChance: .2, specialDamage: .25, specialGain: .25 },
+  // Rusher replaced the old RUNNER everywhere it spawned: lean, fast, one committed shoulder rush.
+  rusher: { health: 80, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: 1.35, bodyProfile: 'rusher', rush: 'shoulder' },
   tough: { health: 125, weaponChance: .2, specialDamage: .25, specialGain: .25 },
   heavy: { health: 145, weaponChance: .5, specialDamage: .45, specialGain: .45 },
   thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
@@ -418,6 +419,56 @@ const EnemyCombo = {
   },
 };
 
+/* Enemy committed rushes. Frames are at 60 fps (one sim step = Game.STEP, the fixed-step
+ * delta-time loop every attack uses). Timeline on ONE shared 'punch' attack state:
+ *   crouch (wind-up tell, no movement) -> dash (fixed distance, spread evenly over `dash` frames)
+ *   -> recovery. The hitbox is live only on the LAST `active` dash frames, so the approach part
+ *   of the dash never hits. A miss ends in a braking stumble (`brake` px skid, then the rest of
+ *   `whiffRecovery`) the player can punish; a hit stops the dash and recovers in `hitRecovery`.
+ * Direction is locked when the rush starts (no tracking, no input reading). Damage is the same
+ * single unchained punch every enemy throws (one ROOKIE punch before difficulty). */
+const EnemyRushes = {
+  shoulder: {
+    label: 'RUSH',
+    crouch: 16, dash: 18, active: 7, distance: 156, brake: 18, brakeFrames: 6,
+    whiffRecovery: 42, hitRecovery: 20, kb: 200, stun: 14,
+    triggerRange: 170, minRange: 90, spacing: 135, backoffMax: 1.2, // AI spacing (px / s); live window reaches gaps ~90-220 px
+    crouchPose:  {chest:-24,neck:10,head:8,la:-30,le:-60,ra:40,re:-50,ll:34,lk:34,rl:-40,rk:46,hipBob:9,shPull:6},
+    dashPose:    {chest:-32,neck:14,head:8,la:-70,le:-100,ra:50,re:-30,ll:40,lk:20,rl:-50,rk:40,hipBob:4,shPull:0},
+    strikePose:  {chest:-40,neck:16,head:10,la:-40,le:-120,ra:60,re:-20,ll:44,lk:18,rl:-56,rk:30,hipBob:4,shPull:0},
+    stumblePose: {chest:-46,neck:20,head:12,la:-120,le:20,ra:-80,re:30,ll:54,lk:40,rl:-40,rk:60,hipBob:12,shPull:0},
+  },
+};
+const EnemyRush = {
+  /** Shared-attack timing: su = crouch + approach part of the dash, ac = live dash frames. */
+  timeline(spec) {
+    return { su: spec.crouch + spec.dash - spec.active, ac: spec.active, re: spec.whiffRecovery,
+      dashStart: spec.crouch + 1, dashEnd: spec.crouch + spec.dash, total: spec.crouch + spec.dash + spec.whiffRecovery };
+  },
+  /** One sim step of rush movement (call after atkT++). Returns px moved along rushDir. */
+  tick(f) {
+    const a = f.atk, sp = a.rush, t = f.atkT, tl = EnemyRush.timeline(sp);
+    if (f.hitDone && !a.rushHit) {
+      // Connected: stop the dash at once and recover in hitRecovery frames from the hit.
+      a.rushHit = true; a.rushLeft = 0; a.brakeLeft = 0;
+      a.re = Math.max(0, (t - 1) + sp.hitRecovery - (a.su + a.ac)); // the hit resolved after the previous step
+    }
+    let move = 0;
+    if (t >= tl.dashStart && t <= tl.dashEnd && a.rushLeft > 0) {
+      if (t === tl.dashStart) Sfx.play('dodge', null);
+      move = t === tl.dashEnd ? a.rushLeft : Math.min(a.rushLeft, sp.distance / sp.dash);
+      a.rushLeft -= move;
+    } else if (t > tl.dashEnd && !a.rushHit && a.brakeLeft > 0) {
+      // Braking skid after a miss: linearly decaying steps that sum to exactly `brake` px.
+      const n = sp.brakeFrames, i = t - tl.dashEnd; // 1..n
+      move = i >= n ? a.brakeLeft : Math.min(a.brakeLeft, sp.brake * 2 * (n - i + 1) / (n * (n + 1)));
+      a.brakeLeft -= move;
+    }
+    f.x += a.rushDir * move; f.vx = 0;
+    return move;
+  },
+};
+
 /* Shared archetype skeleton. Every enemy archetype is drawn from the same Fighter rig:
  * one joint set from Fighter.bones() and one pose/animation pipeline (aim/tickPose).
  * An archetype may add a BODY PROFILE, which only reshapes how that rig is drawn:
@@ -440,8 +491,44 @@ const ArchetypeBodyProfiles = {
     guardPose: {chest:6,neck:-4,head:4,la:-55,le:-100,ra:-35,re:-120}, // fists up while idle/walking
     equipment: [{ kind: 'handWraps', joints: ['la', 'ra'] }],
   },
+  rusher: {
+    torsoWidth: .95,       // lean torso (narrower than Brawler's 1.6)
+    shoulderWidth: 1.5,    // narrow yoke
+    limbWidth: .8,         // slim upper arms
+    forearmWidth: .8,      // slim forearms; no oversized fists (handRadius unset)
+    legWidth: .95,
+    legLength: 1.12,       // longer legs; hip and upper body lift so the lowest foot stays planted
+    stanceWidth: 2,
+    frontWeight: 3,        // idle/walk: hips and torso shift over the lead foot (feet stay put)
+    guardPose: {chest:-14,neck:8,head:4,la:-40,le:-70,ra:20,re:-60}, // forward lean, arms low and ready
+    equipment: [{ kind: 'scarf', joints: ['neck'], layer: 'back' }],
+  },
 };
 const ArchetypeEquipment = {
+  /** Trailing scarf tied at the neck. Pure decoration: drawn from draw bones, read by nothing else. */
+  scarf(ctx, f, b, joint, ctxInfo) {
+    const neck = b[joint], chest = b.chest;
+    if (!neck || !chest) return;
+    const { stroke, unit } = ctxInfo;
+    const knot = { x: neck.x + (chest.x - neck.x) * .3, y: neck.y + (chest.y - neck.y) * .3 };
+    const dashing = !!f.atk?.rush && f.atkT >= f.atk.rush.crouch;
+    const moving = dashing || f.state === 'walk' || Math.abs(f.vx || 0) > 1;
+    const back = -f.face, seg = 9 * unit, droop = (dashing ? .6 : moving ? 3 : 6.5) * unit;
+    const flow = (dashing ? .95 : moving ? .75 : .35), phase = (f.walkT || 0) * 14 + (f.atkT || 0) * .45;
+    const pts = [knot];
+    for (let i = 1; i <= 4; i++) {
+      const wave = Math.sin(phase + i * 1.1) * (moving ? 2.2 : .8) * unit * i * .5;
+      pts.push({ x: knot.x + back * seg * flow * i, y: knot.y + droop * i + wave });
+    }
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    const draw = (style, w) => { ctx.strokeStyle = style; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); };
+    draw('rgba(3,8,18,.96)', stroke * .62 + 3 / Game.scale);
+    draw('#F2E8D2', stroke * .62);
+    // Knot wrap around the neck.
+    ctx.fillStyle = '#F2E8D2'; ctx.beginPath(); ctx.arc(knot.x, knot.y, stroke * .5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  },
+
   handWraps(ctx, f, b, joint, ctxInfo) {
     const hand = b[joint], elbow = b[joint + 'J'];
     if (!hand || !elbow) return;
@@ -499,12 +586,25 @@ const ArchetypeSkeleton = {
     const st = (prof.stanceWidth || 0) * unit;
     b.llJ = add(raw.llJ, face * st * .5, 0); b.ll = add(raw.ll, face * st, 0);
     b.rlJ = add(raw.rlJ, -face * st * .5, 0); b.rl = add(raw.rl, -face * st, 0);
+    const upper = ['hip', 'chest', 'neck', 'head', 'shL', 'shR', 'shFront', 'shRear', 'laJ', 'la', 'raJ', 'ra'];
+    // Weight over the lead foot (idle/walk only): hips and torso shift forward, knees by half, feet stay planted.
+    const fw = ArchetypeSkeleton.guardActive(f) ? (prof.frontWeight || 0) * unit * face : 0;
+    if (fw) { for (const k of upper) b[k] = add(b[k], fw, 0); b.llJ = add(b.llJ, fw * .5, 0); b.rlJ = add(b.rlJ, fw * .5, 0); }
+    // Longer legs: scale both legs from the hip and lift everything above it so the lowest foot keeps its spot.
+    const lk = prof.legLength || 1;
+    if (lk !== 1) {
+      const hip0 = b.hip, lift = Math.max(b.ll.y - hip0.y, b.rl.y - hip0.y, 0) * (lk - 1);
+      for (const k of upper) b[k] = add(b[k], 0, -lift);
+      for (const k of ['llJ', 'll', 'rlJ', 'rl']) b[k] = { x: b.hip.x + (b[k].x - hip0.x) * lk, y: b.hip.y + (b[k].y - hip0.y) * lk };
+    }
     b.profile = prof; b.unit = unit;
     return b;
   },
   /** Profile body pass; replaces the five default limb chains for profiled archetypes only. */
   drawBody(ctx, f, b, chain, stroke, col) {
     const p = b.profile;
+    const info = { stroke: stroke * (p.forearmWidth || 1), unit: b.unit };
+    for (const eq of p.equipment || []) if (eq.layer === 'back') for (const joint of eq.joints) ArchetypeEquipment[eq.kind]?.(ctx, f, b, joint, info);
     chain([b.hip, b.rlJ, b.rl], p.legWidth);
     chain([b.hip, b.llJ, b.ll], p.legWidth);
     chain([b.hip, b.chest, b.neck], p.torsoWidth);
@@ -514,10 +614,10 @@ const ArchetypeSkeleton = {
       chain([sh, j], p.limbWidth);
       chain([j, hand], p.forearmWidth);
     }
-    const info = { stroke: stroke * (p.forearmWidth || 1), unit: b.unit };
-    for (const eq of p.equipment || []) for (const joint of eq.joints) ArchetypeEquipment[eq.kind]?.(ctx, f, b, joint, info);
+    for (const eq of p.equipment || []) if (eq.layer !== 'back') for (const joint of eq.joints) ArchetypeEquipment[eq.kind]?.(ctx, f, b, joint, info);
+    if (!p.handRadius) return; // only profiles with a hand size get the oversized fists
     // Oversized fists on the shared hand joints.
-    const r = stroke * .72 * (p.handRadius || 1);
+    const r = stroke * .72 * p.handRadius;
     for (const hand of [b.ra, b.la]) {
       ctx.fillStyle = 'rgba(3,8,18,.96)'; ctx.beginPath(); ctx.arc(hand.x, hand.y, r + 2.5 / Game.scale, 0, Math.PI * 2); ctx.fill();
       ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale;
@@ -1481,7 +1581,7 @@ class Fighter {
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
     this.bossProfile = null;
-    this.bodyProfile = null; this.enemyCombo = null; // archetype draw profile + multi-hit normal (enemies only)
+    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; // archetype draw profile + multi-hit normal / committed rush (enemies only)
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
@@ -1683,6 +1783,7 @@ class Fighter {
       return;
     }
     if (kind === 'punch' && this.enemyCombo && EnemyCombos[this.enemyCombo]) { this.startEnemyCombo(EnemyCombos[this.enemyCombo]); return; }
+    if (kind === 'punch' && this.enemyRush && EnemyRushes[this.enemyRush]) { this.startEnemyRush(EnemyRushes[this.enemyRush]); return; }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -1825,6 +1926,34 @@ class Fighter {
     this.atkPhase = '';
     Sfx.play('punch', null);
   }
+  /** Archetype committed rush (e.g. Rusher shoulder rush) on the shared 'punch' state. */
+  startEnemyRush(spec) {
+    const ref = Atk.of('punch', 0, null, null); // the same unchained punch every enemy throws
+    const tl = EnemyRush.timeline(spec);
+    this.atk = {
+      su: tl.su, ac: tl.ac, re: tl.re,
+      dmg: ref.dmg * this.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
+      chain: 0, kind: 'punch', reach: ref.reach, linked: false,
+      rush: spec, rushDir: this.face, rushLeft: spec.distance, brakeLeft: spec.brake, rushHit: false,
+    };
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+    this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = '';
+  }
+  driveRushPose(a, t) {
+    const sp = a.rush, tl = EnemyRush.timeline(sp);
+    let key, pose, dur;
+    if (t < tl.dashStart) { key = 'rc'; pose = sp.crouchPose; dur = sp.crouch; }
+    else if (t <= a.su) { key = 'rd'; pose = sp.dashPose; dur = 3; }
+    else if (t <= a.su + a.ac) { key = 'rs'; pose = sp.strikePose; dur = 2; }
+    else if (!a.rushHit && t <= tl.dashEnd + 12) { key = 'rb'; pose = sp.stumblePose; dur = 6; }
+    else { key = 'rr'; pose = null; dur = Math.max(1, a.su + a.ac + a.re - t); }
+    if (this.atkPhase === key) return;
+    const to = pose ? EnemyCombo.pose(pose)
+      : this.bodyProfile?.guardPose ? { ...Pose.idle(null), ...EnemyCombo.pose(this.bodyProfile.guardPose) } : Pose.idle(null);
+    this.aim(key, to, dur * Game.STEP); this.atkPhase = key;
+  }
   driveComboPose(a, t) {
     const w = a.comboWindows, hits = a.combo.hits;
     for (let i = 0; i < w.length; i++) {
@@ -1855,7 +1984,7 @@ class Fighter {
     }
   }
   canChainPunch() {
-    if (!this.atk || !this.hitConfirmed) return false;
+    if (!this.atk || !this.hitConfirmed || this.atk.rush) return false;
     const a = this.atk;
     if (this.state === 'kick') {
       const total = a.su + a.ac + a.re;
@@ -1868,7 +1997,7 @@ class Fighter {
     return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
   }
   canChainHeavy() {
-    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed) return false;
+    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush) return false;
     const a = this.atk;
     const intoRecovery = this.atkT - (a.su + a.ac);
     return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRecovery <= Moves.punch.chainWindow;
@@ -2081,6 +2210,7 @@ class Fighter {
       return;
     }
     if (a.combo) { this.driveComboPose(a, t); return; }
+    if (a.rush) { this.driveRushPose(a, t); return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -2219,6 +2349,7 @@ class Fighter {
         this.clamp(other); return;
       }
       this.atkT++;
+      if (this.atk.rush) EnemyRush.tick(this); // fixed-distance dash / braking skid; may shorten re on a hit
       const a = this.atk, tot = a.su + a.ac + a.re;
       if (a.combo) {
         // Each hit of an enemy string may land once: re-arm when the next hit's active window opens.
@@ -2259,7 +2390,8 @@ class Fighter {
         this.moveGround(dt, slot, .18);
         const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
         Fx.superTrail(this.x - cameraX, this.groundY() + this.y - 58 * this.drawS(), this.face, this.classProfile);
-      } else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
+      } else if (a.rush) this.vx = 0; // rush travel comes only from EnemyRush.tick (bounded); no steering
+      else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
       this.landCheck(wasAir);
@@ -2276,6 +2408,7 @@ class Fighter {
       // Blade tracks the foe through the charge and Strike 1's wind-up, then locks facing for all three strikes and the wave.
       if (this.bladeSuper && this.atkT < BladeSuper.FACE_LOCK_FRAME) this.bladeSuper.face = this.face = other.x >= this.x ? 1 : -1;
       else if (this.atk && this.state === 'special' && this.classProfile?.weapon === 'blade') this.face = this.bladeSuper?.face ?? this.face;
+      else if (this.atk && a.rush) this.face = a.rushDir; // committed: direction locked at rush start
       else if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
@@ -2380,6 +2513,12 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
+    if (a.rush && this.state === 'punch') {
+      // Shoulder box ahead of the chest; only reachable on the live (last) dash frames, gated above.
+      const b = this.combatBones(), s = this.drawS(), r = 20 * this.depthScale();
+      const cx = b.sh.x + a.rushDir * 18 * s, cy = b.sh.y + 8 * s;
+      return {x:cx - r, y:cy - r, w:r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:0, special:false, critical:false, comboFinisher:false, comboLink:false, chain:0, rush:true};
+    }
     if (a.combo && this.state === 'punch') {
       const pulse = EnemyCombo.pulseAt(a, this.atkT);
       if (pulse < 0) return null;
@@ -4117,12 +4256,13 @@ class BeatEmUp {
     f.tag = kind === 'regular' ? 'ROOKIE' : kind.toUpperCase();
     f.bodyProfile = ArchetypeSkeleton.profileFor(kind); // draw-only; null for archetypes without a profile
     f.enemyCombo = archetype.combo || null;
+    f.enemyRush = archetype.rush || null;
     f.y = 0;
     f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
-    const speedMul = archetype.speed ?? (kind === 'runner' || kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1);
+    const speedMul = archetype.speed ?? (kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1);
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
       ai: { mode: 'circle', atkSlot: 0, cool: kind === 'boss' ? .65 : .3 + Math.random() * .4, orbit: Math.random() * Math.PI * 2, preferDepth: depth, tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0 },
@@ -4475,7 +4615,7 @@ class BeatEmUp {
         if (e.f.atk && e.f.atk !== e._tunedAtk) {
           e._tunedAtk = e.f.atk;
           if (e.kind === 'heavy') { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
-          if (e.kind === 'runner' || e.kind === 'tough') { e.f.atk.dmg *= .8; }
+          if (e.kind === 'tough') { e.f.atk.dmg *= .8; }
           e.f.atk.dmg *= BeatEmUp.difficulty.damage;
           if (e.kind === 'boss') {
             e.f.atk.dmg *= BossHardness.damage;
@@ -4541,7 +4681,8 @@ class BeatEmUp {
           Input.pad[1][ai.tellMove] = 1;
           ai.cool = e.kind === 'boss'
             ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
-            : e.kind === 'runner' || e.kind === 'tough' ? BeatEmUp.pacing.attackRecovery.agile
+            : e.f.enemyRush && ai.tellMove === 'punch' ? BeatEmUp.pacing.attackRecovery.agile + EnemyRush.timeline(EnemyRushes[e.f.enemyRush]).total * Game.STEP
+            : e.kind === 'rusher' || e.kind === 'tough' ? BeatEmUp.pacing.attackRecovery.agile
               : e.kind === 'heavy' ? BeatEmUp.pacing.attackRecovery.heavy
                 : BeatEmUp.pacing.attackRecovery.regular;
           ai.tellMove = ''; ai.tellKind = '';
@@ -4550,6 +4691,8 @@ class BeatEmUp {
         continue;
       }
 
+      // Rusher spacing budget refills whenever it is out of the attack slot or already at rush range.
+      if (e.f.enemyRush && (!attackers.has(e) || dist >= EnemyRushes[e.f.enemyRush].minRange)) ai.backoffT = 0;
       if (!attackers.has(e)) {
         // Circle: orbit around player at preferred depth
         ai.mode = 'circle';
@@ -4569,8 +4712,18 @@ class BeatEmUp {
       // Match depth then close in
       if (e.depth < player.depth - 0.05) e.depth = Math.min(1, e.depth + 0.85 * dt);
       else if (e.depth > player.depth + 0.05) e.depth = Math.max(0, e.depth - 0.85 * dt);
-      const reach = e.bossProfile ? e.bossProfile.reach : Moves.punch.reach + 10;
-      if (dist > reach) {
+      const rush = !e.bossProfile && e.f.enemyRush ? EnemyRushes[e.f.enemyRush] : null;
+      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : Moves.punch.reach + 10;
+      if (rush && !e.f.atk && dist < rush.minRange && (ai.backoffT || 0) < rush.backoffMax) {
+        // Too close for the rush: walk out to spacing on the side with room (through the player if
+        // pinned at a bound); gives up after backoffMax and rushes anyway.
+        ai.backoffT = (ai.backoffT || 0) + dt;
+        let side = e.f.x >= player.f.x ? 1 : -1;
+        const lo = BeatEmUp.softMinX(e) + 30, hi = BeatEmUp.softMaxX(e) - 30, out = x => x < lo || x > hi;
+        if (out(player.f.x + side * rush.spacing) && !out(player.f.x - side * rush.spacing)) side = -side;
+        const tx = player.f.x + side * rush.spacing;
+        if (e.f.x < tx - 8) Input.pad[1].right = 1; else if (e.f.x > tx + 8) Input.pad[1].left = 1;
+      } else if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
       } else if (ai.cool <= 0 && depthGap < 0.2) {
@@ -4597,9 +4750,11 @@ class BeatEmUp {
           if (canSpecial && Math.random() < specialChance) move = 'special';
           else if (e.f.enemyCombo) move = 'punch'; // archetype string (Brawler jab-cross) rides the punch input
           else if (e.kind === 'heavy') move = Math.random() < .7 ? 'kick' : 'punch';
-          else if (e.kind === 'runner' || e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
+          else if (e.f.enemyRush) move = 'punch'; // Rusher shoulder rush rides the punch input
+          else if (e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
           else move = Math.random() < .72 ? 'punch' : 'kick';
-          label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH' : move.toUpperCase();
+          label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH'
+            : move === 'punch' && e.f.enemyRush ? EnemyRushes[e.f.enemyRush]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }

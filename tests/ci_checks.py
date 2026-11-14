@@ -350,7 +350,7 @@ BRAWLER = r"""
   // Stats, scaled by stage and difficulty exactly like every other archetype.
   BeatEmUp.stage = 2;
   const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
-  const kinds = ['regular','runner','tough','heavy','thrower','brawler'];
+  const kinds = ['regular','rusher','tough','heavy','thrower','brawler'];
   const made = Object.fromEntries(kinds.map(k => [k, BeatEmUp.makeEnemy(k, 400, .5)]));
   const br = made.brawler, rk = made.regular;
   r.stats = { hp: br.f.hp, expectHp: Math.round(110 * stageHealth), rookieHp: rk.f.hp, speedMul: br.speedMul, scaleMul: br.scaleMul,
@@ -362,7 +362,7 @@ BRAWLER = r"""
   const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
   r.hurtbox = { brawler: box(br), rookie: box(rk) };
   // Existing archetypes: no profile, no combo, draw bones identical to gameplay bones.
-  r.noProfile = kinds.filter(k => k !== 'brawler').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
+  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
     && BeatEmUp.withDepth(made[k], () => JSON.stringify(ArchetypeSkeleton.drawBones(made[k].f)) === JSON.stringify(made[k].f.bones())));
   // Draw trace: a ROOKIE draws exactly like a plain Fighter that never touched the archetype code.
   const trace = f => { const ops = []; const ctx = new Proxy({}, {
@@ -397,9 +397,9 @@ BRAWLER = r"""
   const tl = EnemyCombo.timeline(EnemyCombos.jabCross);
   r.timeline = { su: tl.su, ac: tl.ac, re: tl.re, total: tl.total, active: tl.hits.map(w => w.activeStart + '-' + w.activeEnd) };
   // Spawns: Stage 1 has brawlers; Stages 1-3 swap exactly a third of ROOKIE slots in place; nothing else moves.
-  const orig = [[['thrower','regular','regular'],['runner','runner','regular'],['heavy','regular','heavy']],
-                [['regular','heavy','regular'],['runner','runner','heavy'],['heavy','heavy','runner']],
-                [['regular','regular','heavy'],['runner','runner','regular'],['tough','heavy','tough']]];
+  const orig = [[['thrower','regular','regular'],['rusher','rusher','regular'],['heavy','regular','heavy']],
+                [['regular','heavy','regular'],['rusher','rusher','heavy'],['heavy','heavy','rusher']],
+                [['regular','regular','heavy'],['rusher','rusher','regular'],['tough','heavy','tough']]];
   let swapped = 0, rookies = 0, inPlace = true;
   for (let s = 0; s < 3; s++) for (let w = 0; w < 3; w++) {
     const now = BeatEmUp.chapters[s].waves[w].enemyFocus;
@@ -422,6 +422,100 @@ BRAWLER = r"""
     && Math.abs(r.jabCross.total - r.rookiePunch.total) < 1e-6 && r.rookiePunch.total > 0
     && r.timeline.su === 7 && r.timeline.ac === 20 && r.timeline.re === 14 && r.timeline.total === 41
     && r.spawns.stage1.includes('brawler') && r.spawns.swapped === 3 && r.spawns.rookies === 9 && r.spawns.inPlace && !r.spawns.laterBrawlers;
+  return r;
+}
+"""
+
+RUSHER = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const ru = BeatEmUp.makeEnemy('rusher', 400, .5), rk = BeatEmUp.makeEnemy('regular', 400, .5);
+  r.stats = { hp: ru.f.hp, expectHp: Math.round(80 * stageHealth), speedMul: ru.speedMul, scaleMul: ru.scaleMul, weapon: ru.f.weaponType,
+    dmgMul: ru.f.damageMultiplier, tag: ru.f.tag, rush: ru.f.enemyRush, combo: ru.f.enemyCombo, profile: ru.f.bodyProfile === ArchetypeBodyProfiles.rusher };
+  let armed = 0; for (let i = 0; i < 60; i++) if (BeatEmUp.makeEnemy('rusher', 400, .5).f.weaponType) armed++;
+  r.armed = armed; r.runnerGone = !('runner' in EnemyArchetypes);
+  // RUNNER is replaced everywhere: no authored wave spawns 'runner'.
+  r.runnerSpawns = BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(k => k === 'runner').length, 0), 0);
+  r.rusherSpawns = BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(k => k === 'rusher').length, 0), 0);
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  const hb = { rusher: box(ru), rookie: box(rk) };
+  r.hurtboxSame = hb.rusher.w === hb.rookie.w && hb.rusher.h === hb.rookie.h;
+  const trace = f => { const ops = []; const ctx = new Proxy({}, {
+      get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+      set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+    f.draw(ctx); return ops.join('|'); };
+  rk.f.reset(400, -1); ru.f.reset(400, -1);
+  r.profileDrawn = BeatEmUp.withDepth(ru, () => trace(ru.f)) !== BeatEmUp.withDepth(rk, () => trace(rk.f));
+  // Profile is draw-only: gameplay bones match a plain fighter in the same state.
+  r.gameplayBonesSame = BeatEmUp.withDepth(ru, () => JSON.stringify(ru.f.combatBones()) === JSON.stringify(rk.f.combatBones()));
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const sp = EnemyRushes.shoulder, tl = EnemyRush.timeline(sp);
+  // gap = distance from rusher to player at rush start; flip = put the player behind after the crouch starts.
+  const run = (e, gap, flip = false) => {
+    const x0 = 900;
+    player.reset(x0 - gap, 1); player.depth = .5; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.grounded = true;
+    e.f.reset(x0, -1); e.depth = .5; e.f.face = -1;
+    BeatEmUp.cast = [pEntry, e];
+    Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    e.f.startAtk('punch');
+    const tot = e.f.atk.su + e.f.atk.ac + e.f.atk.re, hits = [], live = [];
+    let frames = 0, chain = false, faces = new Set();
+    for (let i = 0; i < 200 && e.f.atk; i++) {
+      const px = flip && i >= 2 ? x0 + 60 : x0 - gap;
+      player.x = px; player.vx = 0; player.stun = 0; player.state = 'idle'; player.invincibleT = 0; BeatEmUp.withDepth(pEntry, () => player.clamp());
+      Input.pad[1].left = 1; // steering input must be ignored during the rush
+      BeatEmUp.withDepth(e, () => { e.f.update(Game.STEP, player, 1); });
+      Input.pad[1].left = 0;
+      frames++;
+      if (!e.f.atk) break;
+      faces.add(e.f.face);
+      if (e.f.canChainPunch()) chain = true;
+      BeatEmUp.withDepth(e, () => trace(e.f)); // profile draw must survive every rush phase
+      if (BeatEmUp.withDepth(e, () => e.f.strike())) live.push(e.f.atkT);
+      const before = player.hp; BeatEmUp.resolveHits();
+      if (player.hp < before) hits.push({ frame: e.f.atkT, dmg: +(before - player.hp).toFixed(6), travelled: +(x0 - e.f.x).toFixed(3) });
+    }
+    return { tot, frames, travelled: +(x0 - e.f.x).toFixed(3), hits, live: live.length ? live[0] + '-' + live[live.length - 1] : '', chain, faces: [...faces] };
+  };
+  const rookie = (() => {
+    player.reset(500, 1); player.depth = .5; player.hp = 100; rk.f.reset(560, -1); rk.depth = .5;
+    BeatEmUp.cast = [pEntry, rk]; rk.f.startAtk('punch'); let dmg = 0;
+    for (let i = 0; i < 40 && rk.f.atk; i++) { player.x = 500; player.stun = 0; player.state = 'idle'; player.invincibleT = 0;
+      BeatEmUp.withDepth(pEntry, () => player.clamp()); BeatEmUp.withDepth(rk, () => { rk.f.update(Game.STEP, player, 1); rk.f.x = 560; });
+      const b = player.hp; BeatEmUp.resolveHits(); dmg += b - player.hp; }
+    return +dmg.toFixed(6);
+  })();
+  r.timeline = tl; r.rookiePunch = rookie;
+  r.whiff = run(ru, 600);
+  r.behind = run(ru, 600, true);
+  // Sweep start gaps: any hit must land on a live dash frame (approach never hits).
+  r.sweep = [];
+  for (let gap = 30; gap <= 300; gap += 10) { const o = run(ru, gap); r.sweep.push({ gap, hit: o.hits.length ? o.hits[0].frame : 0, n: o.hits.length, travelled: o.travelled, frames: o.frames, dmg: o.hits[0]?.dmg || 0 }); }
+  const hitsAll = r.sweep.filter(o => o.n);
+  r.hitGaps = hitsAll.length ? hitsAll[0].gap + '-' + hitsAll[hitsAll.length - 1].gap : '';
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode;
+  const s = r.stats, w = r.whiff;
+  r.pass = s.hp === s.expectHp && s.speedMul === 1.35 && s.scaleMul === 1 && s.weapon === null && r.armed === 0
+    && s.dmgMul === EnemyWeaponProfiles.freehand.damage && s.tag === 'RUSHER' && s.rush === 'shoulder' && s.combo === null && s.profile
+    && r.runnerGone && r.runnerSpawns === 0 && r.rusherSpawns === 20
+    && r.hurtboxSame && r.profileDrawn && r.gameplayBonesSame
+    && tl.su === 27 && tl.ac === 7 && tl.re === 42 && tl.dashStart === 17 && tl.dashEnd === 34 && tl.total === 76
+    // Whiff: full fixed dash + braking skid, live box only on the last 7 dash frames, full stumble recovery.
+    && w.hits.length === 0 && Math.abs(w.travelled - (sp.distance + sp.brake)) < 1e-6 && w.frames === tl.total && w.live === '28-34'
+    && !w.chain && w.faces.length === 1 && w.faces[0] === -1
+    // Direction is locked at rush start even if the player jumps behind.
+    && r.behind.hits.length === 0 && Math.abs(r.behind.travelled - (sp.distance + sp.brake)) < 1e-6 && r.behind.faces.length === 1
+    // Approach never hits; every hit is one ROOKIE punch, stops the dash, and recovers in hitRecovery frames.
+    && hitsAll.length >= 5 && r.sweep.every(o => o.n <= 1 && (o.n === 0 || (o.hit >= tl.su + 1 && o.hit <= tl.su + tl.ac)))
+    && hitsAll.every(o => Math.abs(o.dmg - r.rookiePunch) < 1e-6 && o.travelled <= sp.distance + 1e-6 && o.frames === o.hit + sp.hitRecovery)
+    && r.sweep.every(o => o.travelled <= sp.distance + sp.brake + 1e-6) && r.rookiePunch > 0;
   return r;
 }
 """
@@ -474,6 +568,11 @@ def main():
             print('brawler archetype', json.dumps({k: v for k, v in brawler.items() if k != 'pass'}))
             if not brawler['pass']:
                 failures.append('Brawler archetype failed: expected 110hp stage/difficulty-scaled, 0.95 speed, fists only, ROOKIE hurtbox, no profile on existing archetypes (draw unchanged), jab-cross = 2 hits totalling one ROOKIE punch, Stage 1 brawlers and a third of Stage 1-3 ROOKIE slots swapped in place')
+            rusher = page.evaluate(RUSHER)
+            print('rusher archetype', json.dumps({k: v for k, v in rusher.items() if k not in ('pass', 'sweep')}))
+            if not rusher['pass']:
+                print('rusher sweep', json.dumps(rusher['sweep']))
+                failures.append('Rusher archetype failed: expected 80hp stage-scaled, 1.35 speed, no weapon, RUNNER fully replaced (20 spawns), ROOKIE hurtbox, draw-only profile, 16f crouch + 18f/156px dash with hitbox only on the last 7 dash frames, 18px brake + 42f whiff recovery, locked direction, one-ROOKIE-punch hit that stops the dash')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
