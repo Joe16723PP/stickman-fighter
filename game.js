@@ -64,7 +64,7 @@ const Depth = {
 const FighterClasses = {
   freehand: { name: 'KARATE', role: 'FAST · 1.75× METER', punchMove: 'KARATE PUNCH', kickMove: 'KARATE KICK', super: 'IRON FIST STRING', color: '#52B8FF', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, attackSpeed: 1.28, punch: 1, kick: .95, superPower: 1, superHits: 3, superVisualDuration: 2.5, criticalChance: .13, criticalDamage: 1.55, meter: 1.75, dash: .13 },
   staff: { name: 'STAFF', role: 'SLOW · HEAVY · LONGEST RANGE', punchMove: 'BO STAFF THRUST', kickMove: 'LOW SWEEP', super: 'DRAGON STAFF SPIN', color: '#3BD6B3', accent: '#FBBF24', style: 'quake', weapon: 'staff', pitch: .92, speed: .98, attackSpeed: .78, punch: 1.22, kick: 1.55, superPower: 1.3, superHits: 3, superVisualDuration: 3.5, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },
-  blade: { name: 'BLADE', role: 'BALANCED · 1.35× METER', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#B8D7FF', accent: '#38BDF8', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, attackSpeed: 1, punch: 1.08, kick: 1.08, superPower: 1.12, superHits: 2, superVisualDuration: 3, criticalChance: .16, criticalDamage: 1.6, meter: 1.35, dash: .18 },
+  blade: { name: 'BLADE', role: 'BALANCED · 1.35× METER', punchMove: 'QUICK DRAW', kickMove: 'SCABBARD KICK', super: 'CRESCENT STORM', color: '#B8D7FF', accent: '#38BDF8', style: 'flash', weapon: 'blade', pitch: 1.2, speed: 1.13, attackSpeed: 1, punch: 1.08, kick: 1.08, superPower: 1.12, superHits: 2, superVisualDuration: 1.9, criticalChance: .16, criticalDamage: 1.6, meter: 1.35, dash: .18 },
 };
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
@@ -2890,7 +2890,7 @@ class Fighter {
           this.atk.dmg = BladeSuper.TOTAL_DAMAGE;
           this.atk.chip = 0;
           this.atk.superFractions = BladeSuper.STRIKES.map(strike => strike.damage / this.atk.dmg);
-          this.atk.stun = BladeSuper.NOTO_FRAME + 30;
+          this.atk.stun = BladeSuper.STUN_FRAMES;
         }
       }
     }
@@ -4974,15 +4974,17 @@ class Fx {
 class BladeSuper {
   static sequences = [];
   static waves = [];
-  // V3 "IAI Crescent Storm": 3 s at 60 fps. Each strike = wind-up, active, impact hold, gap.
-  // Holds are a local pose hold on Blade only (no extra global hit-stop).
-  static CHARGE_FRAMES = 24;
+  // V3 "IAI Crescent Storm": 114 frames (1.9 s) at 60 fps. Each strike = wind-up, active, impact hold, gap.
+  // Holds are a local pose hold on Blade only (no extra global hit-stop). Was 180 f (charge 24, holds 16/20/28, gaps 12/12,
+  // recovery 36); shortened per phase, with the 10 active frames and 20/22/32 damage unchanged.
+  static CHARGE_FRAMES = 18;
   static STRIKES = [
-    {name:'quickDraw', windup:4, active:3, hold:16, gap:12, damage:20},
-    {name:'diagonal', windup:8, active:3, hold:20, gap:12, damage:22},
-    {name:'vertical', windup:10, active:4, hold:28, gap:0, damage:32},
+    {name:'quickDraw', windup:4, active:3, hold:8, gap:5, damage:20},
+    {name:'diagonal', windup:8, active:3, hold:10, gap:5, damage:22},
+    {name:'vertical', windup:10, active:4, hold:14, gap:0, damage:32},
   ];
-  static RECOVERY_FRAMES = 36;
+  static RECOVERY_FRAMES = 22;
+  static STUN_FRAMES = 210; // pinned (old NOTO_FRAME + 30); noto's sheath knockdown still ends it at frame 114
   static strikeLength(k) { const s = this.STRIKES[k]; return s.windup + s.active + s.hold + s.gap; }
   /** First atkT frame (1-based) of strike k's window. */
   static strikeStart(k) { let f = this.CHARGE_FRAMES + 1; for (let i = 0; i < k; i++) f += this.strikeLength(i); return f; }
@@ -5109,7 +5111,7 @@ class BladeSuper {
     if (owner.hitTargets && owner.state === 'special') owner.hitTargets.set(target, pulse);
     const attack = {
       dmg:wave ? this.WAVE_DAMAGE : this.STRIKES[pulse].damage,
-      kb:wave ? 390 : 180, stun:owner.atk?.stun || this.NOTO_FRAME + 30, chip:0,
+      kb:wave ? 390 : 180, stun:owner.atk?.stun || this.STUN_FRAMES, chip:0,
       special:true, pulse, critical:!!owner.atk?.critical,
       comboFinisher:!!owner.atk?.comboFinisher, knockdown:false,
       deferKnockdown:true,
