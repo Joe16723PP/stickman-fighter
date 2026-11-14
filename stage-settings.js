@@ -177,11 +177,11 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 3,
         "title": "MAP KEEPERS",
-        "storyBeat": "Tough guards protect the route map at the center of the market.",
+        "storyBeat": "Shield guards protect the route map at the center of the market.",
         "enemyFocus": [
-          "tough",
+          "guard",
           "heavy",
-          "tough"
+          "guard"
         ],
         "visualCue": "A lit map board marks the guarded area."
       }
@@ -252,9 +252,9 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "SHUT DOWN THE LINE",
         "storyBeat": "The last guards protect the controls that keep the weapon line running.",
         "enemyFocus": [
-          "tough",
+          "guard",
           "heavy",
-          "tough"
+          "guard"
         ],
         "visualCue": "The machinery lights dim as the wave ends."
       }
@@ -305,7 +305,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "regular",
           "regular",
-          "tough"
+          "guard"
         ],
         "visualCue": "Tunnel lights flicker in sequence toward the far exit."
       },
@@ -316,7 +316,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "rusher",
           "rusher",
-          "tough"
+          "guard"
         ],
         "visualCue": "A side passage briefly lights up as enemies enter."
       },
@@ -377,7 +377,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "Guards defend the rooftop climb and block the first landing.",
         "enemyFocus": [
           "regular",
-          "tough",
+          "guard",
           "regular"
         ],
         "visualCue": "A distant antenna blinks above the rooftops."
@@ -389,18 +389,18 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "rusher",
           "rusher",
-          "tough"
+          "guard"
         ],
         "visualCue": "The signal light pulses faster."
       },
       {
         "wave": 3,
         "title": "SIGNAL KEEPERS",
-        "storyBeat": "Tough guards protect the source of the transmission.",
+        "storyBeat": "Shield guards protect the source of the transmission.",
         "enemyFocus": [
-          "tough",
+          "guard",
           "heavy",
-          "tough"
+          "guard"
         ],
         "visualCue": "The antenna flashes as the signal is traced."
       }
@@ -425,7 +425,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "regular",
           "regular",
-          "tough"
+          "guard"
         ],
         "visualCue": "Dojo lanterns illuminate the fighting floor."
       },
@@ -435,7 +435,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "A mixed group defends the inner hall and the dojo’s old teachings.",
         "enemyFocus": [
           "rusher",
-          "tough",
+          "guard",
           "heavy"
         ],
         "visualCue": "The inner doors open after the group is defeated."
@@ -445,9 +445,9 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "MASTER'S CHALLENGE",
         "storyBeat": "The strongest students prepare the floor for Master Kage.",
         "enemyFocus": [
-          "tough",
+          "guard",
           "heavy",
-          "tough"
+          "guard"
         ],
         "visualCue": "The dojo clears behind the final guard."
       }
@@ -493,7 +493,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "Heavy guards protect the lead vehicle and its invitation to the tower.",
         "enemyFocus": [
           "heavy",
-          "tough",
+          "guard",
           "heavy"
         ],
         "visualCue": "The lead vehicle stops near the end of the bridge."
@@ -518,7 +518,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "Security teams defend the tower’s lower floors.",
         "enemyFocus": [
           "regular",
-          "tough",
+          "guard",
           "regular"
         ],
         "visualCue": "Broadcast monitors glow through the building."
@@ -530,18 +530,18 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "rusher",
           "rusher",
-          "tough"
+          "guard"
         ],
         "visualCue": "Monitor lights flicker as the control room is approached."
       },
       {
         "wave": 3,
         "title": "AIRTIME DEFENSE",
-        "storyBeat": "Tough guards protect the broadcast before the signal goes public.",
+        "storyBeat": "Shield guards protect the broadcast before the signal goes public.",
         "enemyFocus": [
-          "tough",
+          "guard",
           "heavy",
-          "tough"
+          "guard"
         ],
         "visualCue": "The broadcast indicator turns on as the final group falls."
       }
@@ -576,7 +576,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "Stronger mixed groups build pressure before the chief’s entrance.",
         "enemyFocus": [
           "rusher",
-          "tough",
+          "guard",
           "heavy"
         ],
         "visualCue": "The arena lights focus on the far entrance."
@@ -587,7 +587,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "The last guards clear the way to the syndicate chief.",
         "enemyFocus": [
           "heavy",
-          "tough",
+          "guard",
           "heavy"
         ],
         "visualCue": "The arena goes dark briefly before the chief enters."

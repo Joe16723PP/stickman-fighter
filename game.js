@@ -69,7 +69,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A' },
+  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -371,7 +371,8 @@ const EnemyArchetypes = {
   regular: { health: 100, weaponChance: 0, specialDamage: 0, specialGain: 0 },
   // Rusher replaced the old RUNNER everywhere it spawned: lean, fast, one committed shoulder rush.
   rusher: { health: 80, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: 1.35, bodyProfile: 'rusher', rush: 'shoulder' },
-  tough: { health: 125, weaponChance: .2, specialDamage: .25, specialGain: .25 },
+  // Guard rebuilt the old TOUGH everywhere it spawned: riot shield, frontal block, shield bash.
+  guard: { health: 125, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .85, bodyProfile: 'guard', guard: 'riotShield', bash: 'shield' },
   // Heavy (rebuilt in place, same spawns): mass/weight body, always a sledgehammer, one overhead slam.
   heavy: { health: 145, weaponChance: 0, loadout: 'sledgehammer', specialDamage: .45, specialGain: .45, speed: .74, scale: 1.12, bodyProfile: 'heavy', slam: 'overhead' },
   thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
@@ -513,6 +514,96 @@ const EnemySlam = {
   },
 };
 
+/* Enemy frontal guard. Pure gameplay logic in the shared combat coordinates; the drawn shield is
+ * decoration only (never a hitbox, never read here).
+ * A normal hit is BLOCKED (0 damage) when ALL hold: the shield is up (see shieldUp), the attacker is
+ * in front of the guard's facing ((from.x - x) * face > 0, the same frontal test takeHit uses for
+ * player blocks) and in the same lane (floor-depth gap within the attacker's normal Depth.hitTolerance).
+ * Specials / supers / the Blade wave are unblockable everywhere in the game, so they always land here too.
+ * A block pushes the guard back a few px and plays a recoil pose. `breakAfter` consecutive blocks
+ * (each within `chainWindow` s of the last) break the guard: the shield opens for `openTime` s and
+ * every hit lands. Facing turns toward the foe only after `turnDelay` s, which is the flanking window.
+ * Times are seconds of sim time (fixed Game.STEP steps). */
+const EnemyGuards = {
+  riotShield: { breakAfter: 3, chainWindow: 1.2, openTime: 1.0, turnDelay: .45, recoilTime: .22, pushBase: 6, pushKb: .04, pushMax: 24 },
+};
+const EnemyGuard = {
+  spec(f) { return f.enemyGuard ? EnemyGuards[f.enemyGuard] : null; },
+  /** Shield raised: not stunned/hit/airborne/dead, not guard-broken, not in another attack, not in bash recovery. */
+  shieldUp(f) {
+    if (!f.enemyGuard || f.hp <= 0 || f.ragdollActive || f.stun > 0 || f.state === 'hit' || !f.grounded) return false;
+    if (f.guardOpenT > 0 || f.enemyThrowPose) return false;
+    if (f.atk) return !!f.atk.bash && f.atkT <= f.atk.su + f.atk.ac; // shield leads the bash; drops in its recovery
+    return true;
+  },
+  sameLane(f, from) {
+    if (Game.mode !== 'beatemup') return true;
+    const me = BeatEmUp.entryFor(f), them = BeatEmUp.entryFor(from);
+    if (!me || !them) return true;
+    return BeatEmUp.depthClose(them.depth, me.depth, BeatEmUp.depthHitTolerance(them, me) + 1e-9);
+  },
+  blocks(f, atk, from) {
+    if (!EnemyGuard.shieldUp(f) || !from || atk.special) return false;
+    return (from.x - f.x) * f.face > 0 && EnemyGuard.sameLane(f, from);
+  },
+  /** Apply a frontal block: 0 damage, small push-back, recoil, guard-break counter. */
+  block(f, atk, from) {
+    const g = EnemyGuard.spec(f);
+    Sfx.play('block', null);
+    f.blockFlash = .12;
+    f.x += Math.sign(f.x - from.x || -f.face) * Math.min(g.pushMax, g.pushBase + (atk.kb || 0) * g.pushKb);
+    f.guardRecoilT = g.recoilTime;
+    f.guardBlocks = f.guardChainT > 0 ? f.guardBlocks + 1 : 1;
+    f.guardChainT = g.chainWindow;
+    if (f.guardBlocks >= g.breakAfter) { f.guardBlocks = 0; f.guardChainT = 0; f.guardOpenT = g.openTime; Sfx.play('critical', null); }
+    return 'block';
+  },
+  tick(f, dt) {
+    const dec = v => (v - dt > 1e-9 ? v - dt : 0); // snap float dust so 1.0 s is exactly 60 steps
+    f.guardOpenT = dec(f.guardOpenT); f.guardRecoilT = dec(f.guardRecoilT); f.guardChainT = dec(f.guardChainT);
+    if (f.guardChainT <= 0) f.guardBlocks = 0;
+  },
+  /** Delayed turn: the generic update faces the foe every frame; a guard only follows after turnDelay. */
+  afterUpdate(f, dt) {
+    const g = EnemyGuard.spec(f);
+    if (f.atk?.bash) { f.guardFace = f.face; f.guardTurnT = 0; return; } // bash locks its own direction
+    if (f.guardFace == null || f.hp <= 0 || f.ragdollActive) { f.guardFace = f.face; f.guardTurnT = 0; return; }
+    if (f.face === f.guardFace) { f.guardTurnT = 0; return; }
+    f.guardTurnT += dt;
+    if (f.guardTurnT >= g.turnDelay - 1e-9) { f.guardFace = f.face; f.guardTurnT = 0; }
+    else f.face = f.guardFace;
+  },
+};
+/* Enemy shield bash on the shared 'punch' state: wind-up (shield pulled in) -> active (short fixed
+ * shove forward, box in front of the body from rig constants only) -> recovery (shield lowered; on a
+ * miss this is the long punish window and the guard is open). Direction locked at start.
+ * Damage = the single unchained punch every enemy throws (one ROOKIE punch before difficulty). */
+const EnemyBashes = {
+  shield: {
+    label: 'BASH',
+    windup: 14, active: 5, step: 28, whiffRecovery: 48, hitRecovery: 22, kb: 300, stun: 16,
+    box: { front: 34, halfW: 16, y: 70, halfH: 34 },   // x Fighter.S: centre front*S ahead, y*S above ground
+    triggerRange: 100,
+    windPose:   {chest:12,neck:-3,head:3,la:-50,le:-100,ra:-40,re:-110,ll:26,lk:18,rl:-30,rk:24,hipBob:3,shPull:4},
+    strikePose: {chest:-18,neck:4,head:4,la:-100,le:-20,ra:-30,re:-110,ll:38,lk:16,rl:-36,rk:26,hipBob:1,shPull:0},
+    lowPose:    {chest:8,neck:2,head:4,la:-15,le:-20,ra:-10,re:-30,ll:24,lk:16,rl:-24,rk:20,hipBob:2,shPull:0},
+  },
+};
+const EnemyBash = {
+  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.whiffRecovery, total: spec.windup + spec.active + spec.whiffRecovery }; },
+  tick(f) {
+    const a = f.atk, sp = a.bash, t = f.atkT;
+    if (f.hitDone && !a.bashHit) { a.bashHit = true; a.stepLeft = 0; a.re = Math.max(0, (t - 1) + sp.hitRecovery - (a.su + a.ac)); }
+    let move = 0;
+    if (t > a.su && t <= a.su + a.ac && a.stepLeft > 0) { move = t === a.su + a.ac ? a.stepLeft : Math.min(a.stepLeft, sp.step / sp.active); a.stepLeft -= move; }
+    f.x += a.bashDir * move; f.vx = 0;
+  },
+  box(f) {
+    const b = f.atk.bash.box, s = f.drawS(), cx = f.x + f.atk.bashDir * b.front * s, cy = f.groundY() + f.y - b.y * s;
+    return { x: cx - b.halfW * s, y: cy - b.halfH * s, w: b.halfW * 2 * s, h: b.halfH * 2 * s };
+  },
+};
+
 /* Shared archetype skeleton. Every enemy archetype is drawn from the same Fighter rig:
  * one joint set from Fighter.bones() and one pose/animation pipeline (aim/tickPose).
  * An archetype may add a BODY PROFILE, which only reshapes how that rig is drawn:
@@ -562,8 +653,42 @@ const ArchetypeBodyProfiles = {
     stepDip: 2.4,          // walk: extra hip drop on each footfall (weighty steps)
     hitPose: {chest:26,neck:12,head:22,la:-120,le:-30,ra:-100,re:-25}, // bigger recoil on the shared hit reaction
   },
+  guard: {
+    torsoWidth: 1.35,      // moderately broad upper body
+    shoulderWidth: 4,
+    limbWidth: 1.15,
+    forearmWidth: 1.25,
+    legWidth: 1.15,
+    neckScale: .8,
+    stanceWidth: 5,        // side-on, braced
+    guardPose:  {chest:4,neck:-2,head:2,la:-70,le:-60,ra:-40,re:-110}, // shield arm forward, rear hand tucked
+    recoilPose: {chest:14,neck:-4,head:6,la:-58,le:-82,ra:-36,re:-112}, // block impact: shield driven back
+    openPose:   {chest:8,neck:2,head:4,la:-15,le:-20,ra:-10,re:-30},    // guard broken: shield arm dropped
+    equipment: [{ kind: 'riotShield', joints: ['la'] }],
+  },
 };
 const ArchetypeEquipment = {
+  /** Riot shield on the lead hand, its long axis across the forearm line (arm forward = shield upright,
+   * arm dropped = shield lowered). Decoration only: no hitbox, no block logic reads it. */
+  riotShield(ctx, f, b, joint, ctxInfo) {
+    const hand = b[joint], sh = joint === 'la' ? b.shL : b.shR;
+    if (!hand || !sh) return;
+    const { unit } = ctxInfo;
+    let ax = hand.x - sh.x, ay = hand.y - sh.y; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+    const px = -ay, py = ax;                 // shield long axis (perpendicular to the arm)
+    const c = { x: hand.x + ax * 4 * unit, y: hand.y + ay * 4 * unit };
+    const half = 27 * unit, thick = 5 * unit;
+    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => ({ x: c.x + px * half * u + ax * thick * v, y: c.y + py * half * u + ay * thick * v }));
+    ctx.save(); ctx.lineJoin = 'round';
+    const path = () => { ctx.beginPath(); ctx.moveTo(corners[0].x, corners[0].y); for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y); ctx.closePath(); };
+    path(); ctx.fillStyle = 'rgba(3,8,18,.96)'; ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = 3 / Game.scale + 4 * unit; ctx.stroke();
+    path(); ctx.fillStyle = f.blockFlash > 0 ? '#FFFFFF' : '#9FB4C8'; ctx.fill();
+    ctx.strokeStyle = '#E6EEF5'; ctx.lineWidth = 1.6 * unit; ctx.stroke();
+    // Viewport slit near the top edge.
+    ctx.strokeStyle = '#2B3A4C'; ctx.lineWidth = 2 * unit;
+    ctx.beginPath(); ctx.moveTo(c.x - px * half * .7, c.y - py * half * .7); ctx.lineTo(c.x - px * half * .35, c.y - py * half * .35); ctx.stroke();
+    ctx.restore();
+  },
   /** Trailing scarf tied at the neck. Pure decoration: drawn from draw bones, read by nothing else. */
   scarf(ctx, f, b, joint, ctxInfo) {
     const neck = b[joint], chest = b.chest;
@@ -623,7 +748,10 @@ const ArchetypeSkeleton = {
     const prof = f.bodyProfile;
     if (!prof) return f.bones();
     let raw, over = null;
-    if (ArchetypeSkeleton.guardActive(f)) over = EnemyCombo.pose(prof.guardPose);
+    const noAtk = !f.atk && !f.ragdollActive && f.hp > 0 && f.stun <= 0;
+    if (prof.openPose && noAtk && f.guardOpenT > 0) over = EnemyCombo.pose(prof.openPose);
+    else if (prof.recoilPose && noAtk && f.guardRecoilT > 0) over = EnemyCombo.pose(prof.recoilPose);
+    else if (ArchetypeSkeleton.guardActive(f)) over = EnemyCombo.pose(prof.guardPose);
     else if (prof.hitPose && !f.atk && !f.ragdollActive && f.hp > 0 && (f.state === 'hit' || f.stun > 0)) over = EnemyCombo.pose(prof.hitPose);
     if (f.atk?.slam && f.hp > 0 && !f.ragdollActive) {
       // Both hands on the hammer handle: arms point along the gameplay hammer angle.
@@ -1655,7 +1783,8 @@ class Fighter {
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
     this.bossProfile = null;
-    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; // archetype draw profile + multi-hit normal / committed rush (enemies only)
+    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; this.enemyGuard = null; this.enemyBash = null;
+    this.guardOpenT = 0; this.guardRecoilT = 0; this.guardChainT = 0; this.guardBlocks = 0; this.guardFace = null; this.guardTurnT = 0; // archetype draw profile + multi-hit normal / committed rush (enemies only)
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
@@ -1859,6 +1988,7 @@ class Fighter {
     if (kind === 'punch' && this.enemyCombo && EnemyCombos[this.enemyCombo]) { this.startEnemyCombo(EnemyCombos[this.enemyCombo]); return; }
     if (kind === 'punch' && this.enemyRush && EnemyRushes[this.enemyRush]) { this.startEnemyRush(EnemyRushes[this.enemyRush]); return; }
     if (kind === 'punch' && this.enemySlam && EnemySlams[this.enemySlam]) { this.startEnemySlam(EnemySlams[this.enemySlam]); return; }
+    if (kind === 'punch' && this.enemyBash && EnemyBashes[this.enemyBash]) { this.startEnemyBash(EnemyBashes[this.enemyBash]); return; }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -2029,6 +2159,33 @@ class Fighter {
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
     this.atkPhase = '';
   }
+  /** Archetype shield bash (Guard) on the shared 'punch' state. */
+  startEnemyBash(spec) {
+    const ref = Atk.of('punch', 0, null, null); // the same unchained punch every enemy throws
+    const tl = EnemyBash.timeline(spec);
+    this.atk = {
+      su: tl.su, ac: tl.ac, re: tl.re,
+      dmg: ref.dmg * this.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
+      chain: 0, kind: 'punch', reach: ref.reach, linked: false,
+      bash: spec, bashDir: this.face, stepLeft: spec.step, bashHit: false,
+    };
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+    this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = '';
+  }
+  driveBashPose(a, t) {
+    const sp = a.bash;
+    let key, pose, dur;
+    if (t <= a.su) { key = 'gw'; pose = sp.windPose; dur = a.su; }
+    else if (t <= a.su + a.ac) { key = 'gs'; pose = sp.strikePose; dur = 2; }
+    else if (!a.bashHit && t <= a.su + a.ac + a.re - 12) { key = 'gl'; pose = sp.lowPose; dur = 6; } // missed: shield dropped, open
+    else { key = 'gr'; pose = null; dur = Math.max(1, a.su + a.ac + a.re - t); }               // back up to the shield-forward stance
+    if (this.atkPhase === key) return;
+    const base = Pose.idle(null), guard = this.bodyProfile?.guardPose ? EnemyCombo.pose(this.bodyProfile.guardPose) : {};
+    this.aim(key, pose ? { ...base, ...EnemyCombo.pose(pose) } : { ...base, ...guard }, dur * Game.STEP); this.atkPhase = key;
+    if (key === 'gs') Sfx.play('kick', null);
+  }
   driveSlamPose(a, t) {
     const sp = a.slam;
     let key, pose, dur;
@@ -2084,7 +2241,7 @@ class Fighter {
     }
   }
   canChainPunch() {
-    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam) return false;
+    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash) return false;
     const a = this.atk;
     if (this.state === 'kick') {
       const total = a.su + a.ac + a.re;
@@ -2097,7 +2254,7 @@ class Fighter {
     return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
   }
   canChainHeavy() {
-    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam) return false;
+    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash) return false;
     const a = this.atk;
     const intoRecovery = this.atkT - (a.su + a.ac);
     return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRecovery <= Moves.punch.chainWindow;
@@ -2312,6 +2469,7 @@ class Fighter {
     if (a.combo) { this.driveComboPose(a, t); return; }
     if (a.rush) { this.driveRushPose(a, t); return; }
     if (a.slam) { this.driveSlamPose(a, t); return; }
+    if (a.bash) { this.driveBashPose(a, t); return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -2377,6 +2535,11 @@ class Fighter {
     return { ax, speedRatio: Math.min(1, Math.abs(this.vx) / Fighter.RUN_SPEED) };
   }
   update(dt, other, slot) {
+    if (this.enemyGuard) EnemyGuard.tick(this, dt);
+    this.updateCore(dt, other, slot);
+    if (this.enemyGuard) EnemyGuard.afterUpdate(this, dt);
+  }
+  updateCore(dt, other, slot) {
     this.comboTimer = Math.max(0, this.comboTimer - dt);
     this.attackBoostT = Math.max(0, this.attackBoostT - dt);
     this.comboStunEffectT = Math.max(0, this.comboStunEffectT - dt);
@@ -2450,6 +2613,7 @@ class Fighter {
         this.clamp(other); return;
       }
       this.atkT++;
+      if (this.atk.bash) EnemyBash.tick(this); // fixed short shove; may shorten re on a hit
       if (this.atk.rush) EnemyRush.tick(this); // fixed-distance dash / braking skid; may shorten re on a hit
       const a = this.atk, tot = a.su + a.ac + a.re;
       if (a.combo) {
@@ -2493,6 +2657,7 @@ class Fighter {
         Fx.superTrail(this.x - cameraX, this.groundY() + this.y - 58 * this.drawS(), this.face, this.classProfile);
       } else if (a.rush) this.vx = 0; // rush travel comes only from EnemyRush.tick (bounded); no steering
       else if (a.slam) this.vx = 0; // planted for the whole slam
+      else if (a.bash) this.vx = 0; // bash travel only from EnemyBash.tick (bounded)
       else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
@@ -2510,6 +2675,7 @@ class Fighter {
       // Blade tracks the foe through the charge and Strike 1's wind-up, then locks facing for all three strikes and the wave.
       if (this.bladeSuper && this.atkT < BladeSuper.FACE_LOCK_FRAME) this.bladeSuper.face = this.face = other.x >= this.x ? 1 : -1;
       else if (this.atk && this.state === 'special' && this.classProfile?.weapon === 'blade') this.face = this.bladeSuper?.face ?? this.face;
+      else if (this.atk && a.bash) this.face = a.bashDir; // locked at bash start
       else if (this.atk && a.rush) this.face = a.rushDir; // committed: direction locked at rush start
       else if (this.atk && a.slam) { if (this.atkT <= a.su) this.face = other.x >= this.x ? 1 : -1; } // track in wind-up, lock from the swing
       else if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
@@ -2616,6 +2782,10 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
+    if (a.bash && this.state === 'punch') {
+      const bx = EnemyBash.box(this); // rig-constant box in front; the drawn shield is never a hitbox
+      return {...bx, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:0, special:false, critical:false, comboFinisher:false, comboLink:false, chain:0, bash:true};
+    }
     if (a.slam && this.state === 'punch') {
       // Hands -> hammer tip only; the segment ends at the tip (plus the head radius), nothing beyond.
       const g = EnemySlam.geometry(this), start = g.start, end = g.tip, r = g.r;
@@ -2718,6 +2888,8 @@ class Fighter {
   takeHit(atk, from) {
     if (this.playerControlled && this.invincibleT > 0) return 'invulnerable';
     if (atk.special && (!this.grounded || this.dodgeT > 0)) return 'evade';
+    if (this.enemyGuard && EnemyGuard.blocks(this, atk, from)) return EnemyGuard.block(this, atk, from); // frontal same-lane normal: 0 damage
+    if (this.enemyGuard) { this.guardBlocks = 0; this.guardChainT = 0; }
     const chargingSpecial = this.state === 'special' && this.atk && this.atkT <= this.atk.su;
     const frontal = (from.x - this.x) * this.face > 0;
     const warded = this.wardShieldT > 0 && this.classProfile?.style === 'ward';
@@ -4371,12 +4543,14 @@ class BeatEmUp {
     f.enemyCombo = archetype.combo || null;
     f.enemyRush = archetype.rush || null;
     f.enemySlam = archetype.slam || null;
+    f.enemyGuard = archetype.guard || null;
+    f.enemyBash = archetype.bash || null;
     f.y = 0;
     f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
-    const speedMul = archetype.speed ?? (kind === 'tough' ? 1.32 : kind === 'boss' ? .92 : 1);
+    const speedMul = archetype.speed ?? (kind === 'boss' ? .92 : 1);
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
       ai: { mode: 'circle', atkSlot: 0, cool: kind === 'boss' ? .65 : .3 + Math.random() * .4, orbit: Math.random() * Math.PI * 2, preferDepth: depth, tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0 },
@@ -4730,7 +4904,8 @@ class BeatEmUp {
           e._tunedAtk = e.f.atk;
           // Heavy's slam carries its own damage/stun; the old x1.25 / +2 stun trim only applies to its other moves (special).
           if (e.kind === 'heavy' && !e.f.atk.slam) { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
-          if (e.kind === 'tough') { e.f.atk.dmg *= .8; }
+          // Old TOUGH x0.8 trim: kept for Guard's special only; the bash is exactly one ROOKIE punch.
+          if (e.kind === 'guard' && !e.f.atk.bash) { e.f.atk.dmg *= .8; }
           e.f.atk.dmg *= BeatEmUp.difficulty.damage;
           if (e.kind === 'boss') {
             e.f.atk.dmg *= BossHardness.damage;
@@ -4796,9 +4971,10 @@ class BeatEmUp {
           Input.pad[1][ai.tellMove] = 1;
           ai.cool = e.kind === 'boss'
             ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
+            : e.f.enemyBash && ai.tellMove === 'punch' ? .5 + EnemyBash.timeline(EnemyBashes[e.f.enemyBash]).total * Game.STEP
             : e.f.enemySlam && ai.tellMove === 'punch' ? .4 + EnemySlam.timeline(EnemySlams[e.f.enemySlam]).total * Game.STEP
             : e.f.enemyRush && ai.tellMove === 'punch' ? BeatEmUp.pacing.attackRecovery.agile + EnemyRush.timeline(EnemyRushes[e.f.enemyRush]).total * Game.STEP
-            : e.kind === 'rusher' || e.kind === 'tough' ? BeatEmUp.pacing.attackRecovery.agile
+            : e.kind === 'rusher' || e.kind === 'guard' ? BeatEmUp.pacing.attackRecovery.agile
               : e.kind === 'heavy' ? BeatEmUp.pacing.attackRecovery.heavy
                 : BeatEmUp.pacing.attackRecovery.regular;
           ai.tellMove = ''; ai.tellKind = '';
@@ -4830,7 +5006,8 @@ class BeatEmUp {
       else if (e.depth > player.depth + 0.05) e.depth = Math.max(0, e.depth - 0.85 * dt);
       const rush = !e.bossProfile && e.f.enemyRush ? EnemyRushes[e.f.enemyRush] : null;
       const slam = !e.bossProfile && e.f.enemySlam ? EnemySlams[e.f.enemySlam] : null;
-      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : Moves.punch.reach + 10;
+      const bash = !e.bossProfile && e.f.enemyBash ? EnemyBashes[e.f.enemyBash] : null;
+      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : Moves.punch.reach + 10;
       if (rush && !e.f.atk && dist < rush.minRange && (ai.backoffT || 0) < rush.backoffMax) {
         // Too close for the rush: walk out to spacing on the side with room (through the player if
         // pinned at a bound); gives up after backoffMax and rushes anyway.
@@ -4843,7 +5020,7 @@ class BeatEmUp {
       } else if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
-      } else if (ai.cool <= 0 && depthGap < 0.2) {
+      } else if (ai.cool <= 0 && depthGap < 0.2 && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
         let move, label, tell;
         if (e.bossProfile) {
           const profile = e.bossProfile;
@@ -4868,11 +5045,12 @@ class BeatEmUp {
           else if (e.f.enemyCombo) move = 'punch'; // archetype string (Brawler jab-cross) rides the punch input
           else if (e.f.enemySlam) move = 'punch'; // Heavy overhead slam rides the punch input
           else if (e.f.enemyRush) move = 'punch'; // Rusher shoulder rush rides the punch input
-          else if (e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
+          else if (e.f.enemyBash) move = 'punch'; // Guard shield bash rides the punch input
           else move = Math.random() < .72 ? 'punch' : 'kick';
           label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH'
             : move === 'punch' && e.f.enemyRush ? EnemyRushes[e.f.enemyRush]?.label || 'PUNCH'
-            : move === 'punch' && e.f.enemySlam ? EnemySlams[e.f.enemySlam]?.label || 'PUNCH' : move.toUpperCase();
+            : move === 'punch' && e.f.enemySlam ? EnemySlams[e.f.enemySlam]?.label || 'PUNCH'
+            : move === 'punch' && e.f.enemyBash ? EnemyBashes[e.f.enemyBash]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }
