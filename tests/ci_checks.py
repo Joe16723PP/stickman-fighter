@@ -402,7 +402,7 @@ BRAWLER = r"""
                 [['regular','heavy','regular'],['rusher','rusher','heavy'],['heavy','heavy','rusher']],
                 [['regular','regular','heavy'],['rusher','rusher','regular'],['guard','heavy','guard']]];
   let swapped = 0, rookies = 0, inPlace = true;
-  for (let s = 1; s < 3; s++) for (let w = 0; w < 3; w++) {
+  for (let s = 2; s < 3; s++) for (let w = 0; w < 3; w++) { // Stages 1-2 own their lineups (Stage 1/2 tickets)
     const now = BeatEmUp.chapters[s].waves[w].enemyFocus;
     orig[s][w].forEach((k, i) => { if (k === 'regular') { rookies++; if (now[i] === 'brawler') swapped++; } else if (now[i] !== k) inPlace = false; });
     if (now.length !== orig[s][w].length || now.some((k, i) => k !== orig[s][w][i] && !(k === 'brawler' && orig[s][w][i] === 'regular'))) inPlace = false;
@@ -423,7 +423,7 @@ BRAWLER = r"""
     && r.jabCross.hits[0].frame === 10 && r.jabCross.hits[1].frame === 31
     && Math.abs(r.jabCross.total - r.rookiePunch.total) < 1e-6 && r.rookiePunch.total > 0
     && r.timeline.su === 9 && r.timeline.ac === 24 && r.timeline.re === 18 && r.timeline.total === 51
-    && r.spawns.stage1.includes('brawler') && r.spawns.swapped === 2 && r.spawns.rookies === 5 && r.spawns.inPlace && !r.spawns.laterBrawlers;
+    && r.spawns.stage1.includes('brawler') && r.spawns.swapped === 1 && r.spawns.rookies === 3 && r.spawns.inPlace && !r.spawns.laterBrawlers;
   return r;
 }
 """
@@ -506,7 +506,7 @@ RUSHER = r"""
   const s = r.stats, w = r.whiff;
   r.pass = s.hp === s.expectHp && s.speedMul === 1.35 && s.scaleMul === 1 && s.weapon === null && r.armed === 0
     && s.dmgMul === EnemyWeaponProfiles.freehand.damage && s.tag === 'RUSHER' && s.rush === 'shoulder' && s.combo === null && s.profile
-    && r.runnerGone && r.runnerSpawns === 0 && r.rusherSpawns === 21
+    && r.runnerGone && r.runnerSpawns === 0 && r.rusherSpawns === 18
     && r.hurtboxSame && r.profileDrawn && r.gameplayBonesSame
     && tl.su === 27 && tl.ac === 7 && tl.re === 42 && tl.dashStart === 17 && tl.dashEnd === 34 && tl.total === 76
     // Whiff: full fixed dash + braking skid, live box only on the last 7 dash frames, full stumble recovery.
@@ -745,7 +745,7 @@ GRAPPLER = r"""
   const s = r.stats, su = r.success, m = r.miss;
   r.pass = s.hp === s.expectHp && s.speedMul === .9 && s.scaleMul === 1 && s.weapon === null && r.armed === 0 && s.dmgMul === EnemyWeaponProfiles.freehand.damage
     && s.tag === 'GRAPPLER' && s.grab === 'clinch' && s.combo === null && s.rush === null && s.slam === null && s.guard === null && s.bash === null && s.profile
-    && r.grapplerSpawns === 0 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn && r.longArms && sp.label === 'GRAB'
+    && r.grapplerSpawns === 4 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn && r.longArms && sp.label === 'GRAB'
     && r.rangeOk && r.laneOk && !r.invuln && !r.roll && !r.air && !r.stunned
     && r.interrupt.kind === 'hit' && !r.interrupt.caught && r.interrupt.held === 0
     // Catch on the first reach frame in range; hold exactly headbuttAt frames, headbutt = release, then hitRecovery.
@@ -1313,7 +1313,7 @@ STAGE1 = r"""
   // --- Stages 2-10: no settings, waveDefs reproduce the old hardcoded layouts exactly
   const OLD2 = [[.16, .18], [.60, .72], [.72, .40], [.28, .54], [.82, .84]], OLD = [[.55, .15], [.62, .55], [.48, .95], [.70, .34], [.40, .76]];
   let fallbackOk = true, checked = 0;
-  for (let s = 2; s <= 10; s++) {
+  for (let s = 3; s <= 10; s++) { // Stage 2 sets its own spawns (Stage 2 ticket)
     BeatEmUp.stage = s;
     if (ch[s - 1].spawnLayouts || ch[s - 1].waves.some(w => w.spawns)) fallbackOk = false;
     for (const n of [1, 2, 3]) {
@@ -1322,7 +1322,7 @@ STAGE1 = r"""
       defs.forEach((d, i) => { checked++; if (d.kind !== ch[s - 1].waves[n - 1].enemyFocus[i] || d.ox !== L[i % 5][0] || d.depth !== L[i % 5][1] || Object.keys(d).join() !== 'kind,ox,depth') fallbackOk = false; });
     }
   }
-  r.fallbackChecked = checked; r.fallbackOk = fallbackOk && checked === 81;
+  r.fallbackChecked = checked; r.fallbackOk = fallbackOk && checked === 72;
   // --- Fallback chain + clamping (synthetic settings)
   const sf = (c, w, n, i) => { const o = BeatEmUp.spawnFor(c, w, n, i); return o.ox + '/' + o.depth; };
   const cA = { spawnLayouts: { default: [{ ox: .3, depth: .4 }, { depth: .45 }], 1: [{ depth: 1.7 }] } };
@@ -1358,6 +1358,103 @@ STAGE1 = r"""
   Object.assign(BeatEmUp, { stage: prev.stage, cast: prev.cast, cameraX: prev.cameraX, lockL: prev.lockL, lockR: prev.lockR, wave: prev.wave, waveSpawnQueue: prev.queue, waveSpawnTimer: prev.timer });
   Object.assign(Game, { arcadeLevel: prev.level, mode: prev.mode, phase: prev.phase, banner: prev.banner, bannerT: prev.bannerT, fighting: prev.fighting });
   r.pass = r.stage1Ok && r.stage1DefsOk && r.stage1SpawnedOk && r.fallbackOk && r.chainOk && r.stats === '110/0.95/jabCross/80/1.35/shoulder' && r.moveHash === '29a4f6df' && r.capOk;
+  return r;
+}
+"""
+
+STAGE2 = r"""
+() => {
+  // Stage 2 ticket: Grappler + Brawler lineup with authored spawns, at most one active Grappler attacker, no grace window. Script only.
+  const prev = { level: Game.arcadeLevel, mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast, phase: Game.phase, banner: Game.banner, bannerT: Game.bannerT, fighting: Game.fighting, random: Math.random, cameraX: BeatEmUp.cameraX, lockL: BeatEmUp.lockL, lockR: BeatEmUp.lockR, wave: BeatEmUp.wave, queue: BeatEmUp.waveSpawnQueue, timer: BeatEmUp.waveSpawnTimer };
+  const r = {};
+  Game.mode = 'beatemup'; Game.arcadeLevel = 'normal'; BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0;
+  const ch = BeatEmUp.chapters, c2 = ch[1];
+  const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(16); };
+  // --- Lineup, text, Dockmaster
+  r.lineup = c2.waves.map(w => w.enemyFocus.join(','));
+  r.lineupOk = r.lineup.join(' | ') === 'grappler,brawler | grappler,brawler,brawler | grappler,grappler,brawler,brawler'
+    && c2.boss.name === 'DOCKMASTER' && c2.boss.profile.signature.key === 'bossDockHaulIn' && c2.boss.profile.weapon === 'anchorChain'
+    && c2.waves.every(w => /grappler/i.test(w.title + ' ' + w.storyBeat + ' ' + w.visualCue) || /brawler/i.test(w.storyBeat))
+    && !c2.waves.some(w => /rusher|heav|bruiser/i.test(w.storyBeat + ' ' + w.visualCue)) && !/rusher|bruiser/i.test(c2.storyIntro);
+  // --- Other stages' settings and the Dockmaster are byte-identical to before
+  r.othersHash = hash(JSON.stringify([window.ARCADE_STAGE_SETTINGS.filter((_, i) => i !== 1), c2.boss]));
+  // --- Spawns read from settings and actually spawned there
+  const S2 = [[[.55, .5], [.92, .15]], [[.6, .5], [.3, .2], [.85, .82]], [[.55, .3], [.88, .8], [.7, .6], [.95, .12]]];
+  BeatEmUp.stage = 2;
+  r.defs = [1, 2, 3].map(n => BeatEmUp.waveDefs(n).map(d => d.kind[0] + ':' + d.ox + '/' + d.depth).join(' '));
+  const player = BeatEmUp.playerEntry() || { f: fighters[0], depth: .5, role: 'player', kind: 'player', scaleMul: 1 };
+  let spawnedOk = true; r.spawned = [];
+  for (const n of [1, 2, 3]) {
+    const d = BeatEmUp.waveDefs(n);
+    spawnedOk = spawnedOk && d.length === S2[n - 1].length && d.every((x, i) => x.kind === c2.waves[n - 1].enemyFocus[i] && x.ox === S2[n - 1][i][0] && x.depth === S2[n - 1][i][1]);
+    BeatEmUp.cast = [player]; BeatEmUp.startWave(n, true, false);
+    for (let k = 0; k < 40 && BeatEmUp.waveSpawnQueue.length; k++) BeatEmUp.updateWaveSpawns(10);
+    const en = BeatEmUp.cast.filter(e => e.role === 'enemy'), auth = S2[n - 1], floor = n === 2 ? .12 : .42;
+    r.spawned.push(en.slice(0, auth.length).map(e => e.kind[0] + ':' + +((e.f.x - BeatEmUp.lockL) / Game.W).toFixed(4) + '/' + e.depth).join(' '));
+    spawnedOk = spawnedOk && en.length === auth.length * 2 && auth.every((a, i) => en[i].kind === c2.waves[n - 1].enemyFocus[i]
+      && Math.abs(en[i].f.x - (BeatEmUp.lockL + Game.W * Math.max(floor, a[0]))) < 1e-9 && en[i].depth === a[1]);
+  }
+  r.spawnOk = spawnedOk && S2.every(w => w.every(([ox], i) => true));
+  // --- pickMelee unit cases (fake entries; gameplay fields only)
+  const mk = (id, grab, active = false) => ({ id, f: { enemyGrab: grab ? 'clinch' : null, grabVictim: active ? {} : null, atk: null }, ai: { tellT: 0, tellMove: '' } });
+  const ids = (list, n = 2) => BeatEmUp.pickMelee(list, n).map(e => e.id).join(',');
+  const G1 = mk('G1', 1), G2 = mk('G2', 1), B1 = mk('B1', 0), B2 = mk('B2', 0), G2h = mk('G2h', 1, true);
+  const G2t = mk('G2t', 1); G2t.ai.tellT = .3; G2t.ai.tellMove = 'punch';
+  const G2w = mk('G2w', 1); G2w.f.atk = { grab: {} };
+  r.pick = [ids([G1, G2, B1, B2]), ids([B1, G1, G2, B2]), ids([G1, B1, G2h]), ids([G1, G2t, B1]), ids([G1, B1, B2, G2w]), ids([B1, B2, G1]), ids([G1, B1]), ids([G1, G2])];
+  r.pickOk = r.pick.join(' ') === 'G1,B1 B1,G1 G2h,B1 G2t,B1 G2w,B1 B1,B2 G1,B1 G1';
+  // with 0-1 Grapplers pickMelee is exactly the old slice
+  let sliceSame = true; const pool = [mk('a', 0), mk('b', 0), mk('c', 1), mk('d', 0)];
+  for (let k = 0; k < 24; k++) { const l = pool.slice().sort(() => Math.sin(k * 7.3 + l0()) ); function l0() { return 0; } for (const n of [1, 2]) if (ids(l, n) !== l.slice(0, n).map(e => e.id).join(',')) sliceSame = false; pool.push(pool.shift()); }
+  r.sliceSame = sliceSame;
+  // --- Scripted Wave 3 AI: 2 Grapplers + 2 Brawlers around the player; count telling/attacking each frame
+  BeatEmUp.stage = 2; Game.phase = 'fight'; Game.fighting = 1; Math.random = () => .01;
+  const p = fighters[0]; p.reset(600, 1); player.f = p; player.depth = .5; p.hp = 1e4;
+  const wave3 = () => ['grappler', 'grappler', 'brawler', 'brawler'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (40 + 12 * i), .5); e.f.face = i % 2 ? -1 : 1; e.ai.cool = 0; return e; });
+  const run = (frames, hook) => {
+    const o = { maxAct: 0, maxGrab: 0, grabTells: {}, brawlerTell: false };
+    for (let i = 0; i < frames; i++) {
+      if (hook) hook(i);
+      BeatEmUp.updateGroupAI(Game.STEP, player);
+      const en = BeatEmUp.cast.filter(e => e.role === 'enemy');
+      o.maxAct = Math.max(o.maxAct, en.filter(e => e.ai.tellT > 0 || e.f.atk || e.f.grabVictim).length);
+      o.maxGrab = Math.max(o.maxGrab, en.filter(e => BeatEmUp.grapplerActive(e)).length);
+      en.forEach((e, k) => { if (e.f.enemyGrab && e.ai.tellT > 0) o.grabTells[k] = (o.grabTells[k] || 0) + 1; if (!e.f.enemyGrab && e.ai.tellT > 0) o.brawlerTell = true; if (e.ai.tellT <= 0) e.ai.cool = 0; });
+    }
+    return o;
+  };
+  BeatEmUp.cast = [player, ...wave3()];
+  r.ai = run(300);
+  // one Grappler holding (G index 0): the other Grappler never tells while it holds, Brawlers still attack
+  // G1 moved far back so G2 is the nearest enemy: control (G1 idle) -> G2 tells; G1 holding -> G2 never tells, a Brawler takes the slot
+  const farG1 = () => { const w = wave3(); w[0].f.x = 820; w[0].f.face = -1; BeatEmUp.cast = [player, ...w]; return w; };
+  farG1(); r.aiControl = run(120);
+  const w3 = farG1(); w3[0].f.grabVictim = p;
+  r.aiHold = run(200);
+  w3[0].f.grabVictim = null; Math.random = prev.random;
+  r.aiOk = r.ai.maxAct === 2 && r.ai.maxGrab === 1 && r.ai.brawlerTell && r.aiControl.grabTells[1] > 0
+    && r.aiHold.maxAct <= 2 && !r.aiHold.grabTells[1] && r.aiHold.brawlerTell;
+  // --- No grace window: right after a release (noRegrab running, no heldBy) Brawlers are still eligible and can tell
+  const w4 = wave3(); BeatEmUp.cast = [player, ...w4]; p.noRegrabT = 1.5; p.heldBy = null; Math.random = () => .01;
+  r.afterRelease = run(60, () => { p.noRegrabT = Math.max(0, p.noRegrabT - Game.STEP); });
+  Math.random = prev.random; p.noRegrabT = 0;
+  r.noGraceOk = r.afterRelease.brawlerTell;
+  // --- No-regrab: a second grab within 1.5 s is refused
+  const gp = BeatEmUp.makeEnemy('grappler', 640, .5); BeatEmUp.cast = [player, gp]; gp.f.face = -1;
+  p.reset(600, 1); player.depth = .5; p.hp = 1e4; p.stun = 0; p.invincibleT = 0; p.dodgeT = 0;
+  BeatEmUp.withDepth(gp, () => gp.f.startAtk('punch'));
+  p.noRegrabT = 1.5; const blocked = EnemyGrab.canCatch(gp.f, p); p.noRegrabT = 0; const free = EnemyGrab.canCatch(gp.f, p);
+  r.regrab = { blocked, free, window: EnemyGrabs.clinch.noRegrab ?? null };
+  r.regrabOk = blocked === 'no-regrab' && free === '';
+  // --- Stats unchanged
+  const A = EnemyArchetypes;
+  r.stats = [A.grappler.health, A.grappler.speed, A.grappler.grab, A.brawler.health, A.brawler.speed, A.brawler.combo].join('/');
+  r.moveHash = hash(JSON.stringify([A.grappler, A.brawler, EnemyGrabs.clinch, EnemyCombos.jabCross]));
+  Object.assign(BeatEmUp, { stage: prev.stage, cast: prev.cast, cameraX: prev.cameraX, lockL: prev.lockL, lockR: prev.lockR, wave: prev.wave, waveSpawnQueue: prev.queue, waveSpawnTimer: prev.timer });
+  Object.assign(Game, { arcadeLevel: prev.level, mode: prev.mode, phase: prev.phase, banner: prev.banner, bannerT: prev.bannerT, fighting: prev.fighting });
+  p.reset(200, 1);
+  r.pass = r.lineupOk && r.othersHash === 'e384ae8d' && r.spawnOk && r.pickOk && r.sliceSame && r.aiOk && r.noGraceOk && r.regrabOk
+    && r.stats === '115/0.9/clinch/110/0.95/jabCross' && r.moveHash === '21164058';
   return r;
 }
 """
@@ -1712,12 +1809,12 @@ def main():
             brawler = page.evaluate(BRAWLER)
             print('brawler archetype', json.dumps({k: v for k, v in brawler.items() if k != 'pass'}))
             if not brawler['pass']:
-                failures.append('Brawler archetype failed: expected 110hp stage/difficulty-scaled, 0.95 speed, fists only, ROOKIE hurtbox, no profile on existing archetypes (draw unchanged), jab-cross = 2 hits totalling one ROOKIE punch, Stage 1 brawlers and the Stage 2-3 ROOKIE->brawler swaps (2 of 5) in place')
+                failures.append('Brawler archetype failed: expected 110hp stage/difficulty-scaled, 0.95 speed, fists only, ROOKIE hurtbox, no profile on existing archetypes (draw unchanged), jab-cross = 2 hits totalling one ROOKIE punch, Stage 1 brawlers and the Stage 3 ROOKIE->brawler swap (1 of 3) in place')
             rusher = page.evaluate(RUSHER)
             print('rusher archetype', json.dumps({k: v for k, v in rusher.items() if k not in ('pass', 'sweep')}))
             if not rusher['pass']:
                 print('rusher sweep', json.dumps(rusher['sweep']))
-                failures.append('Rusher archetype failed: expected 80hp stage-scaled, 1.35 speed, no weapon, RUNNER fully replaced (21 rusher spawns after Stage 1), ROOKIE hurtbox, draw-only profile, 16f crouch + 18f/156px dash with hitbox only on the last 7 dash frames, 18px brake + 42f whiff recovery, locked direction, one-ROOKIE-punch hit that stops the dash')
+                failures.append('Rusher archetype failed: expected 80hp stage-scaled, 1.35 speed, no weapon, RUNNER fully replaced (18 rusher spawns after Stages 1-2), ROOKIE hurtbox, draw-only profile, 16f crouch + 18f/156px dash with hitbox only on the last 7 dash frames, 18px brake + 42f whiff recovery, locked direction, one-ROOKIE-punch hit that stops the dash')
             heavy = page.evaluate(HEAVY)
             print('heavy archetype', json.dumps({k: v for k, v in heavy.items() if k not in ('pass', 'sweep')}))
             if not heavy['pass']:
@@ -1731,9 +1828,9 @@ def main():
             grappler = page.evaluate(GRAPPLER)
             print('grappler archetype', json.dumps({k: v for k, v in grappler.items() if k not in ('pass', 'sweep')}))
             stage_src = (ROOT / 'stage-settings.js').read_text(encoding='utf-8')
-            if not grappler['pass'] or 'grappler' in stage_src:
+            if not grappler['pass']:
                 print('grappler sweep', json.dumps(grappler['sweep']))
-                failures.append('Grappler archetype failed: expected 115hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only long-arm open-hand profile, grab only within reach and the same-lane tolerance, no grab on invulnerable/rolling/airborne/stunned players, wind-up hit cancels it, 27f wind-up -> 30f hold -> headbutt release -> 24f recovery, release on Grappler hit/death, held player immune to others, 1.5 s no-regrab, 0.8 s miss recovery, AI GRAB tell gated by cooldown')
+                failures.append('Grappler archetype failed: expected 115hp stage-scaled, 0.9 speed, no weapon, 4 Stage 2 spawns, ROOKIE hurtbox, draw-only long-arm open-hand profile, grab only within reach and the same-lane tolerance, no grab on invulnerable/rolling/airborne/stunned players, wind-up hit cancels it, 27f wind-up -> 30f hold -> headbutt release -> 24f recovery, release on Grappler hit/death, held player immune to others, 1.5 s no-regrab, 0.8 s miss recovery, AI GRAB tell gated by cooldown')
             disruptor = page.evaluate(DISRUPTOR)
             print('disruptor archetype', json.dumps({k: v for k, v in disruptor.items() if k != 'pass'}))
             if not disruptor['pass'] or 'disruptor' in stage_src:
@@ -1745,7 +1842,11 @@ def main():
             stage1 = page.evaluate(STAGE1)
             print('stage 1', json.dumps({k: v for k, v in stage1.items() if k != 'pass'}))
             if not stage1['pass']:
-                failures.append('Stage 1 failed: expected waves brawler,brawler / brawler,rusher,brawler / brawler,rusher,brawler,rusher with no kunai/bruiser text and the Block Captain unchanged, Stage 1 spawns read from its wave "spawns" (and actually spawned there), stages 2-10 reproducing the old built-in layouts for all 81 slots, wave -> stage[n] -> stage default -> built-in per-field fallback with 0-1 clamping, Brawler/Rusher stats and moves unchanged, and at most 2 simultaneous attackers')
+                failures.append('Stage 1 failed: expected waves brawler,brawler / brawler,rusher,brawler / brawler,rusher,brawler,rusher with no kunai/bruiser text and the Block Captain unchanged, Stage 1 spawns read from its wave "spawns" (and actually spawned there), stages 3-10 reproducing the old built-in layouts for all 72 slots, wave -> stage[n] -> stage default -> built-in per-field fallback with 0-1 clamping, Brawler/Rusher stats and moves unchanged, and at most 2 simultaneous attackers')
+            stage2 = page.evaluate(STAGE2)
+            print('stage 2', json.dumps({k: v for k, v in stage2.items() if k != 'pass'}))
+            if not stage2['pass']:
+                failures.append('Stage 2 failed: expected waves grappler,brawler / grappler,brawler,brawler / grappler,grappler,brawler,brawler with Grappler/Brawler text and the Dockmaster unchanged, other stages byte-identical, authored spawns read and actually spawned, at most one Grappler among the active attackers (an active Grappler keeps its slot, others yield to the next enemy; exact old slice otherwise), the two-attacker cap, Brawlers eligible right after a release (no grace window), no-regrab refusing a second grab, and Grappler/Brawler stats and moves unchanged')
             boss_b2b = page.evaluate(BOSS_B2B)
             print('boss b2b', json.dumps({k: v for k, v in boss_b2b.items() if k not in ('pass', 'bcStay', 'bcGap', 'bcSide', 'bcLane', 'bcEdge')}))
             if not boss_b2b['pass']:

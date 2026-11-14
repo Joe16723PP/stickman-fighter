@@ -128,40 +128,82 @@ window.ARCADE_STAGE_SETTINGS = [
     "key": "dockside-ambush",
     "title": "DOCKSIDE AMBUSH",
     "location": "Industrial harbor",
-    "storyIntro": "The crest leads to the harbor, where a shipment is guarded by rushers and bruisers.",
+    "storyIntro": "The crest leads to the harbor, where grapplers and brawlers guard a syndicate shipment.",
     "waves": [
       {
         "wave": 1,
         "title": "PIER WATCH",
-        "storyBeat": "Dock guards hold the pier and block the route to the cargo.",
+        "storyBeat": "A dock grappler waits on the pier to grab anyone who gets too close, while a brawler hangs back by the cargo.",
         "enemyFocus": [
-          "brawler",
-          "heavy",
-          "regular"
+          "grappler",
+          "brawler"
         ],
-        "visualCue": "Harbor lights sweep across the dock."
+        "spawns": [
+          {
+            "ox": 0.55,
+            "depth": 0.5
+          },
+          {
+            "ox": 0.92,
+            "depth": 0.15
+          }
+        ],
+        "visualCue": "Harbor lights sweep the pier as the grappler opens its arms."
       },
       {
         "wave": 2,
         "title": "HARBOR FLANK",
-        "storyBeat": "Rushers attack from both sides while the guards hold the center.",
+        "storyBeat": "Brawlers close in from both sides to push you into the grappler's reach.",
         "enemyFocus": [
-          "rusher",
-          "rusher",
-          "heavy"
+          "grappler",
+          "brawler",
+          "brawler"
         ],
-        "visualCue": "A warning light flashes near the waterline."
+        "spawns": [
+          {
+            "ox": 0.6,
+            "depth": 0.5
+          },
+          {
+            "ox": 0.3,
+            "depth": 0.2
+          },
+          {
+            "ox": 0.85,
+            "depth": 0.82
+          }
+        ],
+        "visualCue": "A warning light flashes near the waterline as the brawlers fan out."
       },
       {
         "wave": 3,
         "title": "LEDGER DEFENSE",
-        "storyBeat": "Heavies protect the shipment ledger that links the syndicate to the market.",
+        "storyBeat": "Two grapplers hold separate lanes while brawlers guard the shipment ledger.",
         "enemyFocus": [
-          "heavy",
-          "heavy",
-          "rusher"
+          "grappler",
+          "grappler",
+          "brawler",
+          "brawler"
         ],
-        "visualCue": "The guarded cargo area becomes visible."
+        "spawns": [
+          {
+            "ox": 0.55,
+            "depth": 0.3
+          },
+          {
+            "ox": 0.88,
+            "depth": 0.8
+          },
+          {
+            "ox": 0.7,
+            "depth": 0.6
+          },
+          {
+            "ox": 0.95,
+            "depth": 0.12
+          }
+        ],
+        "visualCue": "The guarded cargo area opens up between the two grapplers."
       }
     ],
     "boss": {
