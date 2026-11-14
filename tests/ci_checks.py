@@ -362,7 +362,7 @@ BRAWLER = r"""
   const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
   r.hurtbox = { brawler: box(br), rookie: box(rk) };
   // Existing archetypes: no profile, no combo, draw bones identical to gameplay bones.
-  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
+  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher' && k !== 'heavy').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
     && BeatEmUp.withDepth(made[k], () => JSON.stringify(ArchetypeSkeleton.drawBones(made[k].f)) === JSON.stringify(made[k].f.bones())));
   // Draw trace: a ROOKIE draws exactly like a plain Fighter that never touched the archetype code.
   const trace = f => { const ops = []; const ctx = new Proxy({}, {
@@ -520,6 +520,101 @@ RUSHER = r"""
 }
 """
 
+HEAVY = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const hv = BeatEmUp.makeEnemy('heavy', 400, .5), rk = BeatEmUp.makeEnemy('regular', 400, .5);
+  r.stats = { hp: hv.f.hp, expectHp: Math.round(145 * stageHealth), speedMul: hv.speedMul, scaleMul: hv.scaleMul, weapon: hv.f.weaponType,
+    dmgMul: hv.f.damageMultiplier, tag: hv.f.tag, slam: hv.f.enemySlam, rush: hv.f.enemyRush, combo: hv.f.enemyCombo, profile: hv.f.bodyProfile === ArchetypeBodyProfiles.heavy };
+  let hammers = 0; for (let i = 0; i < 60; i++) if (BeatEmUp.makeEnemy('heavy', 400, .5).f.weaponType === 'sledgehammer') hammers++;
+  r.hammers = hammers;
+  r.heavySpawns = BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(k => k === 'heavy').length, 0), 0);
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  const hb = { heavy: box(hv), rookie: box(rk) };
+  r.hurtboxSame = hb.heavy.w === hb.rookie.w && hb.heavy.h === hb.rookie.h;
+  const trace = f => { const ops = []; const ctx = new Proxy({}, {
+      get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+      set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+    f.draw(ctx); return ops.join('|'); };
+  // Draw-only profile: a plain fighter with the same hammer, scale and state has identical gameplay bones but draws differently.
+  const plain = new Fighter(400, hv.f.color, -1, ''); plain.reset(400, -1); plain.weaponType = 'sledgehammer'; hv.f.reset(400, -1);
+  r.gameplayBonesSame = BeatEmUp.withDepth(hv, () => JSON.stringify(hv.f.combatBones()) === JSON.stringify(plain.combatBones()));
+  r.profileDrawn = BeatEmUp.withDepth(hv, () => trace(hv.f) !== trace(plain));
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const sp = EnemySlams.overhead, tl = EnemySlam.timeline(sp);
+  // gap: player in front by gap px (facing tracks the foe through the wind-up). flip: from the first swing frame the
+  // player stands the same gap BEHIND, i.e. facing is locked and the swing must not turn around.
+  const run = (gap, flip = false) => {
+    const x0 = 900;
+    player.reset(x0 - gap, 1); player.depth = .5; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.grounded = true;
+    hv.f.reset(x0, -1); hv.depth = .5; hv.f.face = -1; hv.f.hp = 999;
+    BeatEmUp.cast = [pEntry, hv];
+    Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    hv.f.startAtk('punch');
+    const hits = [], live = []; let frames = 0, tipMatch = true, profileFree = true, chain = false, maxTip = -Infinity, moved = false;
+    const faces = new Set();
+    for (let i = 0; i < 200 && hv.f.atk; i++) {
+      const px = flip && i >= tl.su ? x0 + gap : x0 - gap;
+      player.x = px; player.vx = 0; player.stun = 0; player.state = 'idle'; player.invincibleT = 0; BeatEmUp.withDepth(pEntry, () => player.clamp());
+      Input.pad[1].left = 1; // steering input must be ignored during the slam
+      BeatEmUp.withDepth(hv, () => { hv.f.update(Game.STEP, player, 1); });
+      Input.pad[1].left = 0;
+      frames++;
+      if (!hv.f.atk) break;
+      if (hv.f.x !== x0) moved = true;
+      if (hv.f.atkT > tl.su) faces.add(hv.f.face);
+      if (hv.f.canChainPunch()) chain = true;
+      BeatEmUp.withDepth(hv, () => {
+        trace(hv.f); // profile draw must survive every slam phase
+        const st = hv.f.strike(), g = EnemySlam.geometry(hv.f), vis = hv.f.visualWeaponGeometry(hv.f.combatBones());
+        if (vis.tip.x !== g.tip.x || vis.tip.y !== g.tip.y) tipMatch = false;      // drawn head sits on the gameplay tip
+        const saved = hv.f.bodyProfile; hv.f.bodyProfile = null;
+        const st0 = hv.f.strike(); hv.f.bodyProfile = saved;
+        if (JSON.stringify(st) !== JSON.stringify(st0)) profileFree = false;       // collision never reads the profile
+        if (st) {
+          live.push(hv.f.atkT);
+          if (st.segment.x2 !== g.tip.x || st.segment.y2 !== g.tip.y || st.segment.r !== g.r) tipMatch = false; // hitbox ends at the tip
+          maxTip = Math.max(maxTip, (g.tip.x - x0) * hv.f.face + g.r);
+        }
+      });
+      const before = player.hp; BeatEmUp.resolveHits();
+      if (player.hp < before) hits.push({ frame: hv.f.atkT, dmg: +(before - player.hp).toFixed(6) });
+    }
+    return { frames, hits, live: live.length ? live[0] + '-' + live[live.length - 1] : '', tipMatch, profileFree, chain, moved, maxTip: +maxTip.toFixed(3), faces: [...faces] };
+  };
+  r.timeline = tl;
+  r.whiff = run(600);
+  r.behind = []; for (let gap = 20; gap <= 160; gap += 20) { const o = run(gap, true); r.behind.push({ gap, n: o.hits.length, faces: o.faces }); }
+  r.sweep = [];
+  for (let gap = 0; gap <= 260; gap += 10) { const o = run(gap); r.sweep.push({ gap, n: o.hits.length, frame: o.hits[0]?.frame || 0, dmg: o.hits[0]?.dmg || 0, frames: o.frames, maxTip: o.maxTip, tipMatch: o.tipMatch, profileFree: o.profileFree }); }
+  const hitsAll = r.sweep.filter(o => o.n);
+  r.hitGaps = hitsAll.length ? hitsAll[0].gap + '-' + hitsAll[hitsAll.length - 1].gap : '';
+  r.zoneEnd = r.whiff.maxTip; // furthest hammer tip (+ head radius) in front, px
+  const half = hb.rookie.w / 2;
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode;
+  const s = r.stats, w = r.whiff;
+  r.pass = s.hp === s.expectHp && s.speedMul === .74 && s.scaleMul === 1.12 && s.weapon === 'sledgehammer' && r.hammers === 60
+    && s.dmgMul === 1 && s.tag === 'HEAVY' && s.slam === 'overhead' && s.rush === null && s.combo === null && s.profile
+    && r.heavySpawns > 0 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn
+    && tl.su === 30 && tl.ac === 4 && tl.re === 48 && tl.total === 82
+    // Whiff: full 82 frames, hitbox only on the 4 swing frames, planted, facing locked through the swing, cannot chain.
+    && w.hits.length === 0 && w.frames === 82 && w.live === '31-34' && w.tipMatch && w.profileFree && !w.chain && !w.moved && w.faces.length === 1
+    && r.behind.every(o => o.n === 0 && o.faces.length === 1 && o.faces[0] === -1)
+    // Zone: hits only in front, only on swing frames, never past the hammer tip; one hit of 12 per slam.
+    && hitsAll.length >= 5 && r.sweep.every(o => o.n <= 1 && o.tipMatch && o.profileFree)
+    && hitsAll.every(o => o.frame >= tl.su + 1 && o.frame <= tl.su + tl.ac && Math.abs(o.dmg - sp.dmg) < 1e-6 && o.gap - half <= r.zoneEnd + 1e-6)
+    && r.sweep.filter(o => o.gap - half > r.zoneEnd).every(o => o.n === 0);
+  return r;
+}
+"""
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -573,6 +668,11 @@ def main():
             if not rusher['pass']:
                 print('rusher sweep', json.dumps(rusher['sweep']))
                 failures.append('Rusher archetype failed: expected 80hp stage-scaled, 1.35 speed, no weapon, RUNNER fully replaced (20 spawns), ROOKIE hurtbox, draw-only profile, 16f crouch + 18f/156px dash with hitbox only on the last 7 dash frames, 18px brake + 42f whiff recovery, locked direction, one-ROOKIE-punch hit that stops the dash')
+            heavy = page.evaluate(HEAVY)
+            print('heavy archetype', json.dumps({k: v for k, v in heavy.items() if k not in ('pass', 'sweep')}))
+            if not heavy['pass']:
+                print('heavy sweep', json.dumps(heavy['sweep']))
+                failures.append('Heavy archetype failed: expected 145hp stage-scaled, 0.74 speed, 1.12 scale, always a sledgehammer, ROOKIE hurtbox, draw-only profile, 30f wind-up / 4f swing / 48f recovery with the hitbox only on frames 31-34 ending at the hammer tip, front-only bounded zone, one 12-damage hit, planted and facing-locked')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:

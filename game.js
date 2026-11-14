@@ -364,13 +364,16 @@ const EnemyWeaponProfiles = {
   freehand: { weapon: null, attackSpeed: 1, damage: .85 },
   stick: { weapon: 'stick', attackSpeed: .82, damage: 1.3 },
   knife: { weapon: 'knife', attackSpeed: 1.22, damage: 1 },
+  // Heavy's fixed loadout: the boss sledgehammer's numbers (damage x1, reach 150), never rolled.
+  sledgehammer: { weapon: 'sledgehammer', attackSpeed: 1, damage: BossWeapons.sledgehammer.damageMultiplier },
 };
 const EnemyArchetypes = {
   regular: { health: 100, weaponChance: 0, specialDamage: 0, specialGain: 0 },
   // Rusher replaced the old RUNNER everywhere it spawned: lean, fast, one committed shoulder rush.
   rusher: { health: 80, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: 1.35, bodyProfile: 'rusher', rush: 'shoulder' },
   tough: { health: 125, weaponChance: .2, specialDamage: .25, specialGain: .25 },
-  heavy: { health: 145, weaponChance: .5, specialDamage: .45, specialGain: .45 },
+  // Heavy (rebuilt in place, same spawns): mass/weight body, always a sledgehammer, one overhead slam.
+  heavy: { health: 145, weaponChance: 0, loadout: 'sledgehammer', specialDamage: .45, specialGain: .45, speed: .74, scale: 1.12, bodyProfile: 'heavy', slam: 'overhead' },
   thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
   boss: { health: 220, weaponChance: 1, specialDamage: 1, specialGain: 1 },
   brawler: { health: 110, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .95, bodyProfile: 'brawler', combo: 'jabCross' },
@@ -469,6 +472,47 @@ const EnemyRush = {
   },
 };
 
+/* Enemy overhead slams. Frames are at 60 fps (fixed Game.STEP loop), on ONE shared 'punch' attack
+ * state: wind-up (hammer lifts forward and up over the head) -> active (hammer sweeps over the top
+ * down into one zone in front) -> recovery (head held down in a follow-through, then back to stance).
+ * Collision is a segment from the hands to the hammer TIP (radius r), built only from the shared rig
+ * constants (x, ground, Fighter.S/ARM/TORSO, face, atkT); body profiles and hammer art never touch it.
+ * Facing tracks the foe during the wind-up and locks from the first active frame. No shockwave,
+ * no projectile, no screen shake: the cue is the raised hammer, the 'SLAM' tell and the impact pose. */
+const EnemySlams = {
+  overhead: {
+    label: 'SLAM',
+    windup: 30, active: 4, recovery: 48, followHold: 30,   // 0.5 s raise, 4 f swing, 0.8 s recovery
+    dmg: 12, kb: 260, stun: 22,                            // before weapon/difficulty multipliers
+    handle: 44, r: 9,                                      // hammer past the hands / collision radius (x Fighter.S)
+    triggerRange: 120,                                     // AI starts the tell inside this gap (px)
+    rest: -40, raised: -200, impact: -55,                  // hammer angle (deg, la/ra convention: -90 = forward, -180 = up)
+    windPose:   {chest:12,neck:-4,head:-2,ll:30,lk:16,rl:-30,rk:22,hipBob:2,shPull:0},
+    impactPose: {chest:-22,neck:6,head:6,ll:36,lk:20,rl:-34,rk:30,hipBob:10,shPull:0},
+    followPose: {chest:-28,neck:8,head:8,ll:36,lk:22,rl:-34,rk:32,hipBob:12,shPull:0},
+  },
+};
+const EnemySlam = {
+  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.recovery, total: spec.windup + spec.active + spec.recovery }; },
+  /** Hammer angle in degrees at attack frame t. */
+  angle(spec, t) {
+    const su = spec.windup, ac = spec.active;
+    if (t <= su) return spec.rest + (spec.raised - spec.rest) * Pose.easeOut(t / su);
+    if (t <= su + ac) return spec.raised + (spec.impact - spec.raised) * (t - su) / ac;
+    const r = t - su - ac;
+    if (r <= spec.followHold) return spec.impact;
+    return spec.impact + (spec.rest - spec.impact) * Pose.easeOut((r - spec.followHold) / Math.max(1, spec.recovery - spec.followHold));
+  },
+  /** Gameplay hammer: hands -> tip. Shared rig only (never the body profile). */
+  geometry(f) {
+    const spec = f.atk.slam, s = f.drawS(), face = f.face, phi = EnemySlam.angle(spec, f.atkT) * Math.PI / 180;
+    const pivot = { x: f.x, y: f.groundY() + f.y - 40 * s - Fighter.TORSO };
+    const dir = { x: -face * Math.sin(phi), y: Math.cos(phi) };
+    const hand = 2 * Fighter.ARM, len = hand + spec.handle * s;
+    return { start: { x: pivot.x + dir.x * hand, y: pivot.y + dir.y * hand }, tip: { x: pivot.x + dir.x * len, y: pivot.y + dir.y * len }, r: spec.r * s };
+  },
+};
+
 /* Shared archetype skeleton. Every enemy archetype is drawn from the same Fighter rig:
  * one joint set from Fighter.bones() and one pose/animation pipeline (aim/tickPose).
  * An archetype may add a BODY PROFILE, which only reshapes how that rig is drawn:
@@ -502,6 +546,21 @@ const ArchetypeBodyProfiles = {
     frontWeight: 3,        // idle/walk: hips and torso shift over the lead foot (feet stay put)
     guardPose: {chest:-14,neck:8,head:4,la:-40,le:-70,ra:20,re:-60}, // forward lean, arms low and ready
     equipment: [{ kind: 'scarf', joints: ['neck'], layer: 'back' }],
+  },
+  heavy: {
+    torsoWidth: 2.1,       // broad, thick trunk (Brawler 1.6)
+    shoulderWidth: 9,      // wide yoke
+    limbWidth: 1.55,       // big upper arms
+    forearmWidth: 1.5,
+    legWidth: 1.55,        // thick legs...
+    legLength: .86,        // ...that read short: upper body sinks, lowest foot stays planted (low centre of gravity)
+    handRadius: 1.6, handStyle: 'mitt', // oversized plain hands (no Brawler glove ring)
+    neckScale: .4,         // head sits down between the shoulders
+    stanceWidth: 8,        // wide planted stance
+    guardPose: {chest:6,neck:-3,head:3,la:-38,le:-42,ra:-14,re:-48}, // hammer hand low at the side
+    breathe: { amp: 1.6, rate: 2.4 }, // idle: slow weight shift side to side + breathing rise, feet planted
+    stepDip: 2.4,          // walk: extra hip drop on each footfall (weighty steps)
+    hitPose: {chest:26,neck:12,head:22,la:-120,le:-30,ra:-100,re:-25}, // bigger recoil on the shared hit reaction
   },
 };
 const ArchetypeEquipment = {
@@ -563,10 +622,17 @@ const ArchetypeSkeleton = {
   drawBones(f) {
     const prof = f.bodyProfile;
     if (!prof) return f.bones();
-    let raw;
-    if (ArchetypeSkeleton.guardActive(f)) {
-      const saved = f.pose, g = EnemyCombo.pose(prof.guardPose);
-      f.pose = { ...saved, ...g };
+    let raw, over = null;
+    if (ArchetypeSkeleton.guardActive(f)) over = EnemyCombo.pose(prof.guardPose);
+    else if (prof.hitPose && !f.atk && !f.ragdollActive && f.hp > 0 && (f.state === 'hit' || f.stun > 0)) over = EnemyCombo.pose(prof.hitPose);
+    if (f.atk?.slam && f.hp > 0 && !f.ragdollActive) {
+      // Both hands on the hammer handle: arms point along the gameplay hammer angle.
+      const phi = EnemySlam.angle(f.atk.slam, f.atkT) * Math.PI / 180;
+      over = { ...(over || {}), la: phi + .18, le: -.3, ra: phi, re: 0 };
+    }
+    if (over) {
+      const saved = f.pose;
+      f.pose = { ...saved, ...over };
       try { raw = f.bones(); } finally { f.pose = saved; }
     } else raw = f.bones();
     const b = { ...raw }, face = f.face, unit = raw.lens.arm / 18;
@@ -591,6 +657,13 @@ const ArchetypeSkeleton = {
     const fw = ArchetypeSkeleton.guardActive(f) ? (prof.frontWeight || 0) * unit * face : 0;
     if (fw) { for (const k of upper) b[k] = add(b[k], fw, 0); b.llJ = add(b.llJ, fw * .5, 0); b.rlJ = add(b.rlJ, fw * .5, 0); }
     // Longer legs: scale both legs from the hip and lift everything above it so the lowest foot keeps its spot.
+    // Idle weight shift / breathing and weighty walk steps: upper body moves, knees by half, feet planted.
+    if ((prof.breathe || prof.stepDip) && ArchetypeSkeleton.guardActive(f)) {
+      let dx = 0, dy = 0;
+      if (prof.breathe && f.state === 'idle') { const ph = (f.animT || 0) * prof.breathe.rate; dx = Math.sin(ph) * prof.breathe.amp * unit * face; dy = -Math.max(0, Math.sin(ph * 2)) * prof.breathe.amp * .6 * unit; }
+      if (prof.stepDip && f.state === 'walk') dy = Math.abs(Math.sin((f.walkT || 0) * Math.PI * 2 / .45)) * prof.stepDip * unit;
+      if (dx || dy) { for (const k of upper) b[k] = add(b[k], dx, dy); b.llJ = add(b.llJ, dx * .5, dy * .5); b.rlJ = add(b.rlJ, dx * .5, dy * .5); }
+    }
     const lk = prof.legLength || 1;
     if (lk !== 1) {
       const hip0 = b.hip, lift = Math.max(b.ll.y - hip0.y, b.rl.y - hip0.y, 0) * (lk - 1);
@@ -622,6 +695,7 @@ const ArchetypeSkeleton = {
       ctx.fillStyle = 'rgba(3,8,18,.96)'; ctx.beginPath(); ctx.arc(hand.x, hand.y, r + 2.5 / Game.scale, 0, Math.PI * 2); ctx.fill();
       ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale;
       ctx.beginPath(); ctx.arc(hand.x, hand.y, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      if (p.handStyle === 'mitt') continue; // plain big hands; the glove ring stays Brawler's
       ctx.strokeStyle = '#F2E8D2'; ctx.lineWidth = 1.6 * b.unit;
       ctx.beginPath(); ctx.arc(hand.x, hand.y, r * .62, 0, Math.PI * 2); ctx.stroke();
     }
@@ -1581,7 +1655,7 @@ class Fighter {
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
     this.bossProfile = null;
-    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; // archetype draw profile + multi-hit normal / committed rush (enemies only)
+    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; // archetype draw profile + multi-hit normal / committed rush (enemies only)
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
@@ -1784,6 +1858,7 @@ class Fighter {
     }
     if (kind === 'punch' && this.enemyCombo && EnemyCombos[this.enemyCombo]) { this.startEnemyCombo(EnemyCombos[this.enemyCombo]); return; }
     if (kind === 'punch' && this.enemyRush && EnemyRushes[this.enemyRush]) { this.startEnemyRush(EnemyRushes[this.enemyRush]); return; }
+    if (kind === 'punch' && this.enemySlam && EnemySlams[this.enemySlam]) { this.startEnemySlam(EnemySlams[this.enemySlam]); return; }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -1941,6 +2016,31 @@ class Fighter {
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
     this.atkPhase = '';
   }
+  /** Archetype overhead slam (e.g. Heavy sledgehammer) on the shared 'punch' state. */
+  startEnemySlam(spec) {
+    const tl = EnemySlam.timeline(spec);
+    this.atk = {
+      su: tl.su, ac: tl.ac, re: tl.re,
+      dmg: spec.dmg * this.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
+      chain: 0, kind: 'punch', reach: BossWeapons.sledgehammer.reach, linked: false, slam: spec,
+    };
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+    this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = '';
+  }
+  driveSlamPose(a, t) {
+    const sp = a.slam;
+    let key, pose, dur;
+    if (t <= a.su) { key = 'hw'; pose = sp.windPose; dur = a.su; }
+    else if (t <= a.su + a.ac) { key = 'hs'; pose = sp.impactPose; dur = 2; }
+    else if (t <= a.su + a.ac + sp.followHold) { key = 'hf'; pose = sp.followPose; dur = 6; }
+    else { key = 'hr'; pose = null; dur = Math.max(1, a.su + a.ac + a.re - t); }
+    if (this.atkPhase === key) return;
+    const base = Pose.idle(null), guard = this.bodyProfile?.guardPose ? EnemyCombo.pose(this.bodyProfile.guardPose) : {};
+    this.aim(key, pose ? { ...base, ...EnemyCombo.pose(pose) } : { ...base, ...guard }, dur * Game.STEP); this.atkPhase = key;
+    if (key === 'hs') Sfx.play('kick', null);
+  }
   driveRushPose(a, t) {
     const sp = a.rush, tl = EnemyRush.timeline(sp);
     let key, pose, dur;
@@ -1984,7 +2084,7 @@ class Fighter {
     }
   }
   canChainPunch() {
-    if (!this.atk || !this.hitConfirmed || this.atk.rush) return false;
+    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam) return false;
     const a = this.atk;
     if (this.state === 'kick') {
       const total = a.su + a.ac + a.re;
@@ -1997,7 +2097,7 @@ class Fighter {
     return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
   }
   canChainHeavy() {
-    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush) return false;
+    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam) return false;
     const a = this.atk;
     const intoRecovery = this.atkT - (a.su + a.ac);
     return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRecovery <= Moves.punch.chainWindow;
@@ -2211,6 +2311,7 @@ class Fighter {
     }
     if (a.combo) { this.driveComboPose(a, t); return; }
     if (a.rush) { this.driveRushPose(a, t); return; }
+    if (a.slam) { this.driveSlamPose(a, t); return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -2391,6 +2492,7 @@ class Fighter {
         const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
         Fx.superTrail(this.x - cameraX, this.groundY() + this.y - 58 * this.drawS(), this.face, this.classProfile);
       } else if (a.rush) this.vx = 0; // rush travel comes only from EnemyRush.tick (bounded); no steering
+      else if (a.slam) this.vx = 0; // planted for the whole slam
       else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
@@ -2409,6 +2511,7 @@ class Fighter {
       if (this.bladeSuper && this.atkT < BladeSuper.FACE_LOCK_FRAME) this.bladeSuper.face = this.face = other.x >= this.x ? 1 : -1;
       else if (this.atk && this.state === 'special' && this.classProfile?.weapon === 'blade') this.face = this.bladeSuper?.face ?? this.face;
       else if (this.atk && a.rush) this.face = a.rushDir; // committed: direction locked at rush start
+      else if (this.atk && a.slam) { if (this.atkT <= a.su) this.face = other.x >= this.x ? 1 : -1; } // track in wind-up, lock from the swing
       else if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
     }
@@ -2513,6 +2616,13 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
+    if (a.slam && this.state === 'punch') {
+      // Hands -> hammer tip only; the segment ends at the tip (plus the head radius), nothing beyond.
+      const g = EnemySlam.geometry(this), start = g.start, end = g.tip, r = g.r;
+      return {x:Math.min(start.x,end.x)-r, y:Math.min(start.y,end.y)-r, w:Math.abs(end.x-start.x)+r*2, h:Math.abs(end.y-start.y)+r*2,
+        segment:{x1:start.x,y1:start.y,x2:end.x,y2:end.y,r}, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:0, special:false, critical:false,
+        comboFinisher:false, comboLink:false, chain:0, slam:true};
+    }
     if (a.rush && this.state === 'punch') {
       // Shoulder box ahead of the chest; only reachable on the live (last) dash frames, gated above.
       const b = this.combatBones(), s = this.drawS(), r = 20 * this.depthScale();
@@ -2747,6 +2857,7 @@ class Fighter {
     (this.state === 'special' || this.state === 'punch' || this.state === 'kick')), staffFrontOverride = null) {
     const weapon = this.classProfile?.weapon || this.weaponType;
     if (!weapon) return null;
+    if (this.atk?.slam && this.state === 'punch') { const g = EnemySlam.geometry(this); return { start: g.start, tip: g.tip }; }
     const hand = b.ra, face = this.face;
     const reachMul = Game.mode === 'beatemup' ? 1 : this.depthScale();
     if (weapon === 'stick') {
@@ -2903,7 +3014,8 @@ class Fighter {
       ctx.strokeStyle = '#CBD5E1'; ctx.lineWidth = 2.5 * arcadeSize;
       for (const p of [start,tip]) { ctx.beginPath(); ctx.arc(p.x,p.y,4 * arcadeSize,0,Math.PI*2); ctx.stroke(); }
     } else if (BossWeapons[weapon]) {
-      this.drawBossWeapon(ctx, b, weapon, start, tip);
+      // Slam: the drawn handle starts in the drawn hand; the head sits on the gameplay tip.
+      this.drawBossWeapon(ctx, b, weapon, this.atk?.slam && this.state === 'punch' ? b.ra : start, tip);
     } else {
       const grip = {x:start.x - this.face * 13,y:start.y + 3};
       const dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx,dy) || 1;
@@ -4225,7 +4337,7 @@ class BeatEmUp {
   static makeEnemy(kind, x, depth) {
     const f = new Fighter(x, CpuHotColors.enemy[kind] || CpuHotColors.enemy.regular, -1, '');
     const archetype = EnemyArchetypes[kind] || EnemyArchetypes.regular;
-    let scaleMul = kind === 'boss' ? 1.25 : kind === 'heavy' ? 1.12 : 1;
+    let scaleMul = kind === 'boss' ? 1.25 : archetype.scale || 1;
     if (kind === 'boss') {
       const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
       const profile = chapter?.boss?.profile;
@@ -4244,8 +4356,9 @@ class BeatEmUp {
         f.damageMultiplier = loadout.damage;
       }
     } else {
-      const armed = Math.random() < archetype.weaponChance;
-      const weaponKey = armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand';
+      // Fixed loadouts (Heavy's sledgehammer) skip the weapon roll entirely.
+      const armed = !archetype.loadout && Math.random() < archetype.weaponChance;
+      const weaponKey = archetype.loadout || (armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand');
       const loadout = EnemyWeaponProfiles[weaponKey];
       f.weaponType = loadout.weapon;
       f.attackSpeed = loadout.attackSpeed;
@@ -4257,12 +4370,13 @@ class BeatEmUp {
     f.bodyProfile = ArchetypeSkeleton.profileFor(kind); // draw-only; null for archetypes without a profile
     f.enemyCombo = archetype.combo || null;
     f.enemyRush = archetype.rush || null;
+    f.enemySlam = archetype.slam || null;
     f.y = 0;
     f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
-    const speedMul = archetype.speed ?? (kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1);
+    const speedMul = archetype.speed ?? (kind === 'tough' ? 1.32 : kind === 'boss' ? .92 : 1);
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
       ai: { mode: 'circle', atkSlot: 0, cool: kind === 'boss' ? .65 : .3 + Math.random() * .4, orbit: Math.random() * Math.PI * 2, preferDepth: depth, tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0 },
@@ -4614,7 +4728,8 @@ class BeatEmUp {
         e.f.update(dt, player.f, 1);
         if (e.f.atk && e.f.atk !== e._tunedAtk) {
           e._tunedAtk = e.f.atk;
-          if (e.kind === 'heavy') { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
+          // Heavy's slam carries its own damage/stun; the old x1.25 / +2 stun trim only applies to its other moves (special).
+          if (e.kind === 'heavy' && !e.f.atk.slam) { e.f.atk.dmg *= 1.25; e.f.atk.stun += 2; }
           if (e.kind === 'tough') { e.f.atk.dmg *= .8; }
           e.f.atk.dmg *= BeatEmUp.difficulty.damage;
           if (e.kind === 'boss') {
@@ -4681,6 +4796,7 @@ class BeatEmUp {
           Input.pad[1][ai.tellMove] = 1;
           ai.cool = e.kind === 'boss'
             ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
+            : e.f.enemySlam && ai.tellMove === 'punch' ? .4 + EnemySlam.timeline(EnemySlams[e.f.enemySlam]).total * Game.STEP
             : e.f.enemyRush && ai.tellMove === 'punch' ? BeatEmUp.pacing.attackRecovery.agile + EnemyRush.timeline(EnemyRushes[e.f.enemyRush]).total * Game.STEP
             : e.kind === 'rusher' || e.kind === 'tough' ? BeatEmUp.pacing.attackRecovery.agile
               : e.kind === 'heavy' ? BeatEmUp.pacing.attackRecovery.heavy
@@ -4713,7 +4829,8 @@ class BeatEmUp {
       if (e.depth < player.depth - 0.05) e.depth = Math.min(1, e.depth + 0.85 * dt);
       else if (e.depth > player.depth + 0.05) e.depth = Math.max(0, e.depth - 0.85 * dt);
       const rush = !e.bossProfile && e.f.enemyRush ? EnemyRushes[e.f.enemyRush] : null;
-      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : Moves.punch.reach + 10;
+      const slam = !e.bossProfile && e.f.enemySlam ? EnemySlams[e.f.enemySlam] : null;
+      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : Moves.punch.reach + 10;
       if (rush && !e.f.atk && dist < rush.minRange && (ai.backoffT || 0) < rush.backoffMax) {
         // Too close for the rush: walk out to spacing on the side with room (through the player if
         // pinned at a bound); gives up after backoffMax and rushes anyway.
@@ -4749,12 +4866,13 @@ class BeatEmUp {
           const specialChance = e.kind === 'boss' ? .24 : .12;
           if (canSpecial && Math.random() < specialChance) move = 'special';
           else if (e.f.enemyCombo) move = 'punch'; // archetype string (Brawler jab-cross) rides the punch input
-          else if (e.kind === 'heavy') move = Math.random() < .7 ? 'kick' : 'punch';
+          else if (e.f.enemySlam) move = 'punch'; // Heavy overhead slam rides the punch input
           else if (e.f.enemyRush) move = 'punch'; // Rusher shoulder rush rides the punch input
           else if (e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
           else move = Math.random() < .72 ? 'punch' : 'kick';
           label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH'
-            : move === 'punch' && e.f.enemyRush ? EnemyRushes[e.f.enemyRush]?.label || 'PUNCH' : move.toUpperCase();
+            : move === 'punch' && e.f.enemyRush ? EnemyRushes[e.f.enemyRush]?.label || 'PUNCH'
+            : move === 'punch' && e.f.enemySlam ? EnemySlams[e.f.enemySlam]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }
