@@ -5284,6 +5284,21 @@ class BeatEmUp {
   static waveSpawnQueue = [];
   static waveSpawnTimer = 0;
   static MAX_ATTACKERS = 2; // at most two regular enemies attack at once (a ranged attacker takes one slot)
+  /** Grappler is an active attacker: holding a victim, mid-grab, or telling its GRAB. */
+  static grapplerActive(e) { return !!(e.f.enemyGrab && (e.f.grabVictim || e.f.atk?.grab || (e.ai?.tellT > 0 && e.ai.tellMove === 'punch'))); }
+  /** Nearest-first melee attackers with at most one Grappler (Stage 2). An active Grappler (holding, mid-grab or telling)
+      keeps its attacker slot; any other Grappler is skipped while one is picked, and its slot goes to the next enemy.
+      With no active Grappler and at most one Grappler this is exactly sorted.slice(0, n). */
+  static pickMelee(sorted, n) {
+    const active = sorted.find(e => BeatEmUp.grapplerActive(e));
+    const out = active && n > 0 ? [active] : [];
+    for (const e of sorted) {
+      if (out.length >= n) break;
+      if (e === active || (e.f.enemyGrab && out.some(o => o.f.enemyGrab))) continue;
+      out.push(e);
+    }
+    return out;
+  }
   static BOSS_CUE = true; // boss silhouette cue (draw-only)
   static pacing = {
     spawnInterval: 0.35,
@@ -5964,7 +5979,7 @@ class BeatEmUp {
     const ranged = sorted.find(e => e.kind === 'ranged');
     const attackers = boss ? new Set([boss]) : new Set([
       ...(ranged ? [ranged] : []),
-      ...sorted.filter(e => e !== ranged).slice(0, BeatEmUp.MAX_ATTACKERS - (ranged ? 1 : 0)),
+      ...BeatEmUp.pickMelee(sorted.filter(e => e !== ranged), BeatEmUp.MAX_ATTACKERS - (ranged ? 1 : 0)),
     ]);
     for (const e of alive) {
       const ai = e.ai;
