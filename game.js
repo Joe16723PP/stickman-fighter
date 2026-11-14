@@ -404,11 +404,11 @@ const EnemyCombos = {
     label: 'JAB-CROSS',
     hits: [
       // Jab: lead hand, light push so the cross can still connect.
-      { name: 'jab',   windup: 7, active: 3, recovery: 6,  fraction: .4, kb: 60,  stun: 10,
+      { name: 'jab',   windup: 9, active: 3, recovery: 8,  fraction: .4, kb: 60,  stun: 10,
         windPose:   {chest:2,neck:-2,head:4,la:-40,le:-112,ra:-35,re:-120,ll:26,lk:18,rl:-26,rk:22,hipBob:-2,shPull:0},
         strikePose: {chest:-6,neck:0,head:4,la:-96,le:6,ra:-35,re:-120,ll:30,lk:16,rl:-28,rk:22,hipBob:-2,shPull:0} },
       // Cross: rear shoulder winds back, then drives through with the rear fist.
-      { name: 'cross', windup: 8, active: 3, recovery: 14, fraction: .6, kb: 160, stun: 10,
+      { name: 'cross', windup: 10, active: 3, recovery: 18, fraction: .6, kb: 160, stun: 10,
         windPose:   {chest:14,neck:-3,head:4,la:-55,le:-100,ra:-18,re:-132,ll:26,lk:18,rl:-28,rk:22,hipBob:-2,shPull:8},
         strikePose: {chest:-14,neck:1,head:3,la:-50,le:-105,ra:-98,re:8,ll:34,lk:16,rl:-34,rk:24,hipBob:-3,shPull:0} },
     ],
@@ -1516,21 +1516,23 @@ class Input {
   }
 }
 
-/* Move timing at 60fps (Game.STEP). Windup/hit/recovery + chain/cancel live here only. */
+/* Move timing at 60fps (Game.STEP). Windup/hit/recovery + chain/cancel live here only.
+ * Pacing pass (2026-11-15): normals' startup (su/chainSu) and recovery (re/chainRe) are x1.3 of the old
+ * values (rounded), active frames unchanged. Supers (special/staffSpecial) unchanged. */
 const Moves = {
   punch: {
-    su: 7, ac: 3, re: 11,          // first hit lands ~117ms (~110ms); recovery ~183ms (~180ms)
+    su: 9, ac: 3, re: 14,          // x1.3 pacing pass (was 7/3/11)
     dmg: 5, kb: 160, stun: 10,
     chainMax: 3,
     chainDmg: [5, 7, 9, 11],       // confirmed links reward follow-up hits; Karate adds a 4th (Rising Palm)
     chainKb: [160, 220, 380, 420],
     chainStun: [10, 15, 24, 24],
-    chainSu: [3, 3, 5], chainAc: [3, 3, 4], chainRe: [8, 8, 15],
+    chainSu: [4, 4, 7], chainAc: [3, 3, 4], chainRe: [10, 10, 20],
     chainWindow: 10,               // frames into recovery when a follow-up is allowed
     reach: 95,
   },
   kick: {
-    su: 11, ac: 5, re: 18,         // windup ~183ms (~180ms); recovery ~300ms punish window
+    su: 14, ac: 5, re: 23,         // x1.3 pacing pass (was 11/5/18)
     dmg: 15, kb: 260, stun: 22,    // Heavy strike: high payoff, with a hit-confirm window for a follow-up string
     chainWindow: 18,
     reach: 175,
@@ -1540,18 +1542,18 @@ const Moves = {
     dmg: 22, chip: 6, kb: 390, stun: 22,
   },
   staffPunch: {
-    su: 13, ac: 4, re: 22,
+    su: 17, ac: 4, re: 29,
     dmg: 6, kb: 160, stun: 10,
     chainMax: 2,
     chainDmg: [6, 8],
     chainKb: [160, 220],
     chainStun: [10, 15],
-    chainSu: [11], chainAc: [4], chainRe: [20],
+    chainSu: [14], chainAc: [4], chainRe: [26],
     chainWindow: 10,
     reach: 130, front: 80,
   },
   staffKick: {
-    su: 18, ac: 6, re: 28,
+    su: 23, ac: 6, re: 36,
     dmg: 23, kb: 260, stun: 22,
     chainWindow: 18,
     reach: 210, front: 180,
@@ -1568,16 +1570,17 @@ const Moves = {
     slamGroundCrackReach: 52,
   },
   // Boss normals — base values before BossHardness / difficulty multipliers.
-  bossBlockJab:   { su: 6, ac: 3, re: 10, dmg: 5,  kb: 120, stun: 8,  reach: 95 },
-  bossBlockHook:  { su: 9, ac: 4, re: 13, dmg: 9,  kb: 180, stun: 12, reach: 95 },
-  bossDockLash:   { su: 8, ac: 4, re: 14, dmg: 10, kb: 140, stun: 10, reach: 230 },
-  bossDockSwing:  { su: 11, ac: 5, re: 16, dmg: 12, kb: 200, stun: 14, reach: 230 },
-  bossMarketChop: { su: 6, ac: 3, re: 10, dmg: 6,  kb: 130, stun: 8,  reach: 100 },
-  bossMarketCross:{ su: 9, ac: 4, re: 12, dmg: 8,  kb: 160, stun: 11, reach: 100 },
-  bossIronOverhead:{ su: 14, ac: 5, re: 20, dmg: 16, kb: 260, stun: 18, reach: 150, armored: true },
-  bossIronSweep:  { su: 10, ac: 4, re: 15, dmg: 12, kb: 220, stun: 14, reach: 150 },
-  bossTunnelBaton:{ su: 7, ac: 3, re: 11, dmg: 8,  kb: 140, stun: 10, reach: 110 },
-  bossTunnelBash: { su: 11, ac: 4, re: 15, dmg: 10, kb: 190, stun: 13, reach: 110 },
+  // Pacing pass (2026-11-15): boss normals startup/recovery x1.3 (active unchanged); signatures and tells unchanged.
+  bossBlockJab:   { su: 8, ac: 3, re: 13, dmg: 5,  kb: 120, stun: 8,  reach: 95 },
+  bossBlockHook:  { su: 12, ac: 4, re: 17, dmg: 9,  kb: 180, stun: 12, reach: 95 },
+  bossDockLash:   { su: 10, ac: 4, re: 18, dmg: 10, kb: 140, stun: 10, reach: 230 },
+  bossDockSwing:  { su: 14, ac: 5, re: 21, dmg: 12, kb: 200, stun: 14, reach: 230 },
+  bossMarketChop: { su: 8, ac: 3, re: 13, dmg: 6,  kb: 130, stun: 8,  reach: 100 },
+  bossMarketCross:{ su: 12, ac: 4, re: 16, dmg: 8,  kb: 160, stun: 11, reach: 100 },
+  bossIronOverhead:{ su: 18, ac: 5, re: 26, dmg: 16, kb: 260, stun: 18, reach: 150, armored: true },
+  bossIronSweep:  { su: 13, ac: 4, re: 20, dmg: 12, kb: 220, stun: 14, reach: 150 },
+  bossTunnelBaton:{ su: 9, ac: 3, re: 14, dmg: 8,  kb: 140, stun: 10, reach: 110 },
+  bossTunnelBash: { su: 14, ac: 4, re: 20, dmg: 10, kb: 190, stun: 13, reach: 110 },
   // Boss signatures — base values before BossHardness / difficulty multipliers.
   bossBlockParty:  { su: 10, ac: 9,  re: 16, dmg: 24, kb: 200, stun: 14, reach: 95,  hitCount: 3 },
   bossDockHaulIn:  { su: 14, ac: 24, re: 16, dmg: 14, kb: 240, stun: 16, reach: 230, hitCount: 1 },
@@ -2261,9 +2264,12 @@ class Fighter {
   static TORSO = 22 * 1.2;
   static NECK = 8 * 1.2;
   static RUN_SPEED = 220;
-  static GROUND_ACCEL = 1300;
-  static GROUND_BRAKE = 1800;
+  static GROUND_ACCEL = 1000;   // pacing pass (was 1300): 0 -> top speed ~0.22 s
+  static GROUND_BRAKE = 1400;   // pacing pass (was 1800): stop ~0.16 s
   static TURN_ACCEL = 1700;
+  static FOLLOWUP_MIN_SU = 5;   // pacing pass: min combo follow-up startup (frames) after attackSpeed
+  static BLEND_FLOOR = .08;     // pacing pass (was .04): pose blends last >= ~5 frames so poses read
+  static LIVE_BLEND_FLOOR = .04; // inside an attack's active frames: old floor, so hit geometry never moves
   constructor(x, color, side, tag) {
     this.color = color; this.tag = tag; this.playerControlled = tag === 'YOU';
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
@@ -2332,7 +2338,9 @@ class Fighter {
     if (key === 'pr') this.punchSoft = 1;
     else if (/^(pw|pwd|ps|ps2)$/.test(key)) this.punchSoft = 0;
     this.poseFrom = Pose.copy(this.pose); this.poseTo = target;
-    this.blendT = 0; this.blendDur = Math.max(.04, dur); this.poseKey = key;
+    // Visual-only floor: strike/active-frame blends keep the old .04 floor (player hit geometry reads bones()).
+    const live = this.atk && this.atkT > this.atk.su && this.atkT <= this.atk.su + this.atk.ac;
+    this.blendT = 0; this.blendDur = Math.max(live ? Fighter.LIVE_BLEND_FLOOR : Fighter.BLEND_FLOOR, dur); this.poseKey = key;
   }
   tickPose(dt) {
     this.blendT = Math.min(this.blendDur, this.blendT + dt);
@@ -2524,9 +2532,10 @@ class Fighter {
       }
       const style = this.classProfile?.style;
       const timings = {
-        rush: {punch:[6,3,10],kick:[9,4,15]}, flame:{punch:[8,3,13],kick:[11,5,18]},
-        flash:{punch:[5,3,9],kick:[8,4,12]}, quake:{punch:[10,3,17],kick:[14,5,22]},
-        ward:{punch:[4,3,9],kick:[9,4,15]},
+        // Pacing pass (2026-11-15): startup/recovery x1.3, active unchanged.
+        rush: {punch:[8,3,13],kick:[12,4,20]}, flame:{punch:[10,3,17],kick:[14,5,23]},
+        flash:{punch:[7,3,12],kick:[10,4,16]}, quake:{punch:[13,3,22],kick:[18,5,29]},
+        ward:{punch:[5,3,12],kick:[12,4,20]},
       }[style];
       if (timings && (kind === 'punch' || kind === 'kick') && this.classProfile?.weapon !== 'staff') {
         const timing = timings[kind];
@@ -2538,6 +2547,8 @@ class Fighter {
         this.atk.ac = Math.max(1, Math.round(this.atk.ac / attackSpeed));
         this.atk.re = Math.max(1, Math.round(this.atk.re / attackSpeed));
       }
+      // Pacing pass: every class combo follow-up keeps at least a 5 f startup after attackSpeed scaling.
+      if (kind === 'punch' && this.chain > 0 && this.classProfile) this.atk.su = Math.max(Fighter.FOLLOWUP_MIN_SU, this.atk.su);
       const multiplier = kind === 'special' ? (this.classProfile?.superPower || 1)
         : kind === 'kick' ? (this.classProfile?.kick || 1)
           : (this.classProfile?.punch || 1);

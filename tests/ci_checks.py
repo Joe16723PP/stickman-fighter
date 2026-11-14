@@ -418,9 +418,10 @@ BRAWLER = r"""
     && Math.abs(r.hurtbox.rookie.w - 42) < 1e-9 && Math.abs(r.hurtbox.rookie.h - 135) < 1e-9
     && r.noProfile && r.drawUnchanged && r.brawlerProfileDrawn
     && r.rookiePunch.hits.length === 1 && r.jabCross.hits.length === 2
-    && r.jabCross.hits[0].frame === 8 && r.jabCross.hits[1].frame === 25
+    // Pacing pass 2026-11-15: jab 9/3/8, cross 10/3/18 (startup/recovery x1.3, active unchanged).
+    && r.jabCross.hits[0].frame === 10 && r.jabCross.hits[1].frame === 31
     && Math.abs(r.jabCross.total - r.rookiePunch.total) < 1e-6 && r.rookiePunch.total > 0
-    && r.timeline.su === 7 && r.timeline.ac === 20 && r.timeline.re === 14 && r.timeline.total === 41
+    && r.timeline.su === 9 && r.timeline.ac === 24 && r.timeline.re === 18 && r.timeline.total === 51
     && r.spawns.stage1.includes('brawler') && r.spawns.swapped === 3 && r.spawns.rookies === 9 && r.spawns.inPlace && !r.spawns.laterBrawlers;
   return r;
 }
@@ -1009,6 +1010,84 @@ RANGED = r"""
 }
 """
 
+PACING = r"""
+() => {
+  // Pacing pass (2026-11-15, Lemar WP5 starting point). 1v1 fighters, 60 fps fixed step, no hits landed.
+  const prev = { mode: Game.mode, floor: Fighter.BLEND_FLOOR, random: Math.random };
+  Game.mode = '1v1'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0; Game.minX = 0; Game.maxX = Game.W * 4;
+  if (Input.syncMode) Input.syncMode();
+  const f = fighters[0], foe = fighters[1];
+  Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
+  const run = (cls, kind, chain, floor) => {
+    Fighter.BLEND_FLOOR = floor; Math.random = () => .5; // no random crits: compare geometry only
+    BladeSuper.clear(); if (Fx.clear) Fx.clear();
+    f.setClass(cls); f.reset(Game.W * .3, 1); f.playerControlled = true; f.depth = 0;
+    foe.setClass(null); foe.reset(Game.W * 3.5, -1); foe.playerControlled = false; foe.depth = 0;
+    if (kind === 'special') f.meter = 100;
+    if (chain > 0) { f.chain = chain - 1; f.chainArmed = 1; }
+    f.startAtk(kind);
+    const a = f.atk, out = { su: a.su, ac: a.ac, re: a.re, live: [] };
+    for (let i = 0; i < a.su + a.ac + a.re + 2 && f.atk === a; i++) {
+      f.update(Game.STEP, foe, 0);
+      if (f.atk === a && f.atkT > a.su && f.atkT <= a.su + a.ac) {
+        const s = f.strike(), b = f.combatBones();
+        out.live.push(f.atkT + ':' + JSON.stringify(s) + JSON.stringify([b.la, b.ra, b.ll, b.rl, b.x0, b.x1, b.y0, b.y1]));
+      }
+    }
+    return out;
+  };
+  const classes = { freehand: 4, blade: 3, staff: 2 }, r = { frames: {}, liveSame: true, liveDiff: [], liveFrames: 0 };
+  for (const [cls, max] of Object.entries(classes)) {
+    const moves = [];
+    for (let c = 0; c < max; c++) moves.push(['punch', c]);
+    moves.push(['kick', 0], ['special', 0]);
+    for (const [kind, c] of moves) {
+      const now = run(cls, kind, c, .08), old = run(cls, kind, c, .04);
+      r.frames[cls + ' ' + kind + (kind === 'punch' ? c : '')] = [now.su, now.ac, now.re].join('/');
+      r.liveFrames += now.live.length;
+      // Visual-only blend floor: every active frame's strike box and combat bones match the old .04 floor exactly.
+      if (JSON.stringify(now.live) !== JSON.stringify(old.live) || now.live.length !== now.ac) { r.liveSame = false; r.liveDiff.push(cls + ' ' + kind + c); }
+    }
+  }
+  Fighter.BLEND_FLOOR = prev.floor; Math.random = prev.random; BladeSuper.clear(); if (Fx.clear) Fx.clear();
+  f.setClass('freehand'); f.reset(Game.W * .3, 1); foe.reset(Game.W * .7, -1);
+  // Blend floor applies outside active frames (e.g. a land/roll blend of .045 now lasts .08 s).
+  f.aim('roll', Pose.roll(f.classProfile), .045); r.rollBlend = f.blendDur;
+  // Movement: 0 -> top speed and top speed -> stop at the new accel/brake.
+  const accelT = n => { let v = 0, k = 0; while (v < n) { v = Math.min(n, v + Fighter.GROUND_ACCEL * Game.STEP); k++; } return k; };
+  const brakeT = n => { let v = n, k = 0; while (v > 0) { v = Math.max(0, v - Fighter.GROUND_BRAKE * Game.STEP); k++; } return k; };
+  r.move = { accel: Fighter.GROUND_ACCEL, brake: Fighter.GROUND_BRAKE, turn: Fighter.TURN_ACCEL, toTop220: accelT(220), stop220: brakeT(220) };
+  const fr = r.frames, tot = k => fr[k].split('/').map(Number).reduce((a, b) => a + b, 0), su = k => +fr[k].split('/')[0];
+  // Untouched: supers, Heavy SLAM, enemy specials, boss signatures, stun.
+  const sig = k => [Moves[k].su, Moves[k].ac, Moves[k].re].join('/');
+  r.untouched = [sig('special'), sig('staffSpecial'), sig('bossBlockParty'), sig('bossDockHaulIn'), sig('bossMarketToss'), sig('bossForgeQuake'), sig('bossShieldCharge'),
+    [EnemySlams.overhead.windup, EnemySlams.overhead.active, EnemySlams.overhead.recovery].join('/'),
+    [EnemyRushes.shoulder.crouch, EnemyRushes.shoulder.dash, EnemyRushes.shoulder.active, EnemyRushes.shoulder.whiffRecovery].join('/'),
+    [EnemyBashes.shield.windup, EnemyBashes.shield.active, EnemyBashes.shield.whiffRecovery].join('/'),
+    [EnemyGrabs.clinch.windup, EnemyGrabs.clinch.active, EnemyGrabs.clinch.whiffRecovery].join('/'),
+    [EnemyDeploys.shockZone.windup, EnemyDeploys.shockZone.active, EnemyDeploys.shockZone.recovery].join('/'),
+    [EnemyProjectile.tell, EnemyProjectile.recovery, EnemyProjectile.cooldown].join('/'),
+    [Moves.punch.chainStun.join(','), Moves.kick.stun, Moves.staffPunch.stun, Moves.staffKick.stun].join('/')].join(' ');
+  r.expectUntouched = '14/10/18 16/19/22 10/9/16 14/24/16 12/60/18 16/18/20 18/20/18 30/4/48 16/18/7/' + EnemyRushes.shoulder.whiffRecovery
+    + ' 14/5/48 27/6/48 24/1/30 0.5/0.9/2.5 10,15,24,24/22/10/22';
+  Game.mode = prev.mode;
+  const exp = {
+    'freehand punch0': '4/2/9', 'freehand punch1': '5/2/8', 'freehand punch2': '5/2/8', 'freehand punch3': '5/3/16', 'freehand kick': '9/3/16',
+    'blade punch0': '7/3/12', 'blade punch1': '5/3/10', 'blade punch2': '5/3/10', 'blade kick': '10/4/16',
+    'staff punch0': '17/4/29', 'staff punch1': '14/4/26', 'staff kick': '23/6/36',
+  };
+  r.expectOk = Object.entries(exp).every(([k, v]) => fr[k] === v);
+  const followSu = Object.keys(fr).filter(k => /punch[1-9]/.test(k)).every(k => su(k) >= 5);
+  // Class order kept: Karate fastest, Blade middle, Staff slowest (first punch, full string and kick totals).
+  const string = c => Object.keys(fr).filter(k => k.startsWith(c + ' punch')).reduce((n, k) => n + tot(k), 0) / Object.keys(fr).filter(k => k.startsWith(c + ' punch')).length;
+  r.order = { punch0: [tot('freehand punch0'), tot('blade punch0'), tot('staff punch0')], avgString: [string('freehand'), string('blade'), string('staff')], kick: [tot('freehand kick'), tot('blade kick'), tot('staff kick')] };
+  const ord = a => a[0] < a[1] && a[1] < a[2];
+  r.pass = r.liveSame && r.liveFrames > 0 && r.expectOk && followSu && ord(r.order.punch0) && ord(r.order.avgString) && ord(r.order.kick)
+    && Math.abs(r.rollBlend - .08) < 1e-9 && r.move.accel === 1000 && r.move.brake === 1400 && r.move.turn === 1700 && r.untouched === r.expectUntouched;
+  return r;
+}
+"""
+
 GUARD = r"""
 () => {
   const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
@@ -1207,6 +1286,10 @@ def main():
             print('disruptor archetype', json.dumps({k: v for k, v in disruptor.items() if k != 'pass'}))
             if not disruptor['pass'] or 'disruptor' in stage_src:
                 failures.append('Disruptor archetype failed: expected 85hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only profile, no deploy hitbox, zone created on the activation frame at the player x/lane, 0.8 s harmless warning then 1.5 s live, exactly one zap per zone inside halfW and the shared lane tolerance, step-out / lane change / airborne / invulnerable avoid it, fixed position, finishes its cycle after the Disruptor dies, wind-up hit cancels, 4 s cooldown, one zone per Disruptor, ZAP AI tell gated, zones cleared on every reset path')
+            pacing = page.evaluate(PACING)
+            print('pacing pass', json.dumps({k: v for k, v in pacing.items() if k != 'pass'}))
+            if not pacing['pass']:
+                failures.append('Pacing pass failed: expected class normals at the x1.3 startup/recovery tables (active unchanged, follow-ups >= 5f after attackSpeed), Karate < Blade < Staff, blend floor .08 outside active frames with identical strike boxes/combat bones on every active frame vs the old .04 floor, accel 1000 / brake 1400 / turn 1700, and supers, SLAM, enemy specials, boss signatures, ranged timings and stun unchanged')
             ranged = page.evaluate(RANGED)
             print('ranged archetype', json.dumps({k: v for k, v in ranged.items() if k != 'pass'}))
             if not ranged['pass'] or '"thrower"' in stage_src:
