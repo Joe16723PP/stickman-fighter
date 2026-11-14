@@ -162,14 +162,20 @@ BLADE_SUPER = '''() => {
     const seg=box.segment, x=(seg.x1+seg.x2)/2, y=(seg.y1+seg.y2)/2;
     target.hitbox={x:x-5,y:y-5,w:10,h:10};
   };
-  owner.atkT = owner.atk.su + 1;
+  owner.atkT = BladeSuper.activeStart(0);
   const quick = owner.strike();
   if (!quick) return {pass:false,debug:{state:owner.state,atkT:owner.atkT,atk:owner.atk,weapon:owner.classProfile?.weapon,meter:owner.meter,pulse:owner.superPulse()}};
   overlap(quick); Game.resolve(); const afterQuick = target.hp;
   Game.resolve(); const afterQuickDuplicate = target.hp;
-  owner.atkT = owner.atk.su + BladeSuper.QUICK_DRAW_FRAMES + 1;
+  owner.atkT = BladeSuper.activeStart(0) + BladeSuper.STRIKES[0].active; // impact hold: no hitbox
   const pause = owner.strike();
-  owner.atkT = owner.atk.su + BladeSuper.QUICK_DRAW_FRAMES + BladeSuper.PAUSE_FRAMES + 1;
+  owner.atkT = BladeSuper.activeStart(1);
+  const diagonal = owner.strike();
+  overlap(diagonal); Game.resolve(); const afterDiagonal = target.hp;
+  Game.resolve(); const afterDiagonalDuplicate = target.hp;
+  owner.atkT = BladeSuper.activeStart(1) + BladeSuper.STRIKES[1].active;
+  const gap = owner.strike();
+  owner.atkT = BladeSuper.activeStart(2);
   owner.pose = Pose.bladeSuperVertical(owner.classProfile); owner.poseFrom = owner.poseTo = owner.pose;
   owner.blendT = owner.blendDur = 0;
   const vertical = owner.strike();
@@ -195,34 +201,53 @@ BLADE_SUPER = '''() => {
   target.x = Game.W * .95; pierceTarget.x = wave.startX + 75; offLaneTarget.x = wave.startX + 125; lateWaveTarget.x = wave.startX + 350;
   fighters.push(pierceTarget,offLaneTarget,lateWaveTarget);
   for (let i=0;i<8;i++) BladeSuper.update(Game.STEP);
-  const piercedDuringTravel = pierceTarget.hp===70 && offLaneTarget.hp===offLaneHp;
+  const piercedDuringTravel = pierceTarget.hp===68 && offLaneTarget.hp===offLaneHp;
   BladeSuper.hit(sequence,pierceTarget,true); BladeSuper.hit(sequence,offLaneTarget,true);
   owner.atkT=owner.atk.su+owner.atk.ac+owner.atk.re;
   BladeSuper.noto(sequence);
   const notoKnockdown=sequence.notoDone && target.ragdollActive;
   for (let i=0;i<16;i++) BladeSuper.update(Game.STEP);
+  const windows = []; let cur = null;
+  for (let f=1; f<=owner.atk.su+owner.atk.ac+owner.atk.re; f++) {
+    const p = BladeSuper.pulseForFrame(f);
+    if (p >= 0 && (!cur || cur[0] !== p)) { cur = [p,f,f]; windows.push(cur); }
+    else if (p >= 0) cur[2] = f; else cur = null;
+  }
+  const parts = BladeSuper.STRIKES.map((s,k) => [s.windup,s.active,s.hold,s.gap].join('/'));
+  const phaseAt = [24,25,28,29,31,32,47,48,59,60,67,68,70,71,90,91,102,103,112,113,116,117,144,145,180]
+    .map(f => { const p = BladeSuper.phaseAt(f); return p.part + (p.strike >= 0 ? p.strike : ''); }).join(',');
   const frameProbe = {
-    charge:owner.atk.su, quickDraw:BladeSuper.QUICK_DRAW_FRAMES, pause:BladeSuper.PAUSE_FRAMES,
-    vertical:BladeSuper.VERTICAL_SLASH_FRAMES, recovery:owner.atk.re, noto:BladeSuper.NOTO_FRAME,
-    total:owner.atk.su+owner.atk.ac+owner.atk.re,
-    pulseAt:[24,25,27,28,30,31,33,34].map(f=>BladeSuper.pulseForFrame(f)),
+    charge:owner.atk.su, strikes:BladeSuper.STRIKES.map((_s,k)=>BladeSuper.strikeLength(k)), parts,
+    recovery:owner.atk.re, noto:BladeSuper.NOTO_FRAME, launch:BladeSuper.LAUNCH_FRAME, faceLock:BladeSuper.FACE_LOCK_FRAME,
+    total:owner.atk.su+owner.atk.ac+owner.atk.re, windows:windows.map(w=>w.join('-')).join(','), phaseAt,
+    damages:BladeSuper.STRIKES.map(s=>s.damage), totalDamage:owner.atk.dmg, waveDamage:BladeSuper.WAVE_DAMAGE,
   };
   return {
-    frameProbe, quick:quick&&{pulse:quick.pulse,damage:quick.dmg}, pause:pause===null,
+    frameProbe, quick:quick&&{pulse:quick.pulse,damage:quick.dmg}, pause:pause===null, gap:gap===null,
+    diagonal:diagonal&&{pulse:diagonal.pulse,damage:diagonal.dmg,seg:diagonal.segment},
     vertical:vertical&&{pulse:vertical.pulse,damage:vertical.dmg,vertical:vertical.segment.y2>vertical.segment.y1},
-    launchAt, wave:launched, locked, hp:{afterQuick,afterQuickDuplicate,afterVertical,afterVerticalDuplicate,afterWave,afterWaveDuplicate},
-    piercing: piercedDuringTravel && pierceTarget.hp===70, offLane:offLaneTarget.hp===offLaneHp,
-    notoKnockdown, lateWave:lateWaveTarget.hp===70,
-    pass:frameProbe.charge===24 && frameProbe.quickDraw===3 && frameProbe.pause===3 && frameProbe.vertical===3
-      && frameProbe.recovery===24 && frameProbe.noto===57 && frameProbe.total===57
-      && frameProbe.pulseAt.join(',')==='-1,0,0,-1,-1,1,1,-1'
-      && quick?.pulse===0 && quick?.dmg===20 && pause===null
-      && vertical?.pulse===1 && vertical?.dmg===24 && vertical.segment.y2>vertical.segment.y1
-      && launchAt===31 && locked.face===1 && locked.depth===0 && locked.x===Game.W*.35
+    launchAt, wave:launched, locked,
+    hp:{afterQuick,afterQuickDuplicate,afterDiagonal,afterDiagonalDuplicate,afterVertical,afterVerticalDuplicate,afterWave,afterWaveDuplicate,
+      pierce:pierceTarget.hp,lateWave:lateWaveTarget.hp,offLane:offLaneTarget.hp},
+    piercing: piercedDuringTravel && pierceTarget.hp===68, offLane:offLaneTarget.hp===offLaneHp,
+    notoKnockdown, lateWave:lateWaveTarget.hp===68,
+    pass:frameProbe.charge===24 && frameProbe.strikes.join('/')==='35/43/42'
+      && frameProbe.parts.join(' ')==='4/3/16/12 8/3/20/12 10/4/28/0'
+      && frameProbe.recovery===36 && frameProbe.noto===180 && frameProbe.total===180
+      && frameProbe.launch===113 && frameProbe.faceLock===29
+      && frameProbe.windows==='0-29-31,1-68-70,2-113-116'
+      && frameProbe.phaseAt==='charge,windup0,windup0,active0,active0,hold0,hold0,gap0,gap0,windup1,windup1,active1,active1,hold1,hold1,gap1,gap1,windup2,windup2,active2,active2,hold2,hold2,recovery,recovery'
+      && frameProbe.damages.join('/')==='20/22/32' && Math.abs(frameProbe.totalDamage-74)<1e-9 && frameProbe.waveDamage===32
+      && quick?.pulse===0 && quick?.dmg===20 && pause===null && gap===null
+      && diagonal?.pulse===1 && diagonal?.dmg===22
+      && diagonal.segment.y2>diagonal.segment.y1 && (diagonal.segment.x2-diagonal.segment.x1)*owner.face>40
+      && vertical?.pulse===2 && vertical?.dmg===32 && vertical.segment.y2>vertical.segment.y1
+      && launchAt===113 && locked.face===1 && locked.depth===0 && locked.x===Game.W*.35
       && launched?.face===locked.face && launched?.depth===locked.depth && launched.travel===15
-      && afterQuick===80 && afterQuickDuplicate===80 && afterVertical===56 && afterVerticalDuplicate===56
-      && afterWave===26 && afterWaveDuplicate===26 && pierceTarget.hp===70 && offLaneTarget.hp===offLaneHp
-      && notoKnockdown && lateWaveTarget.hp===70 && BladeSuper.RANGE===420,
+      && afterQuick===80 && afterQuickDuplicate===80 && afterDiagonal===58 && afterDiagonalDuplicate===58
+      && afterVertical===26 && afterVerticalDuplicate===26
+      && afterWave===26 && afterWaveDuplicate===26 && pierceTarget.hp===68 && offLaneTarget.hp===offLaneHp
+      && notoKnockdown && lateWaveTarget.hp===68 && BladeSuper.RANGE===420 && BladeSuper.SPEED===900,
   };
 }'''
 
