@@ -69,7 +69,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A', grappler: '#D9733B' },
+  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A', grappler: '#D9733B', disruptor: '#3FB8C9' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -380,6 +380,8 @@ const EnemyArchetypes = {
   brawler: { health: 110, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .95, bodyProfile: 'brawler', combo: 'jabCross' },
   // Grappler: archetype only (no stage spawns yet). Long arms, open hands, one committed grab -> hold, headbutt, release.
   grappler: { health: 115, weaponChance: 0, specialDamage: 0, specialGain: 0, speed: .9, bodyProfile: 'grappler', grab: 'clinch' },
+  // Disruptor: archetype only (no stage spawns yet). Slim gadget user; deploys one telegraphed shock zone at a time.
+  disruptor: { health: 85, weaponChance: 0, specialDamage: 0, specialGain: 0, speed: .9, bodyProfile: 'disruptor', deploy: 'shockZone' },
 };
 
 /* Enemy multi-hit normals. Frames are at 60 fps. Each hit runs wind-up -> active -> recovery,
@@ -748,6 +750,130 @@ const EnemyGrab = {
   },
 };
 
+/* Enemy hazard deploy (Disruptor) on the shared 'punch' attack state. Frames are 60 fps sim steps (Game.STEP).
+ *   wind-up (rear hand reaches back to the pack, `windup` f) -> activation (one frame: baton thrust, the zone is
+ *   created on exactly this frame at the player's x and lane) -> recovery (`recovery` f, steps back `backStep` px).
+ * The attack itself never has a hitbox (strike() returns null) and a hit during the wind-up cancels it (no zone).
+ * The zone (ShockZones) is pure gameplay state, fixed once placed (never homing), with deterministic frame timing:
+ *   frames 1..warn = pulsing warning (harmless), warn+1..warn+live = live, then it is removed.
+ * While live, a grounded player whose centre is within halfW px of the zone x AND whose floor lane is within the
+ * shared enemy lane tolerance (BeatEmUp.depthHitTolerance, the same rule enemy hits use) takes ONE small zap
+ * (dmg x difficulty, short stun) per zone; stepping out or changing lane always avoids it. Invulnerable / rolling /
+ * airborne players are not zapped (the zone stays armed until it expires). One zone per Disruptor at a time and
+ * a `cooldown` s gap between deploys (from the activation frame). If the Disruptor dies the zone finishes its
+ * current cycle, then expires; a dead Disruptor never deploys again. Zones are cleared on stage reset, wave/boss
+ * start, player down and game start. Equipment art is decoration only. */
+const EnemyDeploys = {
+  shockZone: {
+    label: 'ZAP',
+    windup: 24, active: 1, recovery: 30, backStep: 16, backFrames: 12, // 0.4 s reach, activation frame, 0.5 s step-back reset
+    warn: 48, live: 90,                                                // 0.8 s warning, 1.5 s live
+    halfW: 46,                                                         // px either side of the zone centre (92 px wide)
+    dmg: 6, kb: 40, stun: 14,                                          // one small zap (x difficulty), short stun
+    cooldown: 4,                                                       // s between deploys
+    triggerRange: 240, minRange: 110,                                  // AI deploys inside this gap; backs off when closer than minRange
+    guardPose:    {chest:2,neck:0,head:2,la:-55,le:-45,ra:25,re:-70},  // baton forward-low, rear hand by the hip pack
+    windPose:     {chest:10,neck:-2,head:2,la:-35,le:-40,ra:55,re:-45,ll:26,lk:18,rl:-28,rk:22,hipBob:3,shPull:4},
+    activatePose: {chest:-14,neck:4,head:4,la:-80,le:-4,ra:15,re:-60,ll:34,lk:16,rl:-34,rk:26,hipBob:2,shPull:0},
+    recoverPose:  {chest:8,neck:-2,head:2,la:-45,le:-50,ra:25,re:-70,ll:18,lk:14,rl:-32,rk:24,hipBob:3,shPull:0},
+  },
+};
+const EnemyDeploy = {
+  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.recovery, total: spec.windup + spec.active + spec.recovery }; },
+  /** One sim step of the deploying Disruptor (call after atkT++). */
+  tick(f, other) {
+    const a = f.atk, sp = a.deploy, t = f.atkT;
+    if (t === a.su + 1 && !a.deployed) { a.deployed = true; a.zone = ShockZones.place(f, other, sp); }
+    else if (t > a.su + a.ac && a.backLeft > 0) { const move = Math.min(a.backLeft, sp.backStep / sp.backFrames); a.backLeft -= move; f.x -= a.deployDir * move; }
+    f.vx = 0;
+  },
+};
+const ShockZones = {
+  list() { return BeatEmUp.hazards; },
+  activeFor(owner) { return BeatEmUp.hazards.find(z => z.owner === owner) || null; },
+  /** Create the zone at the target's current x and lane. Returns null when not allowed (dead owner, one-zone limit, no target). */
+  place(owner, target, spec) {
+    if (Game.mode !== 'beatemup' || !owner || owner.hp <= 0 || owner.ragdollActive) return null;
+    if (ShockZones.activeFor(owner)) return null; // one active zone per Disruptor
+    const te = target ? BeatEmUp.entryFor(target) : null;
+    if (!te) return null;
+    const zone = { owner, spec, x: target.x, depth: te.depth, t: 0, warn: spec.warn, live: spec.live, halfW: spec.halfW,
+      dmg: spec.dmg * BeatEmUp.difficulty.damage, kb: spec.kb, stun: spec.stun, hit: false, hitFrame: 0 };
+    BeatEmUp.hazards.push(zone);
+    owner.deployCoolT = spec.cooldown;
+    Sfx.play('block', null);
+    return zone;
+  },
+  phase(z) { return z.t <= z.warn ? 'warn' : z.t <= z.warn + z.live ? 'live' : 'done'; },
+  /** Gameplay containment: centre x inside the zone and floor lane within the shared enemy lane tolerance. */
+  inside(z, entry) {
+    if (!entry) return false;
+    if (Math.abs(entry.f.x - z.x) > z.halfW) return false;
+    const tol = BeatEmUp.depthHitTolerance({ role: 'enemy', scaleMul: 1 }, entry);
+    return BeatEmUp.depthClose(z.depth, entry.depth, tol + 1e-9);
+  },
+  /** One sim step for every zone (fixed-step loop): advance, zap at most once while live, drop expired zones. */
+  update(player) {
+    const list = BeatEmUp.hazards;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const z = list[i];
+      z.t++;
+      if (z.t > z.warn + z.live) { list.splice(i, 1); continue; }
+      if (z.t <= z.warn || z.hit || !player) continue;
+      const pf = player.f;
+      if (pf.hp <= 0 || pf.ragdollActive || !pf.grounded || pf.y < 0 || pf.dodgeT > 0 || !ShockZones.inside(z, player)) continue;
+      const hit = { dmg: z.dmg, kb: z.kb, stun: z.stun, chip: 0, special: false, critical: false, comboFinisher: false, comboLink: false, chain: 0, zone: true };
+      const wasBlocking = pf.blocking; pf.blocking = 0; // a floor hazard is not blockable
+      const hpBefore = pf.hp;
+      const kind = BeatEmUp.withDepth(player, () => pf.takeHit(hit, z.owner));
+      if (pf.hp > 0 && kind !== 'hit') pf.blocking = wasBlocking;
+      if (kind !== 'hit' && kind !== 'armored') continue; // invulnerable / held: stays armed
+      z.hit = true; z.hitFrame = z.t;
+      const cx = pf.x - BeatEmUp.cameraX, cy = BeatEmUp.floorDepthPx(player.depth) - 30;
+      Fx.hit(cx, cy); Fx.damage(cx, cy - 20, Math.round((hpBefore - pf.hp) * 10) / 10, false);
+      Sfx.play('player-heavy-hit', pf.classProfile);
+    }
+  },
+  clear() { BeatEmUp.hazards = []; },
+  /** Floor marker under the fighters: amber dashed pulse + filling core while warning, bright electric fill while live. */
+  draw(ctx) {
+    for (const z of BeatEmUp.hazards) {
+      const ph = ShockZones.phase(z), y = BeatEmUp.floorDepthPx(z.depth), x = z.x - BeatEmUp.cameraX;
+      const ry = 10 * BeatEmUp.depthToScale(z.depth), rx = z.halfW, sc = Game.scale || 1;
+      ctx.save();
+      if (ph === 'warn') {
+        const k = z.t / z.warn, pulse = .5 + .5 * Math.sin(z.t * (.25 + k * .5));
+        ctx.fillStyle = 'rgba(255,194,61,' + (.1 + .18 * pulse).toFixed(3) + ')';
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,194,61,.35)';
+        ctx.beginPath(); ctx.ellipse(x, y, rx * k, ry * k, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.setLineDash([6 / sc, 4 / sc]); ctx.lineWidth = 2.2 / sc; ctx.strokeStyle = '#FFC23D';
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (ph === 'live') {
+        const flick = .75 + .25 * Math.sin(z.t * 1.7);
+        ctx.globalAlpha = z.hit ? .35 : 1;
+        ctx.fillStyle = 'rgba(94,230,255,' + (.28 * flick).toFixed(3) + ')';
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.lineWidth = 2.4 / sc; ctx.strokeStyle = '#E8FBFF';
+        ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+        // Short crackles hugging the floor ellipse (deterministic from the zone clock).
+        ctx.strokeStyle = '#7FF0FF'; ctx.lineWidth = 1.6 / sc; ctx.lineJoin = 'round';
+        for (let i = 0; i < 4; i++) {
+          const a0 = (i / 4) * Math.PI * 2 + z.t * .09;
+          ctx.beginPath();
+          for (let j = 0; j <= 4; j++) {
+            const a = a0 + j * .22, r = j % 2 ? .62 : .82;
+            const px = x + Math.cos(a) * rx * r, py = y + Math.sin(a) * ry * r;
+            if (j) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+  },
+};
+
 /* Shared archetype skeleton. Every enemy archetype is drawn from the same Fighter rig:
  * one joint set from Fighter.bones() and one pose/animation pipeline (aim/tickPose).
  * An archetype may add a BODY PROFILE, which only reshapes how that rig is drawn:
@@ -823,6 +949,17 @@ const ArchetypeBodyProfiles = {
     guardPose: EnemyGrabs.clinch.guardPose, // idle/walk: arms slightly forward, hands ready
     equipment: [{ kind: 'wrestlingBelt', joints: ['hip'] }, { kind: 'wristWraps', joints: ['la', 'ra'] }],
   },
+  disruptor: {
+    torsoWidth: 1.05,      // medium/slim build
+    shoulderWidth: 3,
+    limbWidth: .95,
+    forearmWidth: .95,
+    legWidth: 1,
+    neckScale: .9,
+    stanceWidth: 3,
+    guardPose: EnemyDeploys.shockZone.guardPose, // idle/walk: baton low in front, rear hand on the hip pack
+    equipment: [{ kind: 'utilityPack', joints: ['chest'], layer: 'back' }, { kind: 'harness', joints: ['chest'] }, { kind: 'shockBaton', joints: ['la'] }],
+  },
 };
 const ArchetypeEquipment = {
   /** Riot shield on the lead hand, its long axis across the forearm line (arm forward = shield upright,
@@ -870,6 +1007,55 @@ const ArchetypeEquipment = {
     ctx.restore();
   },
 
+  /** Asymmetric utility pack: a box on the back plus a pouch on the rear hip (the back side reads bulkier). Decoration only. */
+  utilityPack(ctx, f, b, joint, ctxInfo) {
+    const chest = b[joint], hip = b.hip;
+    if (!chest || !hip) return;
+    const { unit } = ctxInfo, back = -f.face;
+    let ax = chest.x - hip.x, ay = chest.y - hip.y; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al; // up the spine
+    const px = -ay * back, py = ax * back; // away from the spine, toward the back
+    const quad = (c, hw, hh) => { ctx.beginPath();
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([u, v], i) => { const qx = c.x + px * hw * u + ax * hh * v, qy = c.y + py * hw * u + ay * hh * v; if (i) ctx.lineTo(qx, qy); else ctx.moveTo(qx, qy); });
+      ctx.closePath(); };
+    const mid = { x: hip.x + (chest.x - hip.x) * .62 + px * 7 * unit, y: hip.y + (chest.y - hip.y) * .62 + py * 7 * unit };
+    const pouch = { x: hip.x + px * 6 * unit - ax * 1 * unit, y: hip.y + py * 6 * unit - ay * 1 * unit };
+    ctx.save(); ctx.lineJoin = 'round';
+    for (const [c, hw, hh] of [[mid, 6 * unit, 10 * unit], [pouch, 4 * unit, 4 * unit]]) {
+      quad(c, hw, hh); ctx.fillStyle = '#2A3442'; ctx.fill();
+      ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = 2.5 / Game.scale + 1.2 * unit; ctx.stroke();
+    }
+    ctx.fillStyle = '#5EE6FF'; ctx.beginPath(); ctx.arc(mid.x + ax * 5 * unit, mid.y + ay * 5 * unit, 1.6 * unit, 0, Math.PI * 2); ctx.fill(); // status light
+    ctx.restore();
+  },
+  /** Harness strap from the lead shoulder to the rear hip. Decoration only. */
+  harness(ctx, f, b, joint, ctxInfo) {
+    const sh = b.shFront || b.shL, hip = b.hip;
+    if (!sh || !hip) return;
+    const { stroke, unit } = ctxInfo, end = { x: hip.x - f.face * 4 * unit, y: hip.y };
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = stroke * .5 + 2 / Game.scale;
+    ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.strokeStyle = '#8A93A3'; ctx.lineWidth = stroke * .5;
+    ctx.beginPath(); ctx.moveTo(sh.x, sh.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.restore();
+  },
+  /** Short electric baton in the lead hand, along the forearm; the tip glows on the activation frames. Decoration only. */
+  shockBaton(ctx, f, b, joint, ctxInfo) {
+    const hand = b[joint], el = b[joint + 'J'];
+    if (!hand || !el) return;
+    const { stroke, unit } = ctxInfo;
+    let dx = hand.x - el.x, dy = hand.y - el.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const back = { x: hand.x - dx * 4 * unit, y: hand.y - dy * 4 * unit }, tip = { x: hand.x + dx * 16 * unit, y: hand.y + dy * 16 * unit };
+    const a = f.atk, hot = !!a?.deploy && f.atkT > a.su && f.atkT <= a.su + a.ac + 10;
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = stroke * .7 + 3 / Game.scale;
+    ctx.beginPath(); ctx.moveTo(back.x, back.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    ctx.strokeStyle = '#3A4556'; ctx.lineWidth = stroke * .7;
+    ctx.beginPath(); ctx.moveTo(back.x, back.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    ctx.fillStyle = hot ? '#FFFFFF' : '#5EE6FF'; ctx.shadowColor = '#5EE6FF'; ctx.shadowBlur = (hot ? 10 : 4) / Game.scale;
+    ctx.beginPath(); ctx.arc(tip.x, tip.y, stroke * (hot ? .7 : .45), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  },
   /** Wrestling belt across the hips with a front buckle. Decoration only. */
   wrestlingBelt(ctx, f, b, joint, ctxInfo) {
     const hip = b[joint], chest = b.chest;
@@ -2000,7 +2186,7 @@ class Fighter {
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
     this.bossProfile = null;
-    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; this.enemyGuard = null; this.enemyBash = null; this.enemyGrab = null;
+    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; this.enemyGuard = null; this.enemyBash = null; this.enemyGrab = null; this.enemyDeploy = null; this.deployCoolT = 0;
     this.heldBy = null; this.grabVictim = null; this.heldT = 0; this.noRegrabT = 0; this.grabCoolT = 0; this.grabRelease = ''; // Grappler grab state
     this.guardOpenT = 0; this.guardRecoilT = 0; this.guardChainT = 0; this.guardBlocks = 0; this.guardFace = null; this.guardTurnT = 0; // archetype draw profile + multi-hit normal / committed rush (enemies only)
     this.meter = 0; this.reset(x, side);
@@ -2008,7 +2194,7 @@ class Fighter {
   reset(x, side) {
     if (this.heldBy) EnemyGrab.release(this, 'reset');
     if (this.grabVictim) EnemyGrab.release(this.grabVictim, 'reset');
-    this.noRegrabT = 0; this.grabCoolT = 0;
+    this.noRegrabT = 0; this.grabCoolT = 0; this.deployCoolT = 0;
     this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side; this.depth = Depth.START;
     this.grounded = true; this.state = 'idle'; this.walkT = 0; this.animT = 0;
     this.pose = Pose.idle(this.classProfile); this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose);
@@ -2211,6 +2397,7 @@ class Fighter {
     if (kind === 'punch' && this.enemySlam && EnemySlams[this.enemySlam]) { this.startEnemySlam(EnemySlams[this.enemySlam]); return; }
     if (kind === 'punch' && this.enemyBash && EnemyBashes[this.enemyBash]) { this.startEnemyBash(EnemyBashes[this.enemyBash]); return; }
     if (kind === 'punch' && this.enemyGrab && EnemyGrabs[this.enemyGrab]) { this.startEnemyGrab(EnemyGrabs[this.enemyGrab]); return; }
+    if (kind === 'punch' && this.enemyDeploy && EnemyDeploys[this.enemyDeploy]) { this.startEnemyDeploy(EnemyDeploys[this.enemyDeploy]); return; }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -2410,6 +2597,30 @@ class Fighter {
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
     this.atkPhase = '';
   }
+  /** Archetype hazard deploy (Disruptor) on the shared 'punch' state. No hitbox; the zone does the damage. */
+  startEnemyDeploy(spec) {
+    const tl = EnemyDeploy.timeline(spec);
+    this.atk = {
+      su: tl.su, ac: tl.ac, re: tl.re, dmg: 0, kb: 0, stun: 0, chip: 0,
+      chain: 0, kind: 'punch', reach: 0, linked: false,
+      deploy: spec, deployDir: this.face, deployed: false, zone: null, backLeft: spec.backStep,
+    };
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+    this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = '';
+  }
+  driveDeployPose(a, t) {
+    const sp = a.deploy, end = a.su + a.ac + a.re;
+    let key, pose, dur;
+    if (t <= a.su) { key = 'dw'; pose = sp.windPose; dur = a.su; }                 // reach back for the device
+    else if (t <= a.su + a.ac + 6) { key = 'da'; pose = sp.activatePose; dur = 2; } // activation: starts on the zone frame
+    else if (t <= end - 10) { key = 'dr'; pose = sp.recoverPose; dur = 8; }         // step back
+    else { key = 'dg'; pose = null; dur = Math.max(1, end - t); }
+    if (this.atkPhase === key) return;
+    const base = Pose.idle(null), guard = this.bodyProfile?.guardPose ? EnemyCombo.pose(this.bodyProfile.guardPose) : {};
+    this.aim(key, pose ? { ...base, ...EnemyCombo.pose(pose) } : { ...base, ...guard }, dur * Game.STEP); this.atkPhase = key;
+  }
   driveGrabPose(a, t) {
     const sp = a.grab, end = a.su + a.ac + a.re;
     let key, pose, dur;
@@ -2491,7 +2702,7 @@ class Fighter {
     }
   }
   canChainPunch() {
-    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab) return false;
+    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab || this.atk.deploy) return false;
     const a = this.atk;
     if (this.state === 'kick') {
       const total = a.su + a.ac + a.re;
@@ -2504,7 +2715,7 @@ class Fighter {
     return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
   }
   canChainHeavy() {
-    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab) return false;
+    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab || this.atk.deploy) return false;
     const a = this.atk;
     const intoRecovery = this.atkT - (a.su + a.ac);
     return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRecovery <= Moves.punch.chainWindow;
@@ -2721,6 +2932,7 @@ class Fighter {
     if (a.slam) { this.driveSlamPose(a, t); return; }
     if (a.bash) { this.driveBashPose(a, t); return; }
     if (a.grab) { this.driveGrabPose(a, t); return; }
+    if (a.deploy) { this.driveDeployPose(a, t); return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -2787,6 +2999,7 @@ class Fighter {
   }
   update(dt, other, slot) {
     if (this.noRegrabT > 0 || this.grabCoolT > 0) EnemyGrab.tickTimers(this, dt);
+    if (this.deployCoolT > 0) this.deployCoolT = this.deployCoolT - dt > 1e-9 ? this.deployCoolT - dt : 0;
     if (this.heldBy && EnemyGrab.holdVictim(this, dt, other)) return; // held: pinned, no input, until released
     if (this.enemyGuard) EnemyGuard.tick(this, dt);
     this.updateCore(dt, other, slot);
@@ -2868,6 +3081,7 @@ class Fighter {
       this.atkT++;
       if (this.atk.bash) EnemyBash.tick(this); // fixed short shove; may shorten re on a hit
       if (this.atk.grab) EnemyGrab.tick(this, other); // reach / catch / hold / headbutt; may extend re on a catch
+      if (this.atk.deploy) EnemyDeploy.tick(this, other); // zone created on the activation frame; step-back recovery
       if (this.atk.rush) EnemyRush.tick(this); // fixed-distance dash / braking skid; may shorten re on a hit
       const a = this.atk, tot = a.su + a.ac + a.re;
       if (a.combo) {
@@ -2913,6 +3127,7 @@ class Fighter {
       else if (a.slam) this.vx = 0; // planted for the whole slam
       else if (a.bash) this.vx = 0; // bash travel only from EnemyBash.tick (bounded)
       else if (a.grab) this.vx = 0; // grab travel only from EnemyGrab.tick (bounded)
+      else if (a.deploy) this.vx = 0; // step-back only from EnemyDeploy.tick (bounded)
       else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
@@ -2932,6 +3147,7 @@ class Fighter {
       else if (this.atk && this.state === 'special' && this.classProfile?.weapon === 'blade') this.face = this.bladeSuper?.face ?? this.face;
       else if (this.atk && a.bash) this.face = a.bashDir; // locked at bash start
       else if (this.atk && a.grab) this.face = a.grabDir; // committed: locked at grab start
+      else if (this.atk && a.deploy) this.face = a.deployDir; // locked at deploy start
       else if (this.atk && a.rush) this.face = a.rushDir; // committed: direction locked at rush start
       else if (this.atk && a.slam) { if (this.atkT <= a.su) this.face = other.x >= this.x ? 1 : -1; } // track in wind-up, lock from the swing
       else if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
@@ -3036,6 +3252,7 @@ class Fighter {
   strike() {
     if (!this.atk || (this.hitDone && this.state !== 'special')) return null;
     const a = this.atk;
+    if (a.deploy) return null; // deploys never produce a hitbox; the shock zone resolves its own zap
     if (a.grab) return null; // grabs never produce a hitbox; catch + headbutt are resolved in EnemyGrab
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
@@ -4500,6 +4717,7 @@ class BeatEmUp {
   static items = [];
   static bossProjectiles = [];
   static enemyProjectiles = [];
+  static hazards = []; // Disruptor shock zones (ShockZones)
   static medkitDropChance = .25;
   static energyDrinkDropChance = .12;
   static energyDrinkDamageMultiplier = 1.5;
@@ -4719,6 +4937,7 @@ class BeatEmUp {
     BladeSuper.clear();
     BeatEmUp.bossProjectiles = [];
     BeatEmUp.enemyProjectiles = [];
+    ShockZones.clear();
     BeatEmUp.baseS = Fighter.S * .8;
     BeatEmUp.lockL = 0;
     BeatEmUp.lockR = Game.W * 0.92;
@@ -4805,6 +5024,7 @@ class BeatEmUp {
     f.enemyGuard = archetype.guard || null;
     f.enemyBash = archetype.bash || null;
     f.enemyGrab = archetype.grab || null;
+    f.enemyDeploy = archetype.deploy || null;
     f.y = 0;
     f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
@@ -4853,6 +5073,7 @@ class BeatEmUp {
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
     BeatEmUp.enemyProjectiles = [];
+    ShockZones.clear();
     BeatEmUp.waveSpawnQueue = [];
     BeatEmUp.waveSpawnTimer = 0;
     const defs = BeatEmUp.waveDefs(n);
@@ -4903,6 +5124,7 @@ class BeatEmUp {
     BeatEmUp.lockR = BeatEmUp.cameraX + Game.W * 0.95;
     BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
     BeatEmUp.enemyProjectiles = [];
+    ShockZones.clear();
     BeatEmUp.waveSpawnQueue = [];
     BeatEmUp.waveSpawnTimer = 0;
     BeatEmUp.bossProjectiles = [];
@@ -4950,6 +5172,7 @@ class BeatEmUp {
   static playerDown() {
     if (BeatEmUp.downPending) return;
     BeatEmUp.enemyProjectiles = [];
+    ShockZones.clear();
     const player = BeatEmUp.playerEntry();
     if (player) {
       BeatEmUp.downX = player.f.x;
@@ -5061,6 +5284,7 @@ class BeatEmUp {
   static loseStage() {
     if (BeatEmUp.stageOver) return;
     BeatEmUp.stageOver = -1;
+    ShockZones.clear();
     Game.fighting = 0;
     Game.matchOver = 1;
     Game.phase = 'matchEnd';
@@ -5072,6 +5296,7 @@ class BeatEmUp {
 
   static begin() {
     Game.mode = 'beatemup';
+    ShockZones.clear();
     Input.syncMode();
     Game.matchOver = 0;
     Game.winner = '';
@@ -5181,6 +5406,7 @@ class BeatEmUp {
     BladeSuper.update(dt);
     BossSignature.updateProjectiles(dt, player);
     EnemyProjectile.update(dt, player);
+    ShockZones.update(player);
     BeatEmUp.checkWaveState();
 
     if (!BeatEmUp.stageOver && Game.timer <= 0) BeatEmUp.loseStage();
@@ -5233,6 +5459,7 @@ class BeatEmUp {
             ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
             : e.f.enemyBash && ai.tellMove === 'punch' ? .5 + EnemyBash.timeline(EnemyBashes[e.f.enemyBash]).total * Game.STEP
             : e.f.enemyGrab && ai.tellMove === 'punch' ? .5 + EnemyGrab.timeline(EnemyGrabs[e.f.enemyGrab]).total * Game.STEP
+            : e.f.enemyDeploy && ai.tellMove === 'punch' ? .5 + EnemyDeploy.timeline(EnemyDeploys[e.f.enemyDeploy]).total * Game.STEP
             : e.f.enemySlam && ai.tellMove === 'punch' ? .4 + EnemySlam.timeline(EnemySlams[e.f.enemySlam]).total * Game.STEP
             : e.f.enemyRush && ai.tellMove === 'punch' ? BeatEmUp.pacing.attackRecovery.agile + EnemyRush.timeline(EnemyRushes[e.f.enemyRush]).total * Game.STEP
             : e.kind === 'rusher' || e.kind === 'guard' ? BeatEmUp.pacing.attackRecovery.agile
@@ -5271,8 +5498,18 @@ class BeatEmUp {
       const grab = !e.bossProfile && e.f.enemyGrab ? EnemyGrabs[e.f.enemyGrab] : null;
       // Grappler holds off (no tell) while its cooldown runs or the player is held / inside the no-regrab window.
       const grabBlocked = grab && (e.f.grabCoolT > 0 || player.f.heldBy || player.f.noRegrabT > 0 || (player.f.x - e.f.x) * e.f.face <= 0);
-      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : grab ? grab.triggerRange : Moves.punch.reach + 10;
-      if (rush && !e.f.atk && dist < rush.minRange && (ai.backoffT || 0) < rush.backoffMax) {
+      const deploy = !e.bossProfile && e.f.enemyDeploy ? EnemyDeploys[e.f.enemyDeploy] : null;
+      // Disruptor holds off (no tell) during its cooldown or while its zone is still out.
+      const deployBlocked = deploy && (e.f.deployCoolT > 0 || !!ShockZones.activeFor(e.f));
+      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : grab ? grab.triggerRange : deploy ? deploy.triggerRange : Moves.punch.reach + 10;
+      if (deploy && !e.f.atk && dist < deploy.minRange) {
+        // Too close: keep gadget spacing (side with room), never walks into melee.
+        let side = e.f.x >= player.f.x ? 1 : -1;
+        const lo = BeatEmUp.softMinX(e) + 30, hi = BeatEmUp.softMaxX(e) - 30, sp = deploy.minRange * 1.3, out = x => x < lo || x > hi;
+        if (out(player.f.x + side * sp) && !out(player.f.x - side * sp)) side = -side;
+        const tx = player.f.x + side * sp;
+        if (e.f.x < tx - 8) Input.pad[1].right = 1; else if (e.f.x > tx + 8) Input.pad[1].left = 1;
+      } else if (rush && !e.f.atk && dist < rush.minRange && (ai.backoffT || 0) < rush.backoffMax) {
         // Too close for the rush: walk out to spacing on the side with room (through the player if
         // pinned at a bound); gives up after backoffMax and rushes anyway.
         ai.backoffT = (ai.backoffT || 0) + dt;
@@ -5284,7 +5521,7 @@ class BeatEmUp {
       } else if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
-      } else if (ai.cool <= 0 && depthGap < 0.2 && !grabBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
+      } else if (ai.cool <= 0 && depthGap < 0.2 && !grabBlocked && !deployBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
         let move, label, tell;
         if (e.bossProfile) {
           const profile = e.bossProfile;
@@ -5311,12 +5548,14 @@ class BeatEmUp {
           else if (e.f.enemyRush) move = 'punch'; // Rusher shoulder rush rides the punch input
           else if (e.f.enemyBash) move = 'punch'; // Guard shield bash rides the punch input
           else if (e.f.enemyGrab) move = 'punch'; // Grappler grab rides the punch input
+          else if (e.f.enemyDeploy) move = 'punch'; // Disruptor deploy rides the punch input
           else move = Math.random() < .72 ? 'punch' : 'kick';
           label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH'
             : move === 'punch' && e.f.enemyRush ? EnemyRushes[e.f.enemyRush]?.label || 'PUNCH'
             : move === 'punch' && e.f.enemySlam ? EnemySlams[e.f.enemySlam]?.label || 'PUNCH'
             : move === 'punch' && e.f.enemyBash ? EnemyBashes[e.f.enemyBash]?.label || 'PUNCH'
-            : move === 'punch' && e.f.enemyGrab ? EnemyGrabs[e.f.enemyGrab]?.label || 'PUNCH' : move.toUpperCase();
+            : move === 'punch' && e.f.enemyGrab ? EnemyGrabs[e.f.enemyGrab]?.label || 'PUNCH'
+            : move === 'punch' && e.f.enemyDeploy ? EnemyDeploys[e.f.enemyDeploy]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }
@@ -5824,6 +6063,7 @@ class BeatEmUp {
       return;
     }
     BeatEmUp.drawItems(ctx);
+    ShockZones.draw(ctx); // floor markers under every fighter
     const ordered = BeatEmUp.cast.filter(e => e.f.hp > 0 || e.role === 'player' || (e.f.ragdollKO && e.f.ragdollElapsed < 2)).slice()
       .sort((a, b) => a.depth - b.depth);
     for (const e of ordered) BeatEmUp.drawFighter(ctx, e);
