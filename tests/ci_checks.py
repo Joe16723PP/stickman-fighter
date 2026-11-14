@@ -155,7 +155,7 @@ BLADE_SUPER = '''() => {
   const owner = fighters[0], target = fighters[1];
   owner.setClass('blade'); owner.reset(Game.W * .35, 1); owner.playerControlled = true;
   target.setClass(null); target.reset(Game.W * .7, -1); target.playerControlled = false;
-  owner.depth = target.depth = .5; owner.meter = 100; owner.startAtk('special');
+  owner.depth = target.depth = 0; owner.meter = 100; owner.startAtk('special'); // back edge, so the far edge (72px) is beyond Blade's 54px Special coverage
   owner.face = 1; owner.pose = Pose.specialDash(owner.classProfile); owner.poseFrom = owner.poseTo = owner.pose;
   owner.blendT = owner.blendDur = 0;
   const overlap = box => {
@@ -189,7 +189,7 @@ BLADE_SUPER = '''() => {
   BladeSuper.hit(sequence,targetEntry,true); const afterWave = target.hp;
   BladeSuper.hit(sequence,targetEntry,true); const afterWaveDuplicate = target.hp;
   const pierceTarget = new Fighter(Game.W*.8,'#EF4444',-1,'PIERCE'); pierceTarget.reset(Game.W*.8,-1); pierceTarget.depth=locked.depth;
-  const offLaneTarget = new Fighter(Game.W*.82,'#EF4444',-1,'OFF LANE'); offLaneTarget.reset(Game.W*.82,-1); offLaneTarget.depth=Math.min(1,locked.depth+.5);
+  const offLaneTarget = new Fighter(Game.W*.82,'#EF4444',-1,'OFF LANE'); offLaneTarget.reset(Game.W*.82,-1); offLaneTarget.depth=1;
   const offLaneHp=offLaneTarget.hp;
   const lateWaveTarget = new Fighter(Game.W*.85,'#EF4444',-1,'LATE WAVE'); lateWaveTarget.reset(Game.W*.85,-1); lateWaveTarget.depth=locked.depth;
   target.x = Game.W * .95; pierceTarget.x = wave.startX + 75; offLaneTarget.x = wave.startX + 125; lateWaveTarget.x = wave.startX + 350;
@@ -218,7 +218,7 @@ BLADE_SUPER = '''() => {
       && frameProbe.pulseAt.join(',')==='-1,0,0,-1,-1,1,1,-1'
       && quick?.pulse===0 && quick?.dmg===20 && pause===null
       && vertical?.pulse===1 && vertical?.dmg===24 && vertical.segment.y2>vertical.segment.y1
-      && launchAt===31 && locked.face===1 && locked.depth===.5 && locked.x===Game.W*.35
+      && launchAt===31 && locked.face===1 && locked.depth===0 && locked.x===Game.W*.35
       && launched?.face===locked.face && launched?.depth===locked.depth && launched.travel===15
       && afterQuick===80 && afterQuickDuplicate===80 && afterVertical===56 && afterVerticalDuplicate===56
       && afterWave===26 && afterWaveDuplicate===26 && pierceTarget.hp===70 && offLaneTarget.hp===offLaneHp
@@ -233,7 +233,7 @@ STAFF_AOE = '''() => {
   BeatEmUp.stageOver = 0; BeatEmUp.cast = []; BeatEmUp.score = 0; BeatEmUp.combo = 0; BeatEmUp.comboT = 0;
   Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.stop = 0; Game.shake = 0;
   Game.GROUND = Game.H * .72;
-  const laneStep = Depth.hitTolerance(true) / (Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP));
+  const laneStep = (Depth.SPECIAL_LANES.staff / 2 * Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP) / 4) / (Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP));
   const makeOwner = face => {
     const f = fighters[0]; f.setClass('staff'); f.reset(500, face); f.depth = .55; f.face = face;
     f.state = 'special'; f.pose = Pose.staffSuperSpin(f.classProfile, 0, face, false);
@@ -289,6 +289,32 @@ STAFF_AOE = '''() => {
   return out;
 }'''
 
+LANE_COVERAGE = r"""
+() => {
+  const prevMode = Game.mode; Game.mode = 'beatemup';
+  const offsets = [-3,-2,-1,0,1,2,3], centre = .5, step = .25; // drawn guides sit at depth i/4
+  const mk = (cls, tag) => { const f = new Fighter(Game.W*.5,'#fff',1,tag); f.reset(Game.W*.5,1); f.setClass(cls); f.depth = centre; return f; };
+  const staffRow = (owner, dx) => offsets.map(k => { const t = mk('blade','T'); t.x = owner.x + dx; t.depth = centre + k*step;
+    return Fighter.staffRadialHits({ radius:100, centerX:owner.x, centerDepthY:BeatEmUp.floorDepthPx(centre) }, owner, t) ? 1 : 0; }).join('');
+  const bladeRow = owner => offsets.map(k => BladeSuper.laneMatches({ owner, depth:centre }, { depth:centre + k*step }) ? 1 : 0).join('');
+  const karateRow = owner => offsets.map(k => BeatEmUp.depthClose(centre, centre + k*step, Depth.specialLaneTolerance(owner) + 1e-9) ? 1 : 0).join('');
+  const staff = mk('staff','YOU'), blade = mk('blade','YOU'), karate = mk('freehand','YOU'), cpuStaff = mk('staff','CPU'), cpuBlade = mk('blade','CPU');
+  const r = {
+    lanePx: Depth.lanePx(),
+    staffFullReach: staffRow(staff, 95), staffOutside: staffRow(staff, 105),
+    blade: bladeRow(blade), karate: karateRow(karate),
+    cpuStaff: staffRow(cpuStaff, 10), cpuBlade: bladeRow(cpuBlade), cpuTol: Depth.specialLaneTolerance(cpuStaff),
+  };
+  Game.mode = '1v1';
+  r.oneVOne = { lanePx: Depth.lanePx(), staff: Depth.specialLaneTolerance(staff), blade: Depth.specialLaneTolerance(blade), karate: Depth.specialLaneTolerance(karate) };
+  Game.mode = prevMode;
+  r.pass = Math.abs(r.lanePx - 43.2) < 1e-6 && r.staffFullReach === '0111110' && r.staffOutside === '0000000'
+    && r.blade === '0011100' && r.karate === '0011100' && r.cpuStaff === '0001000' && r.cpuBlade === '0001000' && r.cpuTol === null
+    && r.oneVOne.lanePx === 36 && r.oneVOne.staff === 90 && r.oneVOne.blade === 54 && r.oneVOne.karate === 54;
+  return r;
+}
+"""
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -329,6 +355,10 @@ def main():
             print('staff AoE harness', json.dumps(staff_aoe))
             if not staff_aoe['pass']:
                 failures.append('Staff AoE harness failed: expected all in-radius positions to take 24 per spin, per-pulse dedupe, off-lane/outside misses, symmetric facing, and Slam-only knockdown')
+            lane_cov = page.evaluate(LANE_COVERAGE)
+            print('special lane coverage', json.dumps(lane_cov))
+            if not lane_cov['pass']:
+                failures.append('Special lane coverage failed: expected player Staff 5 lanes at full X reach, Blade/Karate 3 lanes, CPU unchanged, 1v1 lane 36px')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
