@@ -350,7 +350,7 @@ BRAWLER = r"""
   // Stats, scaled by stage and difficulty exactly like every other archetype.
   BeatEmUp.stage = 2;
   const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
-  const kinds = ['regular','rusher','guard','heavy','thrower','brawler'];
+  const kinds = ['regular','rusher','guard','heavy','ranged','brawler'];
   const made = Object.fromEntries(kinds.map(k => [k, BeatEmUp.makeEnemy(k, 400, .5)]));
   const br = made.brawler, rk = made.regular;
   r.stats = { hp: br.f.hp, expectHp: Math.round(110 * stageHealth), rookieHp: rk.f.hp, speedMul: br.speedMul, scaleMul: br.scaleMul,
@@ -362,7 +362,7 @@ BRAWLER = r"""
   const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
   r.hurtbox = { brawler: box(br), rookie: box(rk) };
   // Existing archetypes: no profile, no combo, draw bones identical to gameplay bones.
-  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher' && k !== 'heavy' && k !== 'guard').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
+  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher' && k !== 'heavy' && k !== 'guard' && k !== 'ranged').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
     && BeatEmUp.withDepth(made[k], () => JSON.stringify(ArchetypeSkeleton.drawBones(made[k].f)) === JSON.stringify(made[k].f.bones())));
   // Draw trace: a ROOKIE draws exactly like a plain Fighter that never touched the archetype code.
   const trace = f => { const ops = []; const ctx = new Proxy({}, {
@@ -397,7 +397,7 @@ BRAWLER = r"""
   const tl = EnemyCombo.timeline(EnemyCombos.jabCross);
   r.timeline = { su: tl.su, ac: tl.ac, re: tl.re, total: tl.total, active: tl.hits.map(w => w.activeStart + '-' + w.activeEnd) };
   // Spawns: Stage 1 has brawlers; Stages 1-3 swap exactly a third of ROOKIE slots in place; nothing else moves.
-  const orig = [[['thrower','regular','regular'],['rusher','rusher','regular'],['heavy','regular','heavy']],
+  const orig = [[['ranged','regular','regular'],['rusher','rusher','regular'],['heavy','regular','heavy']],
                 [['regular','heavy','regular'],['rusher','rusher','heavy'],['heavy','heavy','rusher']],
                 [['regular','regular','heavy'],['rusher','rusher','regular'],['guard','heavy','guard']]];
   let swapped = 0, rookies = 0, inPlace = true;
@@ -897,6 +897,118 @@ DISRUPTOR = r"""
 }
 """
 
+RANGED = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast, phase: Game.phase, lockL: BeatEmUp.lockL, lockR: BeatEmUp.lockR };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0; Game.banner = '';
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0; BeatEmUp.lockL = 0; BeatEmUp.lockR = BeatEmUp.worldMax;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const rg = BeatEmUp.makeEnemy('ranged', 400, .5), rk = BeatEmUp.makeEnemy('regular', 400, .5);
+  r.stats = { hp: rg.f.hp, expectHp: Math.round(65 * stageHealth), speedMul: rg.speedMul, scaleMul: rg.scaleMul, weapon: rg.f.weaponType, tag: rg.f.tag,
+    special: rg.f.specialDamageMultiplier, profile: rg.f.bodyProfile === ArchetypeBodyProfiles.ranged,
+    proj: [EnemyProjectile.speed, EnemyProjectile.range, EnemyProjectile.tell, EnemyProjectile.recovery, EnemyProjectile.cooldown].join(',') };
+  const count = k => BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(x => x === k).length, 0), 0);
+  r.throwerGone = !('thrower' in EnemyArchetypes) && !('thrower' in CpuHotColors.enemy); r.throwerSpawns = count('thrower'); r.rangedSpawns = count('ranged');
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  const hb = { r: box(rg), rookie: box(rk) };
+  r.hurtboxSame = hb.r.w === hb.rookie.w && hb.r.h === hb.rookie.h;
+  const proxy = ops => new Proxy({}, {
+    get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+    set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+  const trace = f => { const ops = []; f.draw(proxy(ops)); return ops.join('|'); };
+  const plain = new Fighter(400, rg.f.color, -1, ''); plain.reset(400, -1); rg.f.reset(400, -1);
+  r.gameplayBonesSame = BeatEmUp.withDepth(rg, () => JSON.stringify(rg.f.combatBones()) === JSON.stringify(plain.combatBones()));
+  const rtrace = BeatEmUp.withDepth(rg, () => trace(rg.f));
+  r.profileDrawn = rtrace !== BeatEmUp.withDepth(rg, () => trace(plain)); r.hoodDrawn = rtrace.includes('#3B3550'); r.pouchDrawn = rtrace.includes('#4A3B2A');
+  // No head label: the in-game draw path never writes the tag (old THROWER kept one).
+  const labelOps = []; BeatEmUp.drawFighter(proxy(labelOps), rg);
+  r.headLabel = labelOps.filter(o => o.startsWith('fillText:') && /RANGED|THROWER/.test(o)).length;
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const x0 = 900;
+  const setup = (px = x0 - 250) => {
+    player.reset(px, 1); player.depth = .5; pEntry.depth = .5; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.stun = 0; player.blocking = 0;
+    rg.f.reset(x0, -1); rg.depth = .5; rg.f.hp = 300; rg.f.enemyThrowPose = null;
+    Object.assign(rg.ai, { cool: 0, tellT: 0, tellKind: '', throwPhase: '', recoveryT: 0, throwReleaseT: 0 });
+    BeatEmUp.cast = [pEntry, rg]; BeatEmUp.enemyProjectiles = [];
+    Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    BeatEmUp.withDepth(pEntry, () => player.clamp());
+  };
+  const frame = (moveProj = true) => {
+    BeatEmUp.updateGroupAI(Game.STEP, pEntry);
+    const pad = rg._pad || {};
+    Input.acts.forEach(a => { Input.pad[1][a] = pad[a] || 0; Input.was[1][a] = 0; });
+    BeatEmUp.withDepth(rg, () => rg.f.update(Game.STEP, player, 1));
+    Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    if (moveProj) EnemyProjectile.update(Game.STEP, pEntry);
+  };
+  const tp = ArchetypeBodyProfiles.ranged.throwPoses, relPose = EnemyCombo.pose(tp.release);
+  // Joint angles compare modulo a full turn (the pose blender takes the short way round, so 150deg may be stored as -210deg).
+  const wrap = v => { const t = Math.PI * 2; return Math.abs(((v % t) + t + Math.PI) % t - Math.PI); };
+  const near = (a, b) => Object.keys(b).every(k => (k === 'hipBob' || k === 'shPull') ? Math.abs(a[k] - b[k]) < 1e-9 : wrap(a[k] - b[k]) < 1e-9);
+  // One full shot cycle through the real shared AI.
+  setup();
+  const cyc = { windupStart: 0, spawn: 0, spawnPoseKey: '', spawnPoseExact: false, prevPoseRelease: false, releaseEnd: 0, recoveryEnd: 0, nextWindup: 0, heldKunai: false, aimHeld: false };
+  let proj = null, lastPhase = '';
+  for (let i = 1; i <= 400; i++) {
+    const before = BeatEmUp.enemyProjectiles.length, keyBefore = rg.f.poseKey;
+    frame(false);
+    const ph = rg.ai.throwPhase;
+    if (ph === 'windup' && !cyc.windupStart) cyc.windupStart = i;
+    if (ph === 'windup' && i === cyc.windupStart + 20) { cyc.aimHeld = near(rg.f.pose, EnemyCombo.pose(tp.windup)); cyc.heldKunai = BeatEmUp.withDepth(rg, () => trace(rg.f)).includes('#DCE6F5'); }
+    if (BeatEmUp.enemyProjectiles.length > before && !cyc.spawn) {
+      cyc.spawn = i; proj = BeatEmUp.enemyProjectiles[0]; cyc.spawnPoseKey = rg.f.poseKey; cyc.spawnPoseExact = near(rg.f.pose, relPose); cyc.prevPoseRelease = keyBefore === 'enemy-throw-release';
+      cyc.heldAfter = BeatEmUp.withDepth(rg, () => trace(rg.f)).includes('#DCE6F5');
+    }
+    if (cyc.spawn && lastPhase === 'release' && ph !== 'release') cyc.releaseEnd = i;
+    if (cyc.spawn && lastPhase === 'recovery' && ph !== 'recovery') cyc.recoveryEnd = i;
+    if (cyc.recoveryEnd && ph === 'windup' && !cyc.nextWindup) { cyc.nextWindup = i; break; }
+    lastPhase = ph;
+    player.x = x0 - 250; player.hp = 100; // player holds still (projectile is not stepped here)
+  }
+  const steps = t => { let n = 0; while (t > 0) { t = Math.max(0, t - Game.STEP); n++; } return n; };
+  r.cycle = { ...cyc, aimFrames: cyc.spawn - cyc.windupStart, releaseFrames: cyc.releaseEnd - cyc.spawn, recoveryFrames: cyc.recoveryEnd - cyc.releaseEnd,
+    expectAim: steps(EnemyProjectile.tell), expectRelease: steps(.14), expectRecovery: steps(EnemyProjectile.recovery) };
+  r.projShape = proj ? { w: proj.width, h: proj.height, speed: proj.speed, range: proj.range, depth: proj.depth, face: proj.face, dmg: +proj.damage.toFixed(6),
+    expectDmg: +(EnemyProjectile.damage * BeatEmUp.difficulty.damage).toFixed(6) } : null;
+  // No homing: after launch the player moves in x and lane; the kunai keeps its depth, height and direction, moving speed*STEP per frame.
+  const flight = (opts) => {
+    setup(); let p = null, hits = 0, homing = false;
+    for (let i = 0; i < 300; i++) {
+      const hp = player.hp; frame(true);
+      if (!p && BeatEmUp.enemyProjectiles.length) { p = BeatEmUp.enemyProjectiles[0]; p._d = p.depth; p._y = p.y; p._f = p.face; p._x = p.x; if (opts.after) { opts.after(); BeatEmUp.withDepth(pEntry, () => player.clamp()); } continue; }
+      if (p && BeatEmUp.enemyProjectiles.includes(p)) { if (p.depth !== p._d || p.y !== p._y || p.face !== p._f || Math.abs((p.x - p._x) - p.face * p.speed * Game.STEP) > 1e-6) homing = true; p._x = p.x; }
+      if (player.hp < hp) hits++;
+      if (p && !BeatEmUp.enemyProjectiles.includes(p)) break;
+      player.stun = 0;
+    }
+    return { launched: !!p, hits, homing };
+  };
+  const depthFor = px => { for (let d = .5; d <= 1; d += .0005) if (Math.abs(BeatEmUp.floorDepthPx(d) - BeatEmUp.floorDepthPx(.5)) >= px) return d; return 1; };
+  r.sameLane = flight({});
+  r.laneChange = flight({ after: () => { pEntry.depth = player.depth = depthFor(BeatEmUp.DEPTH_HIT_PX + 4); } });
+  r.sidestepX = flight({ after: () => { player.x = x0 + 400; } });
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; Game.phase = prev.phase; BeatEmUp.enemyProjectiles = []; BeatEmUp.lockL = prev.lockL; BeatEmUp.lockR = prev.lockR;
+  Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+  player.reset(200, 1);
+  r.kunaiDrawOps = (() => { const ops = []; BeatEmUp.enemyProjectiles = [{ x: 100, y: 100, face: 1 }]; EnemyProjectile.draw(proxy(ops)); BeatEmUp.enemyProjectiles = []; return ops.length; })();
+  const s = r.stats, c = r.cycle;
+  r.pass = s.hp === s.expectHp && s.speedMul === 1 && s.scaleMul === 1 && s.weapon === null && s.special === 0 && s.profile && s.proj === '315,560,0.5,0.9,2.5'
+    && r.throwerGone && r.throwerSpawns === 0 && r.rangedSpawns === 1 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn && r.hoodDrawn && r.pouchDrawn && r.headLabel === 0
+    // Release pose lands on exactly the projectile spawn frame (not before, fully posed on it); aim held long enough to read.
+    && c.spawn > 0 && c.spawnPoseKey === 'enemy-throw-release' && c.spawnPoseExact && !c.prevPoseRelease && c.aimHeld && c.heldKunai && !c.heldAfter
+    && c.aimFrames === c.expectAim && c.releaseFrames === c.expectRelease && c.recoveryFrames === c.expectRecovery && c.nextWindup > 0
+    && r.projShape && r.projShape.w === 20 && r.projShape.h === 10 && r.projShape.depth === .5 && r.projShape.face === -1 && Math.abs(r.projShape.dmg - r.projShape.expectDmg) < 1e-6
+    && r.sameLane.launched && r.sameLane.hits === 1 && !r.sameLane.homing
+    && r.laneChange.launched && r.laneChange.hits === 0 && !r.laneChange.homing
+    && r.sidestepX.launched && r.sidestepX.hits === 0 && !r.sidestepX.homing && r.kunaiDrawOps > 10;
+  return r;
+}
+"""
+
 GUARD = r"""
 () => {
   const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
@@ -1095,6 +1207,10 @@ def main():
             print('disruptor archetype', json.dumps({k: v for k, v in disruptor.items() if k != 'pass'}))
             if not disruptor['pass'] or 'disruptor' in stage_src:
                 failures.append('Disruptor archetype failed: expected 85hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only profile, no deploy hitbox, zone created on the activation frame at the player x/lane, 0.8 s harmless warning then 1.5 s live, exactly one zap per zone inside halfW and the shared lane tolerance, step-out / lane change / airborne / invulnerable avoid it, fixed position, finishes its cycle after the Disruptor dies, wind-up hit cancels, 4 s cooldown, one zone per Disruptor, ZAP AI tell gated, zones cleared on every reset path')
+            ranged = page.evaluate(RANGED)
+            print('ranged archetype', json.dumps({k: v for k, v in ranged.items() if k != 'pass'}))
+            if not ranged['pass'] or '"thrower"' in stage_src:
+                failures.append('Ranged archetype failed: expected THROWER fully renamed (1 ranged spawn), 65hp stage-scaled and unchanged projectile numbers, ROOKIE hurtbox, draw-only hooded profile with pouch, no head label, aim pose held, release pose on exactly the kunai spawn frame, kunai leaves the hand on release, same-lane hit once, lane change / sidestep avoid it, no homing')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:

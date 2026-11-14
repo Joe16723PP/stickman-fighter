@@ -69,7 +69,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A', grappler: '#D9733B', disruptor: '#3FB8C9' },
+  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', ranged: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A', grappler: '#D9733B', disruptor: '#3FB8C9' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -341,6 +341,7 @@ class EnemyProjectile {
     }
   }
 
+  /** Kunai (drawing only; collision stays the width x height box in update). Blade forward, wrapped grip, ring pommel. */
   static draw(ctx) {
     const camX = BeatEmUp.cameraX;
     for (const p of BeatEmUp.enemyProjectiles) {
@@ -348,12 +349,18 @@ class EnemyProjectile {
       ctx.translate(p.x - camX, p.y);
       if (p.face < 0) ctx.scale(-1, 1);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(196,181,253,.55)'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-7, 0); ctx.stroke();
-      ctx.fillStyle = '#DCE6F5'; ctx.strokeStyle = '#20232C'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(-7, -3); ctx.lineTo(11, 0); ctx.lineTo(-7, 3); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = '#7C3AED'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(-12, -4); ctx.lineTo(-12, 4); ctx.stroke();
+      ctx.strokeStyle = 'rgba(196,181,253,.5)'; ctx.lineWidth = 2.5;           // motion streak
+      ctx.beginPath(); ctx.moveTo(-22, 0); ctx.lineTo(-14, 0); ctx.stroke();
+      ctx.strokeStyle = '#20232C'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(-12, 0, 2.6, 0, Math.PI * 2); ctx.stroke();    // ring pommel
+      ctx.strokeStyle = '#20232C'; ctx.lineWidth = 4.2;
+      ctx.beginPath(); ctx.moveTo(-9.5, 0); ctx.lineTo(-1, 0); ctx.stroke();  // grip outline
+      ctx.strokeStyle = '#7C3AED'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(-9.5, 0); ctx.lineTo(-1, 0); ctx.stroke();  // wrapped grip
+      ctx.fillStyle = '#DCE6F5'; ctx.strokeStyle = '#20232C'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(-1, 0); ctx.lineTo(3, -3.4); ctx.lineTo(12, 0); ctx.lineTo(3, 3.4); ctx.closePath(); ctx.fill(); ctx.stroke(); // leaf blade
+      ctx.strokeStyle = 'rgba(32,35,44,.6)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(10, 0); ctx.stroke();   // blade ridge
       ctx.restore();
     }
   }
@@ -375,7 +382,9 @@ const EnemyArchetypes = {
   guard: { health: 125, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .85, bodyProfile: 'guard', guard: 'riotShield', bash: 'shield' },
   // Heavy (rebuilt in place, same spawns): mass/weight body, always a sledgehammer, one overhead slam.
   heavy: { health: 145, weaponChance: 0, loadout: 'sledgehammer', specialDamage: .45, specialGain: .45, speed: .74, scale: 1.12, bodyProfile: 'heavy', slam: 'overhead' },
-  thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
+  // Ranged rebuilt the old THROWER everywhere it spawned: hooded kunai thrower, same stats and the one shared projectile AI
+  // (BeatEmUp.updateThrowerAI + EnemyProjectile). Profile is draw-only.
+  ranged: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0, bodyProfile: 'ranged' },
   boss: { health: 220, weaponChance: 1, specialDamage: 1, specialGain: 1 },
   brawler: { health: 110, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .95, bodyProfile: 'brawler', combo: 'jabCross' },
   // Grappler: archetype only (no stage spawns yet). Long arms, open hands, one committed grab -> hold, headbutt, release.
@@ -960,6 +969,25 @@ const ArchetypeBodyProfiles = {
     guardPose: EnemyDeploys.shockZone.guardPose, // idle/walk: baton low in front, rear hand on the hip pack
     equipment: [{ kind: 'utilityPack', joints: ['chest'], layer: 'back' }, { kind: 'harness', joints: ['chest'] }, { kind: 'shockBaton', joints: ['la'] }],
   },
+  ranged: {
+    torsoWidth: .9,        // slim torso
+    shoulderWidth: 1,      // narrow shoulders
+    limbWidth: .8,
+    forearmWidth: .8,
+    legWidth: .9,
+    neckScale: .85,
+    stanceWidth: 2,
+    guardPose: {chest:6,neck:-2,head:2,la:-60,le:-70,ra:40,re:-80}, // withdrawn: lead arm guarding, throwing hand back by the pouch
+    // Throw poses (deg) for the shared thrower AI phases; release is snapped on the projectile spawn frame.
+    throwPoses: {
+      windup:   {chest:-8,neck:3,head:2,la:-92,le:-8,ra:150,re:100,ll:28,lk:18,rl:-26,rk:22,hipBob:1,shPull:7},  // aim: lead hand points, kunai raised behind the head
+      release:  {chest:-18,neck:2,head:1,la:-58,le:-42,ra:-88,re:-6,ll:36,lk:20,rl:-32,rk:24,hipBob:-1,shPull:0}, // throwing arm fully extended
+      recovery: {chest:6,neck:-1,head:2,la:-52,le:-62,ra:30,re:-50,ll:20,lk:14,rl:-20,rk:18,hipBob:0,shPull:0},   // arm returns, resets to the pouch
+    },
+    throwBlend: { windup: .1, recovery: .3 },
+    headGear: 'hood',
+    equipment: [{ kind: 'kunaiPouch', joints: ['hip'] }, { kind: 'heldKunai', joints: ['ra'] }],
+  },
 };
 const ArchetypeEquipment = {
   /** Riot shield on the lead hand, its long axis across the forearm line (arm forward = shield upright,
@@ -1007,6 +1035,61 @@ const ArchetypeEquipment = {
     ctx.restore();
   },
 
+  /** Hood + mask over the head (drawn after the head). Decoration only. */
+  hood(ctx, f, b, joint, ctxInfo) {
+    const h = b[joint], r = b.hr;
+    if (!h || !r) return;
+    const face = f.face, P = (deg, k) => ({ x: h.x + face * Math.cos(deg * Math.PI / 180) * r * k, y: h.y - Math.sin(deg * Math.PI / 180) * r * k });
+    ctx.save(); ctx.lineJoin = 'round';
+    // Cowl: outer arc front-top -> over the top -> back, a drape point behind the neck, inner arc back to the front.
+    ctx.beginPath();
+    for (let a = 55; a <= 235; a += 15) { const q = P(a, 1.32); if (a === 55) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y); }
+    ctx.lineTo(h.x - face * r * 1.25, h.y + r * 1.55);
+    for (let a = 220; a >= 60; a -= 20) { const q = P(a, 1.0); ctx.lineTo(q.x, q.y); }
+    ctx.closePath();
+    ctx.fillStyle = '#3B3550'; ctx.fill();
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = 2.5 / Game.scale; ctx.stroke();
+    // Mask over the lower face, leaving an eye slit.
+    ctx.beginPath(); ctx.moveTo(h.x, h.y);
+    for (let a = -80; a <= 18; a += 14) { const q = P(a, 1.02); ctx.lineTo(q.x, q.y); }
+    ctx.closePath(); ctx.fillStyle = '#22202E'; ctx.fill();
+    ctx.restore();
+  },
+  /** Kunai pouch on the lead hip with three ring handles sticking up, plus its thigh strap. Decoration only. */
+  kunaiPouch(ctx, f, b, joint, ctxInfo) {
+    const hip = b[joint];
+    if (!hip) return;
+    const { unit } = ctxInfo, face = f.face;
+    const c = { x: hip.x + face * 5 * unit, y: hip.y + 5 * unit }, w = 5 * unit, hgt = 7 * unit;
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = 1.8 * unit;
+    for (const dx of [-2.5, 0, 2.5]) { // handles + rings
+      const x = c.x + dx * unit;
+      ctx.beginPath(); ctx.moveTo(x, c.y - hgt * .5); ctx.lineTo(x, c.y - hgt * .5 - 5 * unit); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, c.y - hgt * .5 - 6.3 * unit, 1.3 * unit, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.rect(c.x - w, c.y - hgt * .5, w * 2, hgt);
+    ctx.fillStyle = '#4A3B2A'; ctx.fill(); ctx.lineWidth = 2 / Game.scale + .8 * unit; ctx.stroke();
+    ctx.strokeStyle = '#8C7A5B'; ctx.lineWidth = 1 * unit;
+    ctx.beginPath(); ctx.moveTo(c.x - w, c.y - hgt * .1); ctx.lineTo(c.x + w, c.y - hgt * .1); ctx.stroke(); // flap seam
+    ctx.restore();
+  },
+  /** Kunai held in the throwing hand only while aiming (it leaves the hand on the release frame). Decoration only. */
+  heldKunai(ctx, f, b, joint, ctxInfo) {
+    if (f.enemyThrowPose !== 'windup' || f.hp <= 0 || f.ragdollActive) return;
+    const hand = b[joint], el = b[joint + 'J'];
+    if (!hand || !el) return;
+    const { unit } = ctxInfo;
+    let dx = hand.x - el.x, dy = hand.y - el.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const tip = { x: hand.x + dx * 12 * unit, y: hand.y + dy * 12 * unit }, ring = { x: hand.x - dx * 5 * unit, y: hand.y - dy * 5 * unit };
+    const nx = -dy, ny = dx;
+    ctx.save(); ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(hand.x, hand.y); ctx.lineTo(hand.x + dx * 4 * unit + nx * 2.4 * unit, hand.y + dy * 4 * unit + ny * 2.4 * unit);
+    ctx.lineTo(tip.x, tip.y); ctx.lineTo(hand.x + dx * 4 * unit - nx * 2.4 * unit, hand.y + dy * 4 * unit - ny * 2.4 * unit); ctx.closePath();
+    ctx.fillStyle = '#DCE6F5'; ctx.fill(); ctx.strokeStyle = '#20232C'; ctx.lineWidth = 1.2 * unit; ctx.stroke();
+    ctx.beginPath(); ctx.arc(ring.x, ring.y, 1.6 * unit, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  },
   /** Asymmetric utility pack: a box on the back plus a pouch on the rear hip (the back side reads bulkier). Decoration only. */
   utilityPack(ctx, f, b, joint, ctxInfo) {
     const chest = b[joint], hip = b.hip;
@@ -3154,10 +3237,15 @@ class Fighter {
       this.clamp(other); return;
     }
     if (this.enemyThrowPose) {
-      const pose = this.enemyThrowPose === 'windup' ? Pose.throwWindup()
-        : this.enemyThrowPose === 'release' ? Pose.throwRelease() : Pose.throwRecovery();
+      const tp = this.bodyProfile?.throwPoses, key = 'enemy-throw-' + this.enemyThrowPose;
+      const pose = tp ? { ...Pose.idle(null), ...EnemyCombo.pose(tp[this.enemyThrowPose]) }
+        : this.enemyThrowPose === 'windup' ? Pose.throwWindup()
+          : this.enemyThrowPose === 'release' ? Pose.throwRelease() : Pose.throwRecovery();
       this.vx = 0; this.state = 'idle';
-      this.aim('enemy-throw-' + this.enemyThrowPose, pose, .1);
+      if (tp && this.enemyThrowPose === 'release' && this.poseKey !== key) {
+        // Release is snapped on the exact frame EnemyProjectile.launch spawns the kunai (same AI tick, before this update).
+        this.aim(key, pose, .04); this.pose = Pose.copy(pose); this.poseFrom = Pose.copy(pose); this.poseTo = Pose.copy(pose); this.blendT = this.blendDur; this.punchSoft = 0;
+      } else this.aim(key, pose, tp ? (this.bodyProfile.throwBlend?.[this.enemyThrowPose] ?? .1) : .1);
       this.tickPose(dt);
       this.face = other.x >= this.x ? 1 : -1;
       this.clamp(other); return;
@@ -3937,6 +4025,7 @@ class Fighter {
     ctx.fillStyle = col; ctx.beginPath(); ctx.arc(headX, headY, headRadius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,.32)';
     ctx.beginPath(); ctx.ellipse(headX - headRadius * .3, headY - headRadius * .34, headRadius * .28, headRadius * .16, -.5, 0, Math.PI * 2); ctx.fill();
+    if (b.profile?.headGear) ArchetypeEquipment[b.profile.headGear]?.(ctx, this, b, 'head', { stroke: spriteStroke, unit: b.unit }); // draw-only (e.g. Ranged hood)
     this.drawAccessory(ctx,b);
     this.drawWeapon(ctx,b);
     this.drawReadyLightning(ctx,b);
@@ -5081,12 +5170,12 @@ class BeatEmUp {
     if (enemyDelta < 0 && defs.length > 1) defs.pop();
     if (enemyDelta > 0 && defs.length) {
       const candidate = defs[(BeatEmUp.stage + n) % defs.length];
-      const source = candidate.kind === 'thrower' ? defs.find(d => d.kind !== 'thrower') || candidate : candidate;
+      const source = candidate.kind === 'ranged' ? defs.find(d => d.kind !== 'ranged') || candidate : candidate;
       defs.push({ kind: source.kind, ox: .84, depth: n === 2 ? .48 : .35 });
     }
     // Double each difficulty's final authored lineup while preserving its
     // enemy mix. Put the second group across the lane to reduce spawn overlap.
-    const reinforcements = defs.filter(d => d.kind !== 'thrower').map((d, index) => ({
+    const reinforcements = defs.filter(d => d.kind !== 'ranged').map((d, index) => ({
       kind: d.kind,
       ox: index % 2 ? .9 : .46,
       depth: Math.max(.12, Math.min(.9, 1 - d.depth)),
@@ -5421,7 +5510,7 @@ class BeatEmUp {
       return score(a) - score(b);
     });
     const boss = sorted.find(e => e.kind === 'boss');
-    const ranged = sorted.find(e => e.kind === 'thrower');
+    const ranged = sorted.find(e => e.kind === 'ranged');
     const attackers = boss ? new Set([boss]) : new Set([
       ...(ranged ? [ranged] : []),
       ...sorted.filter(e => e !== ranged).slice(0, ranged ? 1 : 2),
@@ -5445,7 +5534,7 @@ class BeatEmUp {
       Input.pad[1].punch = 0; Input.pad[1].kick = 0;
       Input.pad[1].block = 0; Input.pad[1].special = 0;
 
-      if (e.kind === 'thrower') {
+      if (e.kind === 'ranged') {
         BeatEmUp.updateThrowerAI(e, player, dt, attackers.has(e));
         BeatEmUp._driveEnemyPad(e, player, dt);
         continue;
@@ -5663,7 +5752,7 @@ class BeatEmUp {
           landed.add(target);
           attacker.f.bladeSuper.targetsHit.add(target);
         }
-        if (target.kind === 'thrower' && (kind === 'hit' || kind === 'armored')) {
+        if (target.kind === 'ranged' && (kind === 'hit' || kind === 'armored')) {
           target.ai.throwPhase = ''; target.ai.tellT = 0; target.ai.tellKind = '';
           target.ai.cool = Math.max(target.ai.cool, .8); target.f.enemyThrowPose = null;
         }
@@ -5935,8 +6024,8 @@ class BeatEmUp {
       const drawTag = entry.f.tag;
       const showAlert = entry.ai && (entry.ai.tellT > 0 || entry.ai.phaseCallout > 0);
       // Repeated rookie/regular labels stack into noise when a wave crowds
-      // around the player. Keep identity labels for the player and boss only.
-      if (showAlert || (entry.kind !== 'boss' && entry.kind !== 'thrower' && entry.role !== 'player')) entry.f.tag = '';
+      // around the player. Keep identity labels for the player and boss only (Ranged: no head label).
+      if (showAlert || (entry.kind !== 'boss' && entry.role !== 'player')) entry.f.tag = '';
       if (entry.bossProfile && entry.ai && entry.ai.tellMove === 'special' && entry.ai.tellT > 0) {
         entry.f.weaponFlashT = entry.ai.tellT;
         entry.f.weaponFlashColor = BossSignatures[entry.bossProfile.signature.key]?.color || '#FBBF24';
@@ -5951,7 +6040,7 @@ class BeatEmUp {
         const pulse = .78 + .22 * Math.sin(performance.now() * .018);
         const labelY = head.y - 24 / Game.scale;
         ctx.globalAlpha = pulse;
-        ctx.fillStyle = entry.kind === 'boss' ? '#FBBF24' : entry.kind === 'thrower' ? '#C4B5FD' : '#FF665F';
+        ctx.fillStyle = entry.kind === 'boss' ? '#FBBF24' : entry.kind === 'ranged' ? '#C4B5FD' : '#FF665F';
         ctx.beginPath(); ctx.arc(head.x, labelY, 11 / Game.scale, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#11131A'; ctx.font = 'bold ' + 12 / Game.scale + 'px system-ui,sans-serif';
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', head.x, labelY + 1 / Game.scale);
