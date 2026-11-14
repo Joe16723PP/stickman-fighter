@@ -350,7 +350,7 @@ BRAWLER = r"""
   // Stats, scaled by stage and difficulty exactly like every other archetype.
   BeatEmUp.stage = 2;
   const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
-  const kinds = ['regular','rusher','tough','heavy','thrower','brawler'];
+  const kinds = ['regular','rusher','guard','heavy','thrower','brawler'];
   const made = Object.fromEntries(kinds.map(k => [k, BeatEmUp.makeEnemy(k, 400, .5)]));
   const br = made.brawler, rk = made.regular;
   r.stats = { hp: br.f.hp, expectHp: Math.round(110 * stageHealth), rookieHp: rk.f.hp, speedMul: br.speedMul, scaleMul: br.scaleMul,
@@ -362,7 +362,7 @@ BRAWLER = r"""
   const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
   r.hurtbox = { brawler: box(br), rookie: box(rk) };
   // Existing archetypes: no profile, no combo, draw bones identical to gameplay bones.
-  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher' && k !== 'heavy').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
+  r.noProfile = kinds.filter(k => k !== 'brawler' && k !== 'rusher' && k !== 'heavy' && k !== 'guard').every(k => made[k].f.bodyProfile === null && made[k].f.enemyCombo === null
     && BeatEmUp.withDepth(made[k], () => JSON.stringify(ArchetypeSkeleton.drawBones(made[k].f)) === JSON.stringify(made[k].f.bones())));
   // Draw trace: a ROOKIE draws exactly like a plain Fighter that never touched the archetype code.
   const trace = f => { const ops = []; const ctx = new Proxy({}, {
@@ -399,7 +399,7 @@ BRAWLER = r"""
   // Spawns: Stage 1 has brawlers; Stages 1-3 swap exactly a third of ROOKIE slots in place; nothing else moves.
   const orig = [[['thrower','regular','regular'],['rusher','rusher','regular'],['heavy','regular','heavy']],
                 [['regular','heavy','regular'],['rusher','rusher','heavy'],['heavy','heavy','rusher']],
-                [['regular','regular','heavy'],['rusher','rusher','regular'],['tough','heavy','tough']]];
+                [['regular','regular','heavy'],['rusher','rusher','regular'],['guard','heavy','guard']]];
   let swapped = 0, rookies = 0, inPlace = true;
   for (let s = 0; s < 3; s++) for (let w = 0; w < 3; w++) {
     const now = BeatEmUp.chapters[s].waves[w].enemyFocus;
@@ -615,6 +615,131 @@ HEAVY = r"""
 }
 """
 
+GUARD = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const gd = BeatEmUp.makeEnemy('guard', 400, .5), rk = BeatEmUp.makeEnemy('regular', 400, .5);
+  r.stats = { hp: gd.f.hp, expectHp: Math.round(125 * stageHealth), speedMul: gd.speedMul, scaleMul: gd.scaleMul, weapon: gd.f.weaponType,
+    dmgMul: gd.f.damageMultiplier, tag: gd.f.tag, guard: gd.f.enemyGuard, bash: gd.f.enemyBash, combo: gd.f.enemyCombo, rush: gd.f.enemyRush, slam: gd.f.enemySlam,
+    profile: gd.f.bodyProfile === ArchetypeBodyProfiles.guard };
+  let armed = 0; for (let i = 0; i < 60; i++) if (BeatEmUp.makeEnemy('guard', 400, .5).f.weaponType) armed++;
+  r.armed = armed; r.toughGone = !('tough' in EnemyArchetypes);
+  const count = k => BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(x => x === k).length, 0), 0);
+  r.toughSpawns = count('tough'); r.guardSpawns = count('guard');
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  const hb = { guard: box(gd), rookie: box(rk) };
+  r.hurtboxSame = hb.guard.w === hb.rookie.w && hb.guard.h === hb.rookie.h;
+  const trace = f => { const ops = []; const ctx = new Proxy({}, {
+      get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+      set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+    f.draw(ctx); return ops.join('|'); };
+  const plain = new Fighter(400, gd.f.color, -1, ''); plain.reset(400, -1); gd.f.reset(400, -1);
+  r.gameplayBonesSame = BeatEmUp.withDepth(gd, () => JSON.stringify(gd.f.combatBones()) === JSON.stringify(plain.combatBones()));
+  r.profileDrawn = BeatEmUp.withDepth(gd, () => trace(gd.f) !== trace(plain));
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const G = EnemyGuards.riotShield, sp = EnemyBashes.shield, tl = EnemyBash.timeline(sp);
+  const x0 = 900;
+  const setup = (px, pdepth = .5) => {
+    player.reset(px, px < x0 ? 1 : -1); player.depth = pdepth; pEntry.depth = pdepth; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.grounded = true;
+    gd.f.reset(x0, -1); gd.depth = .5; gd.f.face = -1; gd.f.hp = 500; gd.f.guardFace = -1; gd.f.guardTurnT = 0;
+    gd.f.guardOpenT = 0; gd.f.guardRecoilT = 0; gd.f.guardChainT = 0; gd.f.guardBlocks = 0;
+    BeatEmUp.cast = [pEntry, gd];
+    Input.acts.forEach(a => { Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+  };
+  const step = () => BeatEmUp.withDepth(gd, () => gd.f.update(Game.STEP, player, 1));
+  const normal = () => ({ x: 0, y: 0, w: 1, h: 1, dmg: 5, kb: 160, stun: 10, chip: 0, special: false, chain: 0 });
+  const hit = (atk = normal()) => { const hp = gd.f.hp, x = gd.f.x; const kind = BeatEmUp.withDepth(gd, () => gd.f.takeHit(atk, player));
+    const out = { kind, dmg: +(hp - gd.f.hp).toFixed(6), push: +((gd.f.x - x) * -gd.f.face).toFixed(3) }; gd.f.stun = 0; gd.f.state = 'idle'; gd.f.vx = 0; gd.f.x = x0; return out; };
+  // Block rules (front = player at lower x, guard faces -1).
+  setup(x0 - 60); r.front = hit();
+  r.frontRecoil = gd.f.guardRecoilT > 0 && gd.f.stun === 0;
+  setup(x0 + 60); r.back = hit();
+  const lanePx = Depth.lanePx(), tol = BeatEmUp.depthHitTolerance(pEntry, gd);
+  const depthFor = px => { for (let d = .5; d <= 1; d += .0005) if (Math.abs(BeatEmUp.floorDepthPx(d) - BeatEmUp.floorDepthPx(.5)) >= px) return d; return 1; };
+  setup(x0 - 60, depthFor(tol + 2)); r.otherLane = hit();
+  setup(x0 - 60, depthFor(tol - 2)); r.sameLaneEdge = hit();
+  setup(x0 - 60); r.special = hit({ ...normal(), special: true });
+  // End-to-end: a real player punch through resolveHits, front vs back.
+  const punch = px => { setup(px); player.face = px < x0 ? 1 : -1; const hp = gd.f.hp; const kinds = [];
+    const orig = gd.f.takeHit; gd.f.takeHit = function (a, f) { const k = orig.call(this, a, f); kinds.push(k); return k; };
+    BeatEmUp.withDepth(pEntry, () => player.startAtk('punch'));
+    for (let i = 0; i < 30 && player.atk; i++) { BeatEmUp.withDepth(pEntry, () => player.update(Game.STEP, gd.f, 0)); player.x = px; gd.f.x = x0; gd.f.face = -1; gd.f.guardFace = -1; BeatEmUp.withDepth(gd, () => gd.f.clamp()); BeatEmUp.resolveHits(); }
+    delete gd.f.takeHit;
+    return { dmg: +(hp - gd.f.hp).toFixed(6), kinds, pface: player.face, px: player.x }; };
+  r.punchFront = punch(x0 - 50); r.punchBack = punch(x0 + 50);
+  // Guard break: 3 quick blocks open the shield for exactly openTime; spaced blocks never break it.
+  setup(x0 - 60);
+  r.breakSeq = [hit().kind, hit().kind, hit().kind];
+  r.openT = gd.f.guardOpenT;
+  r.duringOpen = hit();
+  let openFrames = 0; while (gd.f.guardOpenT > 0 && openFrames < 200) { step(); gd.f.x = x0; openFrames++; }
+  r.openFrames = openFrames; r.afterOpen = hit();
+  setup(x0 - 60); hit(); hit(); for (let i = 0; i < Math.ceil(G.chainWindow * 60) + 2; i++) { step(); gd.f.x = x0; } const spaced = hit();
+  r.spaced = { kind: spaced.kind, open: gd.f.guardOpenT };
+  // No false hitbox from the drawn shield: idle / recoil / open frames never produce a strike.
+  setup(x0 - 30); let falseHit = false;
+  for (let i = 0; i < 40; i++) { if (i === 5) hit(); if (i === 20) gd.f.guardOpenT = .3; step(); gd.f.x = x0; BeatEmUp.withDepth(gd, () => trace(gd.f)); if (BeatEmUp.withDepth(gd, () => gd.f.strike())) falseHit = true; }
+  r.noFalseHitbox = !falseHit;
+  // Flank window: player jumps behind; facing turns only after turnDelay.
+  setup(x0 - 60); step(); player.x = x0 + 80; let flip = 0;
+  for (let i = 1; i <= 60; i++) { step(); gd.f.x = x0; if (gd.f.face === 1) { flip = i; break; } }
+  r.turnFrames = flip;
+  // Bash: timeline, live frames, bounded shove, locked facing, shield up in wind-up, open in recovery.
+  const bashRun = (gap, opts = {}) => {
+    setup(x0 - gap); gd.f.startAtk('punch');
+    const hits = [], live = []; let frames = 0, faces = new Set(), profileFree = true, windBlock = null, recBlock = null, chain = false;
+    for (let i = 0; i < 200 && gd.f.atk; i++) {
+      player.x = opts.flip && i >= 2 ? x0 + gap : x0 - gap; player.vx = 0; player.stun = 0; player.state = 'idle'; player.invincibleT = 0; BeatEmUp.withDepth(pEntry, () => player.clamp());
+      Input.pad[1].left = 1; step(); Input.pad[1].left = 0; frames++;
+      if (!gd.f.atk) break;
+      faces.add(gd.f.face); if (gd.f.canChainPunch()) chain = true;
+      BeatEmUp.withDepth(gd, () => { trace(gd.f); const st = gd.f.strike(); const saved = gd.f.bodyProfile; gd.f.bodyProfile = null; const st0 = gd.f.strike(); gd.f.bodyProfile = saved;
+        if (JSON.stringify(st) !== JSON.stringify(st0)) profileFree = false; if (st) live.push(gd.f.atkT); });
+      if (opts.probe && gd.f.atkT === 8) { const hp = gd.f.hp; BeatEmUp.withDepth(gd, () => gd.f.takeHit(normal(), player)); windBlock = gd.f.hp === hp; gd.f.guardBlocks = 0; gd.f.guardChainT = 0; gd.f.guardRecoilT = 0; }
+      if (opts.probe && gd.f.atkT === tl.su + tl.ac + 10 && gd.f.atk) { const hp = gd.f.hp; BeatEmUp.withDepth(gd, () => gd.f.takeHit(normal(), player)); recBlock = gd.f.hp === hp; break; }
+      const before = player.hp; BeatEmUp.resolveHits();
+      if (player.hp < before) hits.push({ frame: gd.f.atkT, dmg: +(before - player.hp).toFixed(6) });
+    }
+    return { frames, travelled: +((x0 - gd.f.x)).toFixed(3), hits, live: live.length ? live[0] + '-' + live[live.length - 1] : '', faces: [...faces], profileFree, windBlock, recBlock, chain };
+  };
+  r.timeline = tl;
+  r.bashWhiff = bashRun(400);
+  r.bashFlip = bashRun(400, { flip: true });
+  r.bashProbe = bashRun(400, { probe: true });
+  r.sweep = []; for (let gap = 30; gap <= 200; gap += 10) { const o = bashRun(gap); r.sweep.push({ gap, n: o.hits.length, frame: o.hits[0]?.frame || 0, dmg: o.hits[0]?.dmg || 0, frames: o.frames, travelled: o.travelled, pf: o.profileFree }); }
+  const hitsAll = r.sweep.filter(o => o.n);
+  r.hitGaps = hitsAll.length ? hitsAll[0].gap + '-' + hitsAll[hitsAll.length - 1].gap : '';
+  const rookiePunch = Atk.of('punch', 0, null, null).dmg * EnemyWeaponProfiles.freehand.damage;
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode;
+  const s = r.stats, w = r.bashWhiff;
+  r.pass = s.hp === s.expectHp && s.speedMul === .85 && s.scaleMul === 1 && s.weapon === null && r.armed === 0 && s.dmgMul === EnemyWeaponProfiles.freehand.damage
+    && s.tag === 'GUARD' && s.guard === 'riotShield' && s.bash === 'shield' && s.combo === null && s.rush === null && s.slam === null && s.profile
+    && r.toughGone && r.toughSpawns === 0 && r.guardSpawns === 21 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn
+    // Front same-lane normal: blocked, 0 damage, small push-back away from the attacker, recoil without stun.
+    && r.front.kind === 'block' && r.front.dmg === 0 && r.front.push > 0 && r.front.push <= G.pushMax && r.frontRecoil
+    && r.back.kind === 'hit' && r.back.dmg === 5 && r.otherLane.kind === 'hit' && r.sameLaneEdge.kind === 'block' && r.special.kind === 'hit'
+    && r.punchFront.kinds.join() === 'block' && r.punchFront.dmg === 0 && r.punchBack.kinds.join() === 'hit' && r.punchBack.dmg > 0
+    // Guard break after 3 consecutive blocks: open exactly 1.0 s (60 steps), every hit lands, then the shield is back.
+    && r.breakSeq.join() === 'block,block,block' && r.openT === G.openTime && r.duringOpen.kind === 'hit' && r.openFrames === 60 && r.afterOpen.kind === 'block'
+    && r.spaced.kind === 'block' && r.spaced.open === 0
+    && r.noFalseHitbox && r.turnFrames === Math.round(G.turnDelay * 60)
+    // Bash: 14f wind-up, live only on frames 15-19, 28px shove, 48f whiff recovery, locked facing; shield up in wind-up, down in recovery.
+    && tl.su === 14 && tl.ac === 5 && tl.re === 48 && tl.total === 67
+    && w.hits.length === 0 && w.frames === 67 && w.live === '15-19' && Math.abs(w.travelled - sp.step) < 1e-6 && w.faces.length === 1 && w.profileFree && !w.chain
+    && r.bashFlip.hits.length === 0 && r.bashFlip.faces.length === 1 && r.bashProbe.windBlock === true && r.bashProbe.recBlock === false
+    && hitsAll.length >= 3 && r.sweep.every(o => o.pf && o.n <= 1 && o.travelled <= sp.step + 1e-6)
+    && hitsAll.every(o => o.frame >= tl.su + 1 && o.frame <= tl.su + tl.ac && Math.abs(o.dmg - rookiePunch) < 1e-6 && o.frames === o.frame + sp.hitRecovery);
+  return r;
+}
+"""
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -673,6 +798,11 @@ def main():
             if not heavy['pass']:
                 print('heavy sweep', json.dumps(heavy['sweep']))
                 failures.append('Heavy archetype failed: expected 145hp stage-scaled, 0.74 speed, 1.12 scale, always a sledgehammer, ROOKIE hurtbox, draw-only profile, 30f wind-up / 4f swing / 48f recovery with the hitbox only on frames 31-34 ending at the hammer tip, front-only bounded zone, one 12-damage hit, planted and facing-locked')
+            guard = page.evaluate(GUARD)
+            print('guard archetype', json.dumps({k: v for k, v in guard.items() if k not in ('pass', 'sweep')}))
+            if not guard['pass']:
+                print('guard sweep', json.dumps(guard['sweep']))
+                failures.append('Guard archetype failed: expected 125hp stage-scaled, 0.85 speed, no weapon, TOUGH fully replaced (21 spawns), ROOKIE hurtbox, draw-only profile, frontal same-lane normals blocked for 0 (back/other lane/specials land), 3 quick blocks open the guard for exactly 1 s, 0.45 s turn delay, no shield hitbox, 14f/5f/48f bash with a 28px shove live only on frames 15-19 and one-ROOKIE-punch damage')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
