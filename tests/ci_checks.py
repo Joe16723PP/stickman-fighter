@@ -1088,6 +1088,196 @@ PACING = r"""
 }
 """
 
+BOSS_B2A = r"""
+() => {
+  // Boss B2 PR A: stages 6-8 profiles + signatures, scripted frame by frame (no AI unless noted).
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast, phase: Game.phase, lockL: BeatEmUp.lockL, lockR: BeatEmUp.lockR, random: Math.random, minX: Game.minX, maxX: Game.maxX, ground: Game.GROUND };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0; Game.banner = '';
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0; BeatEmUp.lockL = 0; BeatEmUp.lockR = BeatEmUp.worldMax;
+  Game.GROUND = Game.H * .72;
+  const STEP = Game.STEP, BH = BossHardness.damage, DIFF = BeatEmUp.difficulty.damage, r = {};
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const gapD = (base, px) => { for (let d = base; d <= 1; d += .0002) if (Math.abs(BeatEmUp.floorDepthPx(d) - BeatEmUp.floorDepthPx(base)) >= px) return d; return 1; };
+  const pads0 = () => Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
+  let e = null;
+  const setup = (stage, bx = 900, px = 700, pFace = 1) => {
+    BeatEmUp.stage = stage; BeatEmUp.bossProjectiles = []; BossFields.clear(); pads0();
+    e = BeatEmUp.makeEnemy('boss', bx, .5); e.ai.phase = 2; e.f.meter = 100; e.f.face = -1;
+    player.reset(px, pFace); player.face = pFace; player.depth = .5; pEntry.depth = .5; player.hp = 1000; player.invincibleT = 0; player.dodgeT = 0; player.stun = 0; player.blocking = 0;
+    BeatEmUp.cast = [pEntry, e]; Game.minX = -1e4; Game.maxX = 1e5;
+    BeatEmUp.withDepth(pEntry, () => player.clamp()); BeatEmUp.withDepth(e, () => e.f.clamp());
+    return e;
+  };
+  const tune = () => { if (e.f.atk && e.f.atk !== e._tunedAtk) { e._tunedAtk = e.f.atk; e.f.atk.dmg *= DIFF; e.f.atk.dmg *= BH; } };
+  const frame = (playerUpdate = false) => {
+    pads0();
+    if (playerUpdate) BeatEmUp.withDepth(pEntry, () => { Game.minX = -1e4; Game.maxX = 1e5; player.update(STEP, e.f, 0); });
+    else BeatEmUp.withDepth(pEntry, () => player.clamp());
+    BeatEmUp.withDepth(e, () => { Game.minX = -1e4; Game.maxX = 1e5; e.f.update(STEP, player, 1); tune(); });
+    BeatEmUp.withDepth(pEntry, () => player.clamp());
+    BeatEmUp.resolveHits();
+    BossFields.update(pEntry);
+  };
+  const start = kind => BeatEmUp.withDepth(e, () => { e.f.startAtk(kind); tune(); });
+  // --- Profiles / stats
+  const prof = s => BeatEmUp.chapters[s - 1].boss.profile;
+  r.profiles = [6, 7, 8].map(s => { const p = prof(s), b = setup(s); return [p.weapon, p.reach, BossWeapons[p.weapon].reach, b.scaleMul, +b.speedMul.toFixed(3), p.signature.key, p.counter || ''].join('/'); });
+  r.noProfile910 = !prof(9) && !prof(10);
+  const base = { bossSniperStock: [7, 3, 11], bossSniperKick: [10, 4, 15], bossKageThrust: [9, 4, 14], bossKageWheel: [12, 5, 16], bossBreakerSwing: [16, 5, 22], bossBreakerShove: [10, 4, 15] };
+  r.normalsPaced = Object.entries(base).every(([k, [su, ac, re]]) => Moves[k].su === Math.round(su * 1.3) && Moves[k].ac === ac && Moves[k].re === Math.round(re * 1.3));
+  r.normalDmg = Object.keys(base).map(k => Moves[k].dmg).join(',');
+  // --- Normals: hitbox ends at the weapon tip (Sniper kick is a foot kick, no weapon segment)
+  const normalRun = (stage, kind) => {
+    setup(stage, 900, 600); start(kind); let out = null;
+    for (let i = 0; i < 80 && e.f.atk; i++) {
+      frame();
+      if (!out && e.f.atk && e.f.atkT === e.f.atk.su + 1) BeatEmUp.withDepth(e, () => {
+        const hit = e.f.strike(), b = e.f.combatBones(), geo = e.f.weaponGeometry(b, true);
+        out = { seg: !!hit?.segment, tipMatch: !!hit?.segment && Math.abs(hit.segment.x2 - geo.tip.x) < 1e-9 && Math.abs(hit.segment.y2 - geo.tip.y) < 1e-9,
+          reach: geo ? +Math.abs(geo.tip.x - b.ra.x).toFixed(3) : 0, foot: !hit?.segment && !!hit && Math.abs(hit.x + hit.w / 2 - b.ll.x) < 40 };
+      });
+    }
+    return out;
+  };
+  r.normals = { sniperStock: normalRun(6, 'punch'), sniperKick: normalRun(6, 'kick'), kageThrust: normalRun(7, 'punch'), kageWheel: normalRun(7, 'kick'), breakerSwing: normalRun(8, 'punch'), breakerShove: normalRun(8, 'kick') };
+  const n = r.normals;
+  r.normalsOk = n.sniperStock.tipMatch && n.sniperStock.reach === 100 && n.sniperKick.foot && n.kageThrust.tipMatch && n.kageThrust.reach === 200 && n.kageWheel.tipMatch && n.kageWheel.reach === 200
+    && n.breakerSwing.tipMatch && n.breakerSwing.reach === 210 && n.breakerShove.tipMatch && Math.abs(n.breakerShove.reach - 126) < 1e-6;
+  // --- Laser Lock (phase 2): lane locked at the start, bolt full-screen in that lane only
+  const laser = (px, movePx = 0, phase = 2, pDepth = .5) => {
+    setup(6, 900, px); e.ai.phase = phase; player.depth = pEntry.depth = pDepth;
+    start('special');
+    const lines = BeatEmUp.bossFields.filter(z => z.kind === 'laser'), o = { su: e.f.atk.su, ac: e.f.atk.ac, depths: lines.map(z => z.depth), fired: [], hp0: player.hp, togetherAtSu: false };
+    if (movePx) { player.depth = pEntry.depth = gapD(pDepth, movePx); }
+    for (let i = 0; i < 120 && e.f.atk; i++) {
+      const before = player.hp; frame();
+      if (e.f.atk && e.f.atkT === e.f.atk.su) o.togetherAtSu = lines.every(z => !z.fired && BeatEmUp.bossFields.includes(z));
+      lines.forEach(z => { if (z.fired && !z._seen) { z._seen = 1; o.fired.push({ frame: z.firedFrame, depth: z.depth, result: z.result || 'none' }); } });
+      player.stun = 0;
+    }
+    o.dmg = +(o.hp0 - player.hp).toFixed(6); return o;
+  };
+  r.laserFar = laser(100);                     // ~800px away: full screen
+  r.laserLaneLock = laser(600, 15);            // stepped 15px out of the locked lane after the lock
+  r.laserEdge = laser(600, 13);                // 13px: still inside the 14px window
+  const lf = r.laserFar, expBolt = +(18 * BH * DIFF).toFixed(6);
+  r.laserOk = lf.su === 36 && lf.ac === 1 && lf.fired.length === 1 && lf.fired[0].frame === 37 && lf.dmg === expBolt && lf.depths[0] === .5
+    && r.laserLaneLock.dmg === 0 && r.laserLaneLock.fired[0].result === 'miss' && r.laserEdge.dmg === expBolt;
+  // --- Laser Lock phase 3: lines 0/.5/1 together for 0.6 s, then random order 0.25 s (15 f) apart, each 14px
+  const orders = new Set(); let p3ok = true;
+  for (let k = 0; k < 8; k++) {
+    const o = laser(600, 0, 3, .5);
+    orders.add(o.fired.map(f => f.depth).join(','));
+    const frames = o.fired.map(f => f.frame);
+    p3ok = p3ok && o.su === 36 && o.ac === 31 && o.togetherAtSu && o.depths.slice().sort().join(',') === '0,0.5,1' && frames.join(',') === '37,52,67'
+      && o.dmg === expBolt && o.fired.filter(f => f.result === 'hit').length === 1 && o.fired.find(f => f.result === 'hit').depth === .5;
+    if (k === 0) { r.phase3Sample = o.fired; r.phase3Su = o.su; }
+  }
+  r.phase3Orders = orders.size;
+  const below1 = px => { for (let d = 1; d >= 0; d -= .0002) if (Math.abs(BeatEmUp.floorDepthPx(1) - BeatEmUp.floorDepthPx(d)) >= px) return d; return 0; };
+  const p3near = laser(600, 0, 3, below1(13)), p3gap = laser(600, 0, 3, below1(15)); // 13px / 15px off the depth-1 line
+  r.phase3Lane = { near13: p3near.fired.filter(f => f.result === 'hit').map(f => f.depth).join(','), gap15: p3gap.fired.filter(f => f.result === 'hit').length };
+  r.phase3Ok = p3ok && r.phase3Orders >= 2 && r.phase3Lane.near13 === '1' && r.phase3Lane.gap15 === 0;
+  // --- Shadow Step: teleport behind the player (opposite their facing) in the locked lane, cut 16 at the naginata tip
+  const shadow = (pFace, laneMove = 0) => {
+    setup(7, 900, 700, pFace); start('special');
+    const o = { su: e.f.atk.su, hp0: player.hp, hits: [], tip: null };
+    if (laneMove) player.depth = pEntry.depth = gapD(.5, laneMove);
+    for (let i = 0; i < 90 && e.f.atk; i++) {
+      const before = player.hp, t = e.f.atkT + 1;
+      if (t === e.f.atk.su + 2) BeatEmUp.withDepth(e, () => { e.f.atkT++; const hit = e.f.strike(), geo = e.f.weaponGeometry(e.f.combatBones(), true); e.f.atkT--; o.tip = hit && hit.segment ? { match: hit.segment.x2 === geo.tip.x && hit.segment.y2 === geo.tip.y, reach: +Math.abs(geo.tip.x - e.f.combatBones().ra.x).toFixed(3) } : null; });
+      frame();
+      if (player.hp < before) o.hits.push({ frame: e.f.atkT, dmg: +(before - player.hp).toFixed(6) });
+      player.stun = 0;
+    }
+    o.tele = e.f.sigTeleported; o.after = BeatEmUp.bossFields.some(z => z.kind === 'afterimage') || o.tele != null; o.depth = e.depth;
+    return o;
+  };
+  r.shadowFaceRight = shadow(1); r.shadowFaceLeft = shadow(-1); r.shadowLane = shadow(1, 15);
+  const sr = r.shadowFaceRight, sl = r.shadowFaceLeft, expCut = +(16 * BH * DIFF).toFixed(6);
+  r.shadowOk = sr.su === 30 && sr.tele && sr.tele.x === 610 && sl.tele.x === 790 && sr.hits.length === 1 && sr.hits[0].dmg === expCut && sl.hits.length === 1
+    && sr.hits[0].frame >= 32 && sr.tip && sr.tip.match && sr.tip.reach === 200 && r.shadowLane.hits.length === 0 && r.shadowLane.tele.depth === .5;
+  // --- Kage counter stance
+  const counterRun = (attack) => {
+    setup(7, 900, 830, 1); player.face = 1; e.f.face = -1;
+    e.f.bossCounterQueued = true; start('punch');
+    const o = { counter: !!e.f.atk?.counter, stance: e.f.atk?.su, end: 0, bossHp0: e.f.hp, hp0: player.hp, parryFrame: 0, hits: [] };
+    for (let i = 0; i < 120 && e.f.atk; i++) {
+      if (attack && i === 10) BeatEmUp.withDepth(pEntry, () => player.startAtk('punch'));
+      const before = player.hp; frame(attack);
+      if (e.f.atk?.parried && !o.parryFrame) o.parryFrame = e.f.atk.parryFrame;
+      if (player.hp < before) o.hits.push({ frame: e.f.atkT, dmg: +(before - player.hp).toFixed(6) });
+      if (!e.f.atk) o.end = i + 1;
+      player.stun = 0;
+    }
+    o.bossDmg = +(o.bossHp0 - e.f.hp).toFixed(6);
+    return o;
+  };
+  r.counterUnused = counterRun(false); r.counterParry = counterRun(true);
+  const cu = r.counterUnused, cp = r.counterParry, expRip = +(BossCounters.kage.dmg * BH * DIFF).toFixed(6);
+  r.counterOk = cu.counter && cu.stance === 48 && cu.end === 48 && cu.hits.length === 0
+    && cp.parryFrame > 0 && cp.parryFrame <= 48 && cp.bossDmg === 0 && cp.hits.length === 1 && cp.hits[0].dmg === expRip && cp.hits[0].frame === cp.parryFrame + 7;
+  // AI: only a boss with a counter rolls for it (Math.random pinned low so the roll passes).
+  const aiPick = stage => {
+    setup(stage, 900, 820); e.f.meter = 0; e.ai.cool = 0; e.ai.mode = 'attack'; Math.random = () => .1;
+    BeatEmUp.updateGroupAI(STEP, pEntry); const label = e.ai.tellKind, queued = !!e.ai.counterQueued;
+    for (let i = 0; i < 60 && e.ai.tellT > 0; i++) BeatEmUp.updateGroupAI(STEP, pEntry);
+    Math.random = prev.random; return { label, queued, armed: !!e.f.bossCounterQueued };
+  };
+  r.aiKage = aiPick(7); r.aiSniper = aiPick(6);
+  r.aiOk = r.aiKage.label === 'COUNTER' && r.aiKage.queued && r.aiKage.armed && r.aiSniper.label !== 'COUNTER' && !r.aiSniper.queued && !r.aiSniper.armed;
+  // --- Roadblock: barricade blocks the player's lane for 4 s, then a 400px charge for 20
+  const road = (laneMove = 0) => {
+    setup(8, 900, 700, 1);
+    if (laneMove) player.depth = pEntry.depth = gapD(.5, laneMove);
+    start('special');
+    const o = { su: e.f.atk.su, hp0: player.hp, hits: [], bar: null, barFrames: 0, minX: 1e9, chargeX0: 0, chargeX1: 0, tip: null };
+    let i = 0;
+    for (; i < 400; i++) {
+      const before = player.hp;
+      if (e.f.atk && e.f.atkT + 1 === e.f.atk.su + 20) BeatEmUp.withDepth(e, () => { e.f.atkT++; const hit = e.f.strike(), geo = e.f.weaponGeometry(e.f.combatBones(), true); e.f.atkT--; o.tip = hit && hit.segment ? { match: hit.segment.x2 === geo.tip.x && hit.segment.y2 === geo.tip.y, reach: +Math.abs(geo.tip.x - e.f.combatBones().ra.x).toFixed(3) } : null; });
+      const ax = e.f.x; frame(); 
+      if (e.f.atk && e.f.atkT === e.f.atk.su + 20) o.chargeX0 = ax; // x before the first charge frame
+      if (e.f.atk && e.f.atkT === e.f.atk.su + e.f.atk.ac) o.chargeX1 = e.f.x;
+      if (player.hp < before) o.hits.push({ frame: e.f.atkT, dmg: +(before - player.hp).toFixed(6) });
+      const bar = BeatEmUp.bossFields.find(z => z.kind === 'barricade');
+      if (bar) { if (!o.bar) o.bar = { x: bar.x, depth: bar.depth, side: bar.side, created: e.f.atkT }; o.barFrames++; }
+      // after the charge, the player keeps walking back into the barricade's side
+      if (!e.f.atk || e.f.atkT > e.f.atk.su + e.f.atk.ac) { player.x -= 6; if (bar) o.minX = Math.min(o.minX, player.x); }
+      player.stun = 0;
+      if (o.bar && !bar && !e.f.atk) { o.passedAfter = player.x < o.bar.x; if (o.passedAfter) break; }
+    }
+    o.charge = +Math.abs(o.chargeX1 - o.chargeX0).toFixed(3);
+    o.dmg = +(o.hp0 - player.hp).toFixed(6); return o;
+  };
+  r.roadHit = road(); r.roadOffLane = road(20);
+  const rh = r.roadHit, ro = r.roadOffLane, expCharge = +(20 * BH * DIFF).toFixed(6), half = BossSignatures.bossRoadblock.barricadeHalfW + BossSignatures.bossRoadblock.bodyHalf;
+  r.roadOk = rh.su === 36 && rh.bar && rh.bar.x === 620 && rh.bar.side === 1 && rh.bar.created === 37 && rh.barFrames === 240
+    && rh.hits.length === 1 && rh.hits[0].dmg === expCharge && rh.hits[0].frame >= 56 && rh.hits[0].frame <= 75 && rh.tip && rh.tip.match && rh.tip.reach === 210
+    && rh.minX >= 620 + half - 6 - 1e-6 && rh.passedAfter === true
+    && ro.hits.length === 0 && ro.charge === 400 && ro.passedAfter === true;
+  // --- Draw smoke (no screenshots): each boss in idle/normal/signature, plus every field kind, draws without throwing
+  const nop = new Proxy({}, { get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? () => {} : undefined, set: () => true });
+  r.drawOk = true;
+  try {
+    for (const st of [6, 7, 8]) for (const kind of [null, 'punch', 'kick', 'special']) {
+      setup(st); if (kind) start(kind); for (let i = 0; i < 40 && (kind ? e.f.atk : i < 2); i++) frame();
+      BeatEmUp.drawFighter(nop, e); BossFields.draw(nop);
+    }
+    BossFields.add({ kind: 'afterimage', owner: e.f, x: 500, depth: .5, face: 1, life: 5, max: 18 }); BossFields.draw(nop);
+  } catch (err) { r.drawOk = false; r.drawErr = String(err); }
+  // --- Tells
+  r.tells = { laser: Moves.bossLaserLock.su, laserP3: r.phase3Su, shadow: Moves.bossShadowStep.su, road: Moves.bossRoadblock.su, aiBossTell: +Math.max(BossHardness.tellMin, .72 / BossHardness.rate).toFixed(4) };
+  r.tellOk = r.tells.laser >= 30 && r.tells.shadow >= 30 && r.tells.road >= 30 && r.tells.laserP3 >= 24 && r.tells.aiBossTell >= .5;
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; Game.phase = prev.phase; BeatEmUp.bossProjectiles = []; BossFields.clear(); BeatEmUp.lockL = prev.lockL; BeatEmUp.lockR = prev.lockR; Math.random = prev.random;
+  Game.minX = prev.minX; Game.maxX = prev.maxX; Game.GROUND = prev.ground; pads0(); player.reset(200, 1);
+  r.pass = r.profiles.join(' ') === 'crossbow/100/100/1.25/0.92/bossLaserLock/ naginata/200/200/1.28/0.92/bossShadowStep/kage girder/210/210/1.4/0.7/bossRoadblock/'
+    && r.noProfile910 && r.normalsPaced && r.normalDmg === '8,10,10,12,18,10' && r.normalsOk && r.laserOk && r.phase3Ok && r.shadowOk && r.counterOk && r.aiOk && r.roadOk && r.tellOk && r.drawOk;
+  return r;
+}
+"""
+
 GUARD = r"""
 () => {
   const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
@@ -1286,6 +1476,10 @@ def main():
             print('disruptor archetype', json.dumps({k: v for k, v in disruptor.items() if k != 'pass'}))
             if not disruptor['pass'] or 'disruptor' in stage_src:
                 failures.append('Disruptor archetype failed: expected 85hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only profile, no deploy hitbox, zone created on the activation frame at the player x/lane, 0.8 s harmless warning then 1.5 s live, exactly one zap per zone inside halfW and the shared lane tolerance, step-out / lane change / airborne / invulnerable avoid it, fixed position, finishes its cycle after the Disruptor dies, wind-up hit cancels, 4 s cooldown, one zone per Disruptor, ZAP AI tell gated, zones cleared on every reset path')
+            boss_b2a = page.evaluate(BOSS_B2A)
+            print('boss b2a', json.dumps({k: v for k, v in boss_b2a.items() if k != 'pass'}))
+            if not boss_b2a['pass']:
+                failures.append('Boss B2 PR A failed: expected stage 6-8 profiles (crossbow/naginata/girder, reach at the weapon tip, x1.3 paced normals), Laser Lock 0.6 s lane-locked full-screen bolt 18 (phase 3: 0/.5/1 together, random order 15 f apart, 14px each), Shadow Step 0.5 s tell + teleport behind + cut 16 at the naginata tip, Kage counter 0.8 s (parry = no damage, riposte 12 seven frames later, unused ends at 48 f, only Kage rolls it), Roadblock barricade 240 f lane block + 400px charge 20, signature tells >= 0.5 s')
             pacing = page.evaluate(PACING)
             print('pacing pass', json.dumps({k: v for k, v in pacing.items() if k != 'pass'}))
             if not pacing['pass']:

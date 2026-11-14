@@ -408,7 +408,33 @@ window.ARCADE_STAGE_SETTINGS = [
     "boss": {
       "name": "SKYLINE SNIPER",
       "intro": "The signal’s guard appears to stop you from identifying its source.",
-      "clear": "The signal names an old martial arts dojo."
+      "clear": "The signal names an old martial arts dojo.",
+      "profile": {
+        "weapon": "crossbow",
+        "reach": 100,
+        "scale": 1.25,
+        "accessory": [
+          "hood",
+          "redVisor"
+        ],
+        "normal1": {
+          "key": "bossSniperStock",
+          "state": "punch",
+          "label": "STOCK STRIKE"
+        },
+        "normal2": {
+          "key": "bossSniperKick",
+          "state": "kick",
+          "label": "KICK"
+        },
+        "signature": {
+          "key": "bossLaserLock",
+          "label": "LASER LOCK",
+          "tellBase": 0.72,
+          "phase3TellMul": 0.8,
+          "tellMin": 0.4
+        }
+      }
     }
   },
   {
@@ -455,7 +481,35 @@ window.ARCADE_STAGE_SETTINGS = [
     "boss": {
       "name": "MASTER KAGE",
       "intro": "Kage challenges you to prove you can stop the syndicate.",
-      "clear": "Kage joins the fight and points to the skybridge."
+      "clear": "Kage joins the fight and points to the skybridge.",
+      "profile": {
+        "weapon": "naginata",
+        "reach": 200,
+        "scale": 1.28,
+        "accessory": [
+          "gi",
+          "hakama",
+          "longHair"
+        ],
+        "normal1": {
+          "key": "bossKageThrust",
+          "state": "punch",
+          "label": "THRUST"
+        },
+        "normal2": {
+          "key": "bossKageWheel",
+          "state": "kick",
+          "label": "WHEEL CUT"
+        },
+        "signature": {
+          "key": "bossShadowStep",
+          "label": "SHADOW STEP",
+          "tellBase": 0.72,
+          "phase3TellMul": 0.8,
+          "tellMin": 0.4
+        },
+        "counter": "kage"
+      }
     }
   },
   {
@@ -502,7 +556,33 @@ window.ARCADE_STAGE_SETTINGS = [
     "boss": {
       "name": "BRIDGE BREAKER",
       "intro": "The convoy’s strongest guard steps forward to protect the operation.",
-      "clear": "The convoy carries an invite to the broadcast tower."
+      "clear": "The convoy carries an invite to the broadcast tower.",
+      "profile": {
+        "weapon": "girder",
+        "reach": 210,
+        "scale": 1.4,
+        "accessory": [
+          "hardHat"
+        ],
+        "normal1": {
+          "key": "bossBreakerSwing",
+          "state": "punch",
+          "label": "GIRDER SWING"
+        },
+        "normal2": {
+          "key": "bossBreakerShove",
+          "state": "kick",
+          "label": "SHOVE"
+        },
+        "signature": {
+          "key": "bossRoadblock",
+          "label": "ROADBLOCK",
+          "tellBase": 0.72,
+          "phase3TellMul": 0.8,
+          "tellMin": 0.4
+        },
+        "speedMul": 0.7
+      }
     }
   },
   {
