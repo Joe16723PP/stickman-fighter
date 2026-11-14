@@ -3468,6 +3468,9 @@ class BeatEmUp {
   static BAND_TOP = 0.56;
   static BAND_BOT = 0.88;
   static DEPTH_HIT_PX = 14;
+  // Player-attack lane window (px of floor depth), before body-size scaling; capped below.
+  static PLAYER_DEPTH_HIT_PX = 22;
+  static DEPTH_HIT_MAX_PX = 36;
   static cameraX = 0;
   static skyOffset = 0;
   static cast = [];
@@ -3576,8 +3579,20 @@ class BeatEmUp {
   static floorDepthPx(depth) {
     return BeatEmUp.depthToY(depth);
   }
-  static depthClose(a, b) {
-    return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= BeatEmUp.DEPTH_HIT_PX;
+  /** Depth (lane) closeness on the floor. tolPx defaults to the 14px base window. */
+  static depthClose(a, b, tolPx = BeatEmUp.DEPTH_HIT_PX) {
+    return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= tolPx;
+  }
+  /**
+   * Melee lane window for attacker -> target. Enemies keep the 14px base (unchanged).
+   * The player gets PLAYER_DEPTH_HIT_PX scaled by the average body size of both
+   * fighters (bigger targets are thicker in depth), floored at the base and capped
+   * at DEPTH_HIT_MAX_PX so clearly separate lanes still miss.
+   */
+  static depthHitTolerance(attacker, target) {
+    if (!attacker || attacker.role !== 'player') return BeatEmUp.DEPTH_HIT_PX;
+    const size = ((attacker.scaleMul || 1) + (target?.scaleMul || 1)) / 2;
+    return Math.min(BeatEmUp.DEPTH_HIT_MAX_PX, Math.max(BeatEmUp.DEPTH_HIT_PX, BeatEmUp.PLAYER_DEPTH_HIT_PX * size));
   }
   /** Beat ’em up fighters may pass beneath the overlaid touch controls. */
   static horizontalScreenBounds() {
@@ -3695,7 +3710,7 @@ class BeatEmUp {
     p.setClass(Game.selectedClass);
     p.tag = 'YOU';
     p.meter = 0;
-    BeatEmUp.cast.push({ f: p, depth: 0.55, role: 'player', kind: 'player', scaleMul: Game.selectedClass === 'staff' ? .8 : 1, speedMul: p.classProfile?.speed || 1, ai: null });
+    BeatEmUp.cast.push({ f: p, depth: 0.55, role: 'player', kind: 'player', scaleMul: 1, speedMul: p.classProfile?.speed || 1, ai: null });
     // Hide unused 1v1 foe
     fighters[1].reset(-9999, -1);
     fighters[1].hp = 0;
@@ -3725,7 +3740,7 @@ class BeatEmUp {
       player.f.setClass(Game.selectedClass);
       player.f.color = FighterClasses[Game.selectedClass]?.color || PlayerCoolColor;
       player.f.tag = 'YOU'; player.f.meter = 0; player.depth = .55;
-      player.scaleMul = Game.selectedClass === 'staff' ? .8 : 1;
+      player.scaleMul = 1;
     }
     BeatEmUp.startWave(1, false, true);
     Game.syncControls();
@@ -4329,7 +4344,7 @@ class BeatEmUp {
         if (attacker.f.state === 'special' && attacker.f.hitTargets.get(target) === pulse) continue;
         if (atk && attacker.f.state === 'special' && (!target.f.grounded || target.f.dodgeT > 0)) continue;
         const staffRadialAttack = attacker.f.state === 'special' && attacker.f.classProfile?.weapon === 'staff';
-        if (!staffRadialAttack && !BeatEmUp.depthClose(attacker.depth, target.depth)) continue;
+        if (!staffRadialAttack && !BeatEmUp.depthClose(attacker.depth, target.depth, BeatEmUp.depthHitTolerance(attacker, target))) continue;
         let hit = null;
         BeatEmUp.withDepth(attacker, () => { hit = attacker.f.strike(); });
         if (!hit) continue;
