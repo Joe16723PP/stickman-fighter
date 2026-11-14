@@ -69,7 +69,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A' },
+  enemy: { regular: '#FF4F5E', rusher: '#FFAA45', guard: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A', grappler: '#D9733B' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -378,6 +378,8 @@ const EnemyArchetypes = {
   thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
   boss: { health: 220, weaponChance: 1, specialDamage: 1, specialGain: 1 },
   brawler: { health: 110, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .95, bodyProfile: 'brawler', combo: 'jabCross' },
+  // Grappler: archetype only (no stage spawns yet). Long arms, open hands, one committed grab -> hold, headbutt, release.
+  grappler: { health: 115, weaponChance: 0, specialDamage: 0, specialGain: 0, speed: .9, bodyProfile: 'grappler', grab: 'clinch' },
 };
 
 /* Enemy multi-hit normals. Frames are at 60 fps. Each hit runs wind-up -> active -> recovery,
@@ -604,6 +606,148 @@ const EnemyBash = {
   },
 };
 
+/* Enemy grab (Grappler) on the shared 'punch' attack state. Frames are 60 fps sim steps (Game.STEP).
+ *   wind-up (arms spread, `windup` f) -> reach (`active` f, short fixed step forward) ->
+ *     caught: hold the player, headbutt on hold frame `headbuttAt`, release at the headbutt, recover `hitRecovery`
+ *     missed: arms overreach past the target + overcommit step, `whiffRecovery` f punish window.
+ * Eligibility is pure gameplay logic in shared combat coordinates (canCatch): centre-to-centre forward gap
+ * within `reach` x drawS (plus a small overlap allowance), same lane under the shared Depth.hitTolerance rule
+ * (BeatEmUp.depthHitTolerance), target grounded, alive, not invulnerable/rolling, not in hitstun, not in a
+ * special, not already held and outside its no-regrab window. Drawn hands are never read.
+ * strike() returns no hitbox for a grab; the only damage is the headbutt, applied through takeHit.
+ * Escapes: hit the Grappler during the tell/wind-up (takeHit cancels the attack), change lane, leave range, roll.
+ * Hold safety: the victim releases itself the moment the holder is hit, dies, ragdolls or leaves its grab,
+ * or after `maxHold` frames; other attackers cannot hit a held player. After any release the player has
+ * `noRegrab` s of grab immunity and the Grappler `cooldown` s before it may grab again (no chain grabs). */
+const EnemyGrabs = {
+  clinch: {
+    label: 'GRAB',
+    windup: 27, active: 6, reachStep: 20,                   // 0.45 s arms spread, 6 f reach with a 20 px step
+    reach: 46, overlap: 6,                                  // forward centre gap <= reach x drawS (px allowance behind the chest)
+    whiffRecovery: 48, overStep: 14, overFrames: 8,         // 0.8 s miss recovery, 14 px overcommit stumble
+    headbuttAt: 30, headbuttWind: 10, hitRecovery: 24,      // hold 0.5 s, head pulls back 10 f, headbutt + release on frame 30
+    holdGap: 34, maxHold: 40,                               // held player pinned holdGap x drawS ahead; hard cap in frames
+    dmg: 9, kb: 300, stun: 22,                              // headbutt, before weapon (.85 freehand) and difficulty multipliers
+    noRegrab: 1.5, cooldown: 2.5,                           // s: player grab immunity after release / Grappler grab cooldown from the catch
+    triggerRange: 80,                                       // AI starts the tell inside this gap (px)
+    guardPose:   {chest:-6,neck:2,head:2,la:-62,le:-28,ra:-48,re:-38},
+    windPose:    {chest:10,neck:-4,head:2,la:-150,le:-10,ra:50,re:-20,ll:28,lk:20,rl:-30,rk:26,hipBob:4,shPull:6},
+    reachPose:   {chest:-24,neck:8,head:6,la:-92,le:-4,ra:-86,re:-8,ll:38,lk:16,rl:-40,rk:28,hipBob:3,shPull:0},
+    holdPose:    {chest:-8,neck:2,head:4,la:-70,le:-60,ra:-66,re:-64,ll:30,lk:18,rl:-32,rk:24,hipBob:4,shPull:0},
+    buttWindPose:{chest:16,neck:-10,head:-14,la:-72,le:-64,ra:-68,re:-66,ll:28,lk:18,rl:-30,rk:24,hipBob:3,shPull:0},
+    buttPose:    {chest:-26,neck:16,head:20,la:-74,le:-52,ra:-70,re:-56,ll:36,lk:18,rl:-36,rk:26,hipBob:5,shPull:0},
+    missPose:    {chest:-42,neck:16,head:10,la:-104,le:2,ra:-98,re:0,ll:46,lk:22,rl:-52,rk:38,hipBob:10,shPull:0},
+  },
+};
+const EnemyGrab = {
+  spec(f) { return f.enemyGrab ? EnemyGrabs[f.enemyGrab] : null; },
+  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.whiffRecovery, total: spec.windup + spec.active + spec.whiffRecovery }; },
+  /** '' when the grappler can catch `target` this frame, else the reason it cannot. Gameplay state only. */
+  canCatch(g, target) {
+    const a = g.atk, sp = a?.grab;
+    if (!sp) return 'no-grab';
+    if (Game.mode !== 'beatemup') return 'mode';
+    if (!target || !target.playerControlled) return 'target';
+    if (target.hp <= 0 || target.ragdollActive) return 'dead';
+    if (target.heldBy) return 'held';
+    if (target.noRegrabT > 0) return 'no-regrab';
+    if (target.invincibleT > 0 || target.dodgeT > 0) return 'invulnerable';
+    if (!target.grounded || target.y < 0) return 'airborne';
+    if (target.stun > 0) return 'stunned';
+    if (target.state === 'special' || target.bladeSuper || target.specialVisual) return 'special';
+    const ge = BeatEmUp.entryFor(g), te = BeatEmUp.entryFor(target);
+    if (!ge || !te) return 'target';
+    if (!BeatEmUp.depthClose(ge.depth, te.depth, BeatEmUp.depthHitTolerance(ge, te) + 1e-9)) return 'lane';
+    const fwd = (target.x - g.x) * a.grabDir;
+    if (fwd < -sp.overlap) return 'behind';
+    if (fwd > sp.reach * g.drawS()) return 'range';
+    return '';
+  },
+  /** One sim step of the grabbing Grappler (call after atkT++). */
+  tick(f, other) {
+    const a = f.atk, sp = a.grab, t = f.atkT;
+    let move = 0;
+    if (t > a.su && t <= a.su + a.ac && !a.grabHit) {
+      if (a.stepLeft > 0) { move = t === a.su + a.ac ? a.stepLeft : Math.min(a.stepLeft, sp.reachStep / sp.active); a.stepLeft -= move; }
+      f.x += a.grabDir * move;
+      a.lastCheck = EnemyGrab.canCatch(f, other);
+      if (!a.lastCheck) EnemyGrab.catch(f, other, t);
+    } else if (!a.grabHit && t > a.su + a.ac && a.overLeft > 0) {
+      move = Math.min(a.overLeft, sp.overStep / sp.overFrames); a.overLeft -= move; f.x += a.grabDir * move; // overcommit past the target
+    }
+    if (a.grabHit && a.grabVictim) {
+      const victim = a.grabVictim;
+      if (victim.heldBy !== f) a.grabVictim = null; // victim already freed (reset / safety release)
+      else if (t - a.holdStart >= sp.headbuttAt) EnemyGrab.headbutt(f, victim);
+      else EnemyGrab.pin(f, victim);
+    }
+    f.vx = 0;
+  },
+  catch(g, target, t) {
+    const a = g.atk, sp = a.grab;
+    a.grabHit = true; a.grabVictim = target; a.holdStart = t; a.stepLeft = 0; a.overLeft = 0; a.holdOffset = sp.holdGap * g.drawS();
+    a.re = Math.max(0, t + sp.headbuttAt + sp.hitRecovery - (a.su + a.ac));
+    g.grabVictim = target; g.grabCoolT = sp.cooldown; g.hitDone = 1;
+    target.heldBy = g; target.heldT = 0; target.grabRelease = '';
+    target.atk = null; target.atkT = 0; target.atkPhase = ''; target.chain = 0; target.chainArmed = 0; target.blocking = 0;
+    target.dashLeft = 0; target.vx = 0; target.vy = 0; target.y = 0; target.state = 'hit';
+    EnemyGrab.pin(g, target);
+    Sfx.play('block', null);
+  },
+  /** Held player sits holdGap ahead of the grappler, facing it. */
+  pin(g, victim) {
+    victim.x = g.x + g.atk.grabDir * g.atk.holdOffset; // offset fixed at the catch (grappler's lane scale)
+    victim.face = -g.atk.grabDir; victim.vx = 0; victim.vy = 0; victim.y = 0;
+  },
+  headbutt(g, victim) {
+    const a = g.atk;
+    EnemyGrab.release(victim, 'headbutt');
+    const hit = { dmg: a.dmg, kb: a.kb, stun: a.stun, chip: 0, special: false, critical: false, comboFinisher: false, comboLink: false, chain: 0, grab: true };
+    const te = BeatEmUp.entryFor(victim), hpBefore = victim.hp;
+    const kind = te ? BeatEmUp.withDepth(te, () => victim.takeHit(hit, g)) : victim.takeHit(hit, g);
+    a.headbuttKind = kind; a.headbuttDmg = hpBefore - victim.hp;
+    if (te) {
+      const hb = BeatEmUp.withDepth(te, () => { victim.clamp(); return { ...victim.hitbox }; });
+      const cx = hb.x + hb.w / 2 - BeatEmUp.cameraX, cy = hb.y + hb.h * .2;
+      Fx.hit(cx, cy); Fx.damage(cx, cy - 12, Math.round(a.headbuttDmg * 10) / 10, kind === 'block');
+    }
+    Sfx.play('player-heavy-hit', victim.classProfile);
+  },
+  /** Release a held player cleanly (idempotent). reason: headbutt | holder-hit | holder-down | dropped | victim-down | timeout. */
+  release(victim, reason) {
+    const g = victim.heldBy;
+    if (!g) return;
+    victim.heldBy = null; victim.heldT = 0; victim.grabRelease = reason;
+    victim.noRegrabT = (EnemyGrab.spec(g) || EnemyGrabs.clinch).noRegrab;
+    if (victim.state === 'hit' && victim.stun <= 0 && victim.hp > 0) { victim.state = 'idle'; victim.atkPhase = ''; }
+    if (g.grabVictim === victim) g.grabVictim = null;
+    if (g.atk?.grab && g.atk.grabVictim === victim) g.atk.grabVictim = null;
+  },
+  /** Victim side of the hold, run instead of its normal update. Returns false once released. */
+  holdVictim(f, dt, other) {
+    const g = f.heldBy, sp = EnemyGrab.spec(g) || EnemyGrabs.clinch;
+    const reason = f.hp <= 0 || f.ragdollActive ? 'victim-down'
+      : g.hp <= 0 || g.ragdollActive ? 'holder-down'
+        : !g.atk?.grab || g.atk.grabVictim !== f ? 'dropped'
+          : f.heldT >= sp.maxHold ? 'timeout' : '';
+    if (reason) { EnemyGrab.release(f, reason); return false; }
+    f.heldT++;
+    f.invincibleT = Math.max(0, f.invincibleT - dt); f.dodgeCooldown = Math.max(0, f.dodgeCooldown - dt);
+    if (f.flash > 0) f.flash -= dt;
+    f.animT += dt;
+    f.state = 'hit'; f.atk = null; f.blocking = 0;
+    EnemyGrab.pin(g, f);
+    f.aim('held', Pose.hit(f.classProfile), .06);
+    f.tickPose(dt);
+    f.clamp(other);
+    return true;
+  },
+  tickTimers(f, dt) {
+    f.noRegrabT = f.noRegrabT - dt > 1e-9 ? f.noRegrabT - dt : 0;
+    f.grabCoolT = f.grabCoolT - dt > 1e-9 ? f.grabCoolT - dt : 0;
+  },
+};
+
 /* Shared archetype skeleton. Every enemy archetype is drawn from the same Fighter rig:
  * one joint set from Fighter.bones() and one pose/animation pipeline (aim/tickPose).
  * An archetype may add a BODY PROFILE, which only reshapes how that rig is drawn:
@@ -666,6 +810,19 @@ const ArchetypeBodyProfiles = {
     openPose:   {chest:8,neck:2,head:4,la:-15,le:-20,ra:-10,re:-30},    // guard broken: shield arm dropped
     equipment: [{ kind: 'riotShield', joints: ['la'] }],
   },
+  grappler: {
+    torsoWidth: 1.55,      // thick upper torso
+    shoulderWidth: 8,      // broad shoulders / back (Brawler 7, Heavy 9)
+    limbWidth: 1.3,
+    forearmWidth: 1.2,
+    legWidth: 1.2,
+    armLength: 1.2,        // longer arms: both arm segments scaled from the shoulder (draw only)
+    openHands: true,       // open grabbing hands (fingers spread), never fists
+    neckScale: .6,
+    stanceWidth: 6,
+    guardPose: EnemyGrabs.clinch.guardPose, // idle/walk: arms slightly forward, hands ready
+    equipment: [{ kind: 'wrestlingBelt', joints: ['hip'] }, { kind: 'wristWraps', joints: ['la', 'ra'] }],
+  },
 };
 const ArchetypeEquipment = {
   /** Riot shield on the lead hand, its long axis across the forearm line (arm forward = shield upright,
@@ -710,6 +867,39 @@ const ArchetypeEquipment = {
     draw('#F2E8D2', stroke * .62);
     // Knot wrap around the neck.
     ctx.fillStyle = '#F2E8D2'; ctx.beginPath(); ctx.arc(knot.x, knot.y, stroke * .5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  },
+
+  /** Wrestling belt across the hips with a front buckle. Decoration only. */
+  wrestlingBelt(ctx, f, b, joint, ctxInfo) {
+    const hip = b[joint], chest = b.chest;
+    if (!hip || !chest) return;
+    const { stroke, unit } = ctxInfo;
+    let ax = chest.x - hip.x, ay = chest.y - hip.y; const al = Math.hypot(ax, ay) || 1; ax /= al; ay /= al;
+    const c = { x: hip.x + ax * 3 * unit, y: hip.y + ay * 3 * unit }, px = -ay, py = ax, half = 10 * unit;
+    const p0 = { x: c.x - px * half, y: c.y - py * half }, p1 = { x: c.x + px * half, y: c.y + py * half };
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = stroke * 1.25 + 3 / Game.scale;
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+    ctx.strokeStyle = '#B3262E'; ctx.lineWidth = stroke * 1.25;
+    ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+    const bk = { x: c.x + f.face * 3 * unit, y: c.y };
+    ctx.fillStyle = '#F2C94C'; ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = 1.4 * unit;
+    ctx.beginPath(); ctx.arc(bk.x, bk.y, stroke * .7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  },
+  /** Short tape wraps at the wrists (Brawler's handWraps cover half the forearm). Decoration only. */
+  wristWraps(ctx, f, b, joint, ctxInfo) {
+    const hand = b[joint], elbow = b[joint + 'J'];
+    if (!hand || !elbow) return;
+    const { stroke, unit } = ctxInfo;
+    const from = { x: elbow.x + (hand.x - elbow.x) * .72, y: elbow.y + (hand.y - elbow.y) * .72 };
+    const to = { x: elbow.x + (hand.x - elbow.x) * .92, y: elbow.y + (hand.y - elbow.y) * .92 };
+    ctx.save(); ctx.lineCap = 'butt';
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = stroke * 1.05 + 3 / Game.scale;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
+    ctx.strokeStyle = '#F2E8D2'; ctx.lineWidth = stroke * 1.05;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke();
     ctx.restore();
   },
 
@@ -776,6 +966,13 @@ const ArchetypeSkeleton = {
     const rdx = b.shRear.x - (raw.shR || raw.sh).x, rdy = b.shRear.y - (raw.shR || raw.sh).y;
     b.shL = b.shFront; b.laJ = add(raw.laJ, fdx, fdy); b.la = add(raw.la, fdx, fdy);
     b.shR = b.shRear; b.raJ = add(raw.raJ, rdx, rdy); b.ra = add(raw.ra, rdx, rdy);
+    // Longer arms: scale upper arm and forearm from the shoulder (draw only; combatBones untouched).
+    const ak = prof.armLength || 1;
+    if (ak !== 1) for (const sd of ['l', 'r']) {
+      const sh = b['sh' + sd.toUpperCase()], j = b[sd + 'aJ'], h = b[sd + 'a'];
+      const nj = { x: sh.x + (j.x - sh.x) * ak, y: sh.y + (j.y - sh.y) * ak };
+      b[sd + 'aJ'] = nj; b[sd + 'a'] = { x: nj.x + (h.x - j.x) * ak, y: nj.y + (h.y - j.y) * ak };
+    }
     // Planted stance: lead foot (ll) forward, rear foot back; knees follow by half.
     const st = (prof.stanceWidth || 0) * unit;
     b.llJ = add(raw.llJ, face * st * .5, 0); b.ll = add(raw.ll, face * st, 0);
@@ -801,6 +998,25 @@ const ArchetypeSkeleton = {
     b.profile = prof; b.unit = unit;
     return b;
   },
+  /** Open hands (Grappler): a palm plus three spread fingers and a thumb along the forearm line. Draw only. */
+  drawOpenHands(ctx, b, stroke, col) {
+    const u = b.unit, len = 7 * u, w = stroke * .38;
+    for (const sd of ['r', 'l']) {
+      const hand = b[sd + 'a'], el = b[sd + 'aJ'];
+      let dx = hand.x - el.x, dy = hand.y - el.y; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+      const rays = [-.45, 0, .45, 1.25].map((ang, i) => {
+        const c = Math.cos(ang), s = Math.sin(ang), L = i === 3 ? len * .7 : len;
+        return { x: hand.x + (dx * c - dy * s) * L, y: hand.y + (dx * s + dy * c) * L };
+      });
+      ctx.save(); ctx.lineCap = 'round';
+      for (const [style, extra] of [['rgba(3,8,18,.96)', 3 / Game.scale], [col, 0]]) {
+        ctx.strokeStyle = style; ctx.lineWidth = w + extra;
+        for (const r of rays) { ctx.beginPath(); ctx.moveTo(hand.x, hand.y); ctx.lineTo(r.x, r.y); ctx.stroke(); }
+        ctx.fillStyle = style; ctx.beginPath(); ctx.arc(hand.x, hand.y, stroke * .55 + extra / 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  },
   /** Profile body pass; replaces the five default limb chains for profiled archetypes only. */
   drawBody(ctx, f, b, chain, stroke, col) {
     const p = b.profile;
@@ -816,6 +1032,7 @@ const ArchetypeSkeleton = {
       chain([j, hand], p.forearmWidth);
     }
     for (const eq of p.equipment || []) if (eq.layer !== 'back') for (const joint of eq.joints) ArchetypeEquipment[eq.kind]?.(ctx, f, b, joint, info);
+    if (p.openHands) ArchetypeSkeleton.drawOpenHands(ctx, b, stroke, col);
     if (!p.handRadius) return; // only profiles with a hand size get the oversized fists
     // Oversized fists on the shared hand joints.
     const r = stroke * .72 * p.handRadius;
@@ -1783,11 +2000,15 @@ class Fighter {
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
     this.bossProfile = null;
-    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; this.enemyGuard = null; this.enemyBash = null;
+    this.bodyProfile = null; this.enemyCombo = null; this.enemyRush = null; this.enemySlam = null; this.enemyGuard = null; this.enemyBash = null; this.enemyGrab = null;
+    this.heldBy = null; this.grabVictim = null; this.heldT = 0; this.noRegrabT = 0; this.grabCoolT = 0; this.grabRelease = ''; // Grappler grab state
     this.guardOpenT = 0; this.guardRecoilT = 0; this.guardChainT = 0; this.guardBlocks = 0; this.guardFace = null; this.guardTurnT = 0; // archetype draw profile + multi-hit normal / committed rush (enemies only)
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
+    if (this.heldBy) EnemyGrab.release(this, 'reset');
+    if (this.grabVictim) EnemyGrab.release(this.grabVictim, 'reset');
+    this.noRegrabT = 0; this.grabCoolT = 0;
     this.x = x; this.y = 0; this.vx = 0; this.vy = 0; this.face = side; this.depth = Depth.START;
     this.grounded = true; this.state = 'idle'; this.walkT = 0; this.animT = 0;
     this.pose = Pose.idle(this.classProfile); this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose);
@@ -1989,6 +2210,7 @@ class Fighter {
     if (kind === 'punch' && this.enemyRush && EnemyRushes[this.enemyRush]) { this.startEnemyRush(EnemyRushes[this.enemyRush]); return; }
     if (kind === 'punch' && this.enemySlam && EnemySlams[this.enemySlam]) { this.startEnemySlam(EnemySlams[this.enemySlam]); return; }
     if (kind === 'punch' && this.enemyBash && EnemyBashes[this.enemyBash]) { this.startEnemyBash(EnemyBashes[this.enemyBash]); return; }
+    if (kind === 'punch' && this.enemyGrab && EnemyGrabs[this.enemyGrab]) { this.startEnemyGrab(EnemyGrabs[this.enemyGrab]); return; }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -2174,6 +2396,34 @@ class Fighter {
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
     this.atkPhase = '';
   }
+  /** Archetype grab (Grappler) on the shared 'punch' state. dmg/kb/stun are the headbutt's. */
+  startEnemyGrab(spec) {
+    const tl = EnemyGrab.timeline(spec);
+    this.atk = {
+      su: tl.su, ac: tl.ac, re: tl.re,
+      dmg: spec.dmg * this.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
+      chain: 0, kind: 'punch', reach: 0, linked: false,
+      grab: spec, grabDir: this.face, stepLeft: spec.reachStep, overLeft: spec.overStep, grabHit: false, grabVictim: null, holdStart: 0, lastCheck: '',
+    };
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+    this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = '';
+  }
+  driveGrabPose(a, t) {
+    const sp = a.grab, end = a.su + a.ac + a.re;
+    let key, pose, dur;
+    if (t <= a.su) { key = 'xw'; pose = sp.windPose; dur = a.su; }                                   // arms spread (tell)
+    else if (!a.grabHit && t <= a.su + a.ac) { key = 'xr'; pose = sp.reachPose; dur = 3; }           // forward reach
+    else if (a.grabHit && t - a.holdStart < sp.headbuttAt - sp.headbuttWind) { key = 'xh'; pose = sp.holdPose; dur = 5; }
+    else if (a.grabHit && t - a.holdStart < sp.headbuttAt) { key = 'xb'; pose = sp.buttWindPose; dur = sp.headbuttWind; }
+    else if (a.grabHit && t - a.holdStart < sp.headbuttAt + 8) { key = 'xs'; pose = sp.buttPose; dur = 2; }
+    else if (!a.grabHit && t <= end - 14) { key = 'xm'; pose = sp.missPose; dur = 6; }               // overreach / overcommit
+    else { key = 'xg'; pose = null; dur = Math.max(1, end - t); }
+    if (this.atkPhase === key) return;
+    const base = Pose.idle(null), guard = this.bodyProfile?.guardPose ? EnemyCombo.pose(this.bodyProfile.guardPose) : {};
+    this.aim(key, pose ? { ...base, ...EnemyCombo.pose(pose) } : { ...base, ...guard }, dur * Game.STEP); this.atkPhase = key;
+  }
   driveBashPose(a, t) {
     const sp = a.bash;
     let key, pose, dur;
@@ -2241,7 +2491,7 @@ class Fighter {
     }
   }
   canChainPunch() {
-    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash) return false;
+    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab) return false;
     const a = this.atk;
     if (this.state === 'kick') {
       const total = a.su + a.ac + a.re;
@@ -2254,7 +2504,7 @@ class Fighter {
     return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
   }
   canChainHeavy() {
-    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash) return false;
+    if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab) return false;
     const a = this.atk;
     const intoRecovery = this.atkT - (a.su + a.ac);
     return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRecovery <= Moves.punch.chainWindow;
@@ -2470,6 +2720,7 @@ class Fighter {
     if (a.rush) { this.driveRushPose(a, t); return; }
     if (a.slam) { this.driveSlamPose(a, t); return; }
     if (a.bash) { this.driveBashPose(a, t); return; }
+    if (a.grab) { this.driveGrabPose(a, t); return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -2535,6 +2786,8 @@ class Fighter {
     return { ax, speedRatio: Math.min(1, Math.abs(this.vx) / Fighter.RUN_SPEED) };
   }
   update(dt, other, slot) {
+    if (this.noRegrabT > 0 || this.grabCoolT > 0) EnemyGrab.tickTimers(this, dt);
+    if (this.heldBy && EnemyGrab.holdVictim(this, dt, other)) return; // held: pinned, no input, until released
     if (this.enemyGuard) EnemyGuard.tick(this, dt);
     this.updateCore(dt, other, slot);
     if (this.enemyGuard) EnemyGuard.afterUpdate(this, dt);
@@ -2614,6 +2867,7 @@ class Fighter {
       }
       this.atkT++;
       if (this.atk.bash) EnemyBash.tick(this); // fixed short shove; may shorten re on a hit
+      if (this.atk.grab) EnemyGrab.tick(this, other); // reach / catch / hold / headbutt; may extend re on a catch
       if (this.atk.rush) EnemyRush.tick(this); // fixed-distance dash / braking skid; may shorten re on a hit
       const a = this.atk, tot = a.su + a.ac + a.re;
       if (a.combo) {
@@ -2658,6 +2912,7 @@ class Fighter {
       } else if (a.rush) this.vx = 0; // rush travel comes only from EnemyRush.tick (bounded); no steering
       else if (a.slam) this.vx = 0; // planted for the whole slam
       else if (a.bash) this.vx = 0; // bash travel only from EnemyBash.tick (bounded)
+      else if (a.grab) this.vx = 0; // grab travel only from EnemyGrab.tick (bounded)
       else this.moveGround(dt, slot, this.state === 'special' ? .25 : this.state === 'kick' ? .36 : .52);
       const wasAir = this.y < 0 || !this.grounded;
       this.vy += 1600 * dt; this.y += this.vy * dt;
@@ -2676,6 +2931,7 @@ class Fighter {
       if (this.bladeSuper && this.atkT < BladeSuper.FACE_LOCK_FRAME) this.bladeSuper.face = this.face = other.x >= this.x ? 1 : -1;
       else if (this.atk && this.state === 'special' && this.classProfile?.weapon === 'blade') this.face = this.bladeSuper?.face ?? this.face;
       else if (this.atk && a.bash) this.face = a.bashDir; // locked at bash start
+      else if (this.atk && a.grab) this.face = a.grabDir; // committed: locked at grab start
       else if (this.atk && a.rush) this.face = a.rushDir; // committed: direction locked at rush start
       else if (this.atk && a.slam) { if (this.atkT <= a.su) this.face = other.x >= this.x ? 1 : -1; } // track in wind-up, lock from the swing
       else if (this.atk && (this.state !== 'special' || this.atkT <= a.su)) this.face = other.x >= this.x ? 1 : -1;
@@ -2780,6 +3036,7 @@ class Fighter {
   strike() {
     if (!this.atk || (this.hitDone && this.state !== 'special')) return null;
     const a = this.atk;
+    if (a.grab) return null; // grabs never produce a hitbox; catch + headbutt are resolved in EnemyGrab
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
     if (a.bash && this.state === 'punch') {
@@ -2886,6 +3143,7 @@ class Fighter {
     return {x:Math.min(tip.x, endX) - r, y:tip.y - r, w:Math.abs(endX - tip.x) + r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical, comboFinisher:!!a.comboFinisher, comboLink:!!a.linked, chain:a.chain || 0};
   }
   takeHit(atk, from) {
+    if (this.heldBy && from !== this.heldBy) return 'held'; // only the holder's headbutt reaches a held player
     if (this.playerControlled && this.invincibleT > 0) return 'invulnerable';
     if (atk.special && (!this.grounded || this.dodgeT > 0)) return 'evade';
     if (this.enemyGuard && EnemyGuard.blocks(this, atk, from)) return EnemyGuard.block(this, atk, from); // frontal same-lane normal: 0 damage
@@ -2910,6 +3168,7 @@ class Fighter {
       this.recordDamage(hpBefore - this.hp, from, !!atk.deferKnockdown);
       return 'block';
     }
+    if (this.grabVictim) EnemyGrab.release(this.grabVictim, 'holder-hit'); // a landed hit on a Grappler frees its victim
     const hpBefore = this.hp;
     this.hp = Math.max(0, this.hp - atk.dmg * (warded ? .55 : 1)); this.flash = .08;
     if (chargingSpecial) {
@@ -4545,6 +4804,7 @@ class BeatEmUp {
     f.enemySlam = archetype.slam || null;
     f.enemyGuard = archetype.guard || null;
     f.enemyBash = archetype.bash || null;
+    f.enemyGrab = archetype.grab || null;
     f.y = 0;
     f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
@@ -4865,7 +5125,7 @@ class BeatEmUp {
     let dy = 0;
     if (Input.depthHeld('up')) dy -= 1;
     if (Input.depthHeld('down')) dy += 1;
-    if (dy) {
+    if (dy && !player.f.heldBy) { // no lane change while held by a Grappler
       player.depth = Math.max(0, Math.min(1, player.depth + dy * 0.9 * dt));
     }
 
@@ -4972,6 +5232,7 @@ class BeatEmUp {
           ai.cool = e.kind === 'boss'
             ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
             : e.f.enemyBash && ai.tellMove === 'punch' ? .5 + EnemyBash.timeline(EnemyBashes[e.f.enemyBash]).total * Game.STEP
+            : e.f.enemyGrab && ai.tellMove === 'punch' ? .5 + EnemyGrab.timeline(EnemyGrabs[e.f.enemyGrab]).total * Game.STEP
             : e.f.enemySlam && ai.tellMove === 'punch' ? .4 + EnemySlam.timeline(EnemySlams[e.f.enemySlam]).total * Game.STEP
             : e.f.enemyRush && ai.tellMove === 'punch' ? BeatEmUp.pacing.attackRecovery.agile + EnemyRush.timeline(EnemyRushes[e.f.enemyRush]).total * Game.STEP
             : e.kind === 'rusher' || e.kind === 'guard' ? BeatEmUp.pacing.attackRecovery.agile
@@ -5007,7 +5268,10 @@ class BeatEmUp {
       const rush = !e.bossProfile && e.f.enemyRush ? EnemyRushes[e.f.enemyRush] : null;
       const slam = !e.bossProfile && e.f.enemySlam ? EnemySlams[e.f.enemySlam] : null;
       const bash = !e.bossProfile && e.f.enemyBash ? EnemyBashes[e.f.enemyBash] : null;
-      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : Moves.punch.reach + 10;
+      const grab = !e.bossProfile && e.f.enemyGrab ? EnemyGrabs[e.f.enemyGrab] : null;
+      // Grappler holds off (no tell) while its cooldown runs or the player is held / inside the no-regrab window.
+      const grabBlocked = grab && (e.f.grabCoolT > 0 || player.f.heldBy || player.f.noRegrabT > 0 || (player.f.x - e.f.x) * e.f.face <= 0);
+      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : grab ? grab.triggerRange : Moves.punch.reach + 10;
       if (rush && !e.f.atk && dist < rush.minRange && (ai.backoffT || 0) < rush.backoffMax) {
         // Too close for the rush: walk out to spacing on the side with room (through the player if
         // pinned at a bound); gives up after backoffMax and rushes anyway.
@@ -5020,7 +5284,7 @@ class BeatEmUp {
       } else if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
-      } else if (ai.cool <= 0 && depthGap < 0.2 && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
+      } else if (ai.cool <= 0 && depthGap < 0.2 && !grabBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
         let move, label, tell;
         if (e.bossProfile) {
           const profile = e.bossProfile;
@@ -5046,11 +5310,13 @@ class BeatEmUp {
           else if (e.f.enemySlam) move = 'punch'; // Heavy overhead slam rides the punch input
           else if (e.f.enemyRush) move = 'punch'; // Rusher shoulder rush rides the punch input
           else if (e.f.enemyBash) move = 'punch'; // Guard shield bash rides the punch input
+          else if (e.f.enemyGrab) move = 'punch'; // Grappler grab rides the punch input
           else move = Math.random() < .72 ? 'punch' : 'kick';
           label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH'
             : move === 'punch' && e.f.enemyRush ? EnemyRushes[e.f.enemyRush]?.label || 'PUNCH'
             : move === 'punch' && e.f.enemySlam ? EnemySlams[e.f.enemySlam]?.label || 'PUNCH'
-            : move === 'punch' && e.f.enemyBash ? EnemyBashes[e.f.enemyBash]?.label || 'PUNCH' : move.toUpperCase();
+            : move === 'punch' && e.f.enemyBash ? EnemyBashes[e.f.enemyBash]?.label || 'PUNCH'
+            : move === 'punch' && e.f.enemyGrab ? EnemyGrabs[e.f.enemyGrab]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }
