@@ -69,7 +69,7 @@ const FighterClasses = {
 const PlayerCoolColor = '#52B8FF';
 const CpuHotColors = {
   '1v1': '#FF4F5E',
-  enemy: { regular: '#FF4F5E', runner: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458' },
+  enemy: { regular: '#FF4F5E', runner: '#FFAA45', tough: '#F36B83', heavy: '#E94B3E', thrower: '#A78BFA', boss: '#F04458', brawler: '#FF8C5A' },
   bosses: ['#FF4F5E','#FF8A4C','#F35B91','#FF663E','#D84A67','#F05668','#FFB347','#EA5968','#F0447A','#FF3B47'],
 };
 
@@ -372,6 +372,160 @@ const EnemyArchetypes = {
   heavy: { health: 145, weaponChance: .5, specialDamage: .45, specialGain: .45 },
   thrower: { health: 65, weaponChance: 0, specialDamage: 0, specialGain: 0 },
   boss: { health: 220, weaponChance: 1, specialDamage: 1, specialGain: 1 },
+  brawler: { health: 110, weaponChance: 0, specialDamage: .25, specialGain: .25, speed: .95, bodyProfile: 'brawler', combo: 'jabCross' },
+};
+
+/* Enemy multi-hit normals. Frames are at 60 fps. Each hit runs wind-up -> active -> recovery,
+ * and the hits play back to back inside ONE shared 'punch' attack state (same state machine,
+ * hurtbox, lane check and hit resolution as every other enemy punch). `fraction` splits the
+ * archetype's single unchained punch damage, so the whole string deals exactly one regular
+ * punch. Each hit can land once per target (hitDone re-arms only when the next hit starts).
+ * Poses are draw-side and in degrees; gameplay geometry stays on combatBones(). */
+const EnemyCombos = {
+  jabCross: {
+    label: 'JAB-CROSS',
+    hits: [
+      // Jab: lead hand, light push so the cross can still connect.
+      { name: 'jab',   windup: 7, active: 3, recovery: 6,  fraction: .4, kb: 60,  stun: 10,
+        windPose:   {chest:2,neck:-2,head:4,la:-40,le:-112,ra:-35,re:-120,ll:26,lk:18,rl:-26,rk:22,hipBob:-2,shPull:0},
+        strikePose: {chest:-6,neck:0,head:4,la:-96,le:6,ra:-35,re:-120,ll:30,lk:16,rl:-28,rk:22,hipBob:-2,shPull:0} },
+      // Cross: rear shoulder winds back, then drives through with the rear fist.
+      { name: 'cross', windup: 8, active: 3, recovery: 14, fraction: .6, kb: 160, stun: 10,
+        windPose:   {chest:14,neck:-3,head:4,la:-55,le:-100,ra:-18,re:-132,ll:26,lk:18,rl:-28,rk:22,hipBob:-2,shPull:8},
+        strikePose: {chest:-14,neck:1,head:3,la:-50,le:-105,ra:-98,re:8,ll:34,lk:16,rl:-34,rk:24,hipBob:-3,shPull:0} },
+    ],
+  },
+};
+const EnemyCombo = {
+  pose(deg) { const o = {}; for (const k in deg) o[k] = k === 'hipBob' || k === 'shPull' ? deg[k] : deg[k] * Math.PI / 180; return o; },
+  /** Absolute atkT windows: hit i is active for activeStart..activeEnd (inclusive). */
+  timeline(spec) {
+    let t = 0;
+    const hits = spec.hits.map(h => {
+      const w = { windStart: t, activeStart: t + h.windup + 1, activeEnd: t + h.windup + h.active };
+      t += h.windup + h.active + h.recovery;
+      return w;
+    });
+    const last = spec.hits[spec.hits.length - 1];
+    const su = spec.hits[0].windup;
+    return { hits, su, ac: hits[hits.length - 1].activeEnd - su, re: last.recovery, total: t };
+  },
+  pulseAt(atk, t) {
+    const w = atk?.comboWindows;
+    if (!w) return -1;
+    for (let i = 0; i < w.length; i++) if (t >= w[i].activeStart && t <= w[i].activeEnd) return i;
+    return -1;
+  },
+};
+
+/* Shared archetype skeleton. Every enemy archetype is drawn from the same Fighter rig:
+ * one joint set from Fighter.bones() and one pose/animation pipeline (aim/tickPose).
+ * An archetype may add a BODY PROFILE, which only reshapes how that rig is drawn:
+ * torso/shoulder width, limb and forearm thickness, hand size, stance width, neck length,
+ * an optional draw-side guard pose, and equipment pinned to named joints.
+ * Profiles are draw-only: hurtboxes (42x135 x scale), combatBones(), strike geometry and
+ * screen clamps never read them. No profile => the original draw path, untouched.
+ * Future archetypes (rusher, heavy, grappler, guard, ranged, disruptor) are new entries here.
+ * Widths/offsets are multipliers of the shared stroke or px at scale 1. */
+const ArchetypeBodyProfiles = {
+  brawler: {
+    torsoWidth: 1.6,       // hip-chest-neck stroke
+    shoulderWidth: 7,      // shoulder yoke half-width; arms hang from the yoke ends
+    limbWidth: 1.2,        // upper arms
+    forearmWidth: 1.55,    // oversized forearms
+    legWidth: 1.3,         // sturdy legs
+    handRadius: 1.9,       // fists vs the shared joint radius
+    neckScale: .55,        // shorter neck
+    stanceWidth: 5,        // extra foot spread each side (knees take half)
+    guardPose: {chest:6,neck:-4,head:4,la:-55,le:-100,ra:-35,re:-120}, // fists up while idle/walking
+    equipment: [{ kind: 'handWraps', joints: ['la', 'ra'] }],
+  },
+};
+const ArchetypeEquipment = {
+  handWraps(ctx, f, b, joint, ctxInfo) {
+    const hand = b[joint], elbow = b[joint + 'J'];
+    if (!hand || !elbow) return;
+    const { stroke, unit } = ctxInfo;
+    const from = { x: elbow.x + (hand.x - elbow.x) * .5, y: elbow.y + (hand.y - elbow.y) * .5 };
+    ctx.save(); ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = stroke * 1.1 + 3 / Game.scale;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
+    ctx.strokeStyle = '#F2E8D2'; ctx.lineWidth = stroke * 1.1;
+    ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(hand.x, hand.y); ctx.stroke();
+    // Two wrap seams across the forearm.
+    const dx = hand.x - from.x, dy = hand.y - from.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+    ctx.strokeStyle = '#8A7F6A'; ctx.lineWidth = 1.2 * unit;
+    for (const u of [.35, .7]) {
+      const cx = from.x + dx * u, cy = from.y + dy * u, h = stroke * .55;
+      ctx.beginPath(); ctx.moveTo(cx - nx * h, cy - ny * h); ctx.lineTo(cx + nx * h, cy + ny * h); ctx.stroke();
+    }
+    ctx.restore();
+  },
+};
+const ArchetypeSkeleton = {
+  profileFor(kind) {
+    const key = EnemyArchetypes[kind]?.bodyProfile;
+    return key ? ArchetypeBodyProfiles[key] || null : null;
+  },
+  /** Draw-only guard override: arms (and torso lean) only, while idle or walking. */
+  guardActive(f) {
+    return !!f.bodyProfile?.guardPose && !f.atk && !f.ragdollActive && f.hp > 0 && f.stun <= 0
+      && f.grounded && !f.blocking && !f.enemyThrowPose && (f.state === 'idle' || f.state === 'walk');
+  },
+  /** Shared bones, reshaped by the fighter's body profile. Never used for gameplay. */
+  drawBones(f) {
+    const prof = f.bodyProfile;
+    if (!prof) return f.bones();
+    let raw;
+    if (ArchetypeSkeleton.guardActive(f)) {
+      const saved = f.pose, g = EnemyCombo.pose(prof.guardPose);
+      f.pose = { ...saved, ...g };
+      try { raw = f.bones(); } finally { f.pose = saved; }
+    } else raw = f.bones();
+    const b = { ...raw }, face = f.face, unit = raw.lens.arm / 18;
+    const add = (p, dx, dy) => ({ x: p.x + dx, y: p.y + dy });
+    // Shorter neck: pull neck and head down toward the chest.
+    const ns = prof.neckScale ?? 1;
+    const ndx = (raw.neck.x - raw.chest.x) * (ns - 1), ndy = (raw.neck.y - raw.chest.y) * (ns - 1);
+    b.neck = add(raw.neck, ndx, ndy); b.head = add(raw.head, ndx, ndy);
+    // Shoulder yoke: lead arm (la, toward the foe) hangs from the front end, rear arm from the back end.
+    const sw = (prof.shoulderWidth || 0) * unit, drop = sw * .25;
+    b.shFront = add(raw.shL || raw.sh, face * sw, drop); b.shRear = add(raw.shR || raw.sh, -face * sw, drop);
+    const fdx = b.shFront.x - (raw.shL || raw.sh).x, fdy = b.shFront.y - (raw.shL || raw.sh).y;
+    const rdx = b.shRear.x - (raw.shR || raw.sh).x, rdy = b.shRear.y - (raw.shR || raw.sh).y;
+    b.shL = b.shFront; b.laJ = add(raw.laJ, fdx, fdy); b.la = add(raw.la, fdx, fdy);
+    b.shR = b.shRear; b.raJ = add(raw.raJ, rdx, rdy); b.ra = add(raw.ra, rdx, rdy);
+    // Planted stance: lead foot (ll) forward, rear foot back; knees follow by half.
+    const st = (prof.stanceWidth || 0) * unit;
+    b.llJ = add(raw.llJ, face * st * .5, 0); b.ll = add(raw.ll, face * st, 0);
+    b.rlJ = add(raw.rlJ, -face * st * .5, 0); b.rl = add(raw.rl, -face * st, 0);
+    b.profile = prof; b.unit = unit;
+    return b;
+  },
+  /** Profile body pass; replaces the five default limb chains for profiled archetypes only. */
+  drawBody(ctx, f, b, chain, stroke, col) {
+    const p = b.profile;
+    chain([b.hip, b.rlJ, b.rl], p.legWidth);
+    chain([b.hip, b.llJ, b.ll], p.legWidth);
+    chain([b.hip, b.chest, b.neck], p.torsoWidth);
+    chain([b.shRear, b.chest, b.shFront], p.torsoWidth * .85);
+    for (const side of ['r', 'l']) { // rear arm first so the lead arm overlaps it
+      const sh = side === 'l' ? b.shL : b.shR, j = b[side + 'aJ'], hand = b[side + 'a'];
+      chain([sh, j], p.limbWidth);
+      chain([j, hand], p.forearmWidth);
+    }
+    const info = { stroke: stroke * (p.forearmWidth || 1), unit: b.unit };
+    for (const eq of p.equipment || []) for (const joint of eq.joints) ArchetypeEquipment[eq.kind]?.(ctx, f, b, joint, info);
+    // Oversized fists on the shared hand joints.
+    const r = stroke * .72 * (p.handRadius || 1);
+    for (const hand of [b.ra, b.la]) {
+      ctx.fillStyle = 'rgba(3,8,18,.96)'; ctx.beginPath(); ctx.arc(hand.x, hand.y, r + 2.5 / Game.scale, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale;
+      ctx.beginPath(); ctx.arc(hand.x, hand.y, r, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.strokeStyle = '#F2E8D2'; ctx.lineWidth = 1.6 * b.unit;
+      ctx.beginPath(); ctx.arc(hand.x, hand.y, r * .62, 0, Math.PI * 2); ctx.stroke();
+    }
+  },
 };
 
 class Sfx {
@@ -1327,6 +1481,7 @@ class Fighter {
     this.weaponType = null; this.attackSpeed = 1; this.damageMultiplier = 1;
     this.specialDamageMultiplier = 1; this.meterGainMultiplier = 1;
     this.bossProfile = null;
+    this.bodyProfile = null; this.enemyCombo = null; // archetype draw profile + multi-hit normal (enemies only)
     this.meter = 0; this.reset(x, side);
   }
   reset(x, side) {
@@ -1527,6 +1682,7 @@ class Fighter {
       }
       return;
     }
+    if (kind === 'punch' && this.enemyCombo && EnemyCombos[this.enemyCombo]) { this.startEnemyCombo(EnemyCombos[this.enemyCombo]); return; }
     let linked = false;
     if (kind === 'special') {
       if (this.meter < 100) return;
@@ -1652,6 +1808,51 @@ class Fighter {
       Sfx.play('super-charge', this.classProfile);
     } else if (kind === 'kick') Sfx.play('kick', this.classProfile);
     else Sfx.play('punch', this.classProfile);
+  }
+  /** Archetype multi-hit punch (e.g. Brawler jab-cross) on the shared 'punch' state. */
+  startEnemyCombo(spec) {
+    const ref = Atk.of('punch', 0, null, null); // the same unchained punch every enemy throws
+    const w = EnemyCombo.timeline(spec);
+    this.atk = {
+      su: w.su, ac: w.ac, re: w.re,
+      dmg: ref.dmg * this.damageMultiplier, kb: spec.hits[0].kb, stun: spec.hits[0].stun, chip: 0,
+      chain: 0, kind: 'punch', reach: ref.reach, linked: false,
+      combo: spec, comboWindows: w.hits, comboPulse: -1,
+    };
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+    this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.specialVisual = null;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = '';
+    Sfx.play('punch', null);
+  }
+  driveComboPose(a, t) {
+    const w = a.comboWindows, hits = a.combo.hits;
+    for (let i = 0; i < w.length; i++) {
+      const last = i === w.length - 1;
+      if (t < w[i].activeStart) {
+        const key = 'cw' + i;
+        if (this.atkPhase !== key) { this.aim(key, EnemyCombo.pose(hits[i].windPose), Math.max(1, w[i].activeStart - 1 - t) * Game.STEP); this.atkPhase = key; }
+        return;
+      }
+      if (t <= w[i].activeEnd) {
+        const key = 'cs' + i;
+        if (this.atkPhase !== key) {
+          const strike = EnemyCombo.pose(hits[i].strikePose);
+          this.aim(key, strike, .03); this.atkPhase = key;
+          this.pose = Pose.copy(strike); this.poseFrom = Pose.copy(strike); this.poseTo = Pose.copy(strike); this.blendT = this.blendDur;
+        }
+        return;
+      }
+      if (last || t < w[i + 1].windStart) {
+        const key = 'cr' + i;
+        if (this.atkPhase !== key) {
+          const guard = this.bodyProfile?.guardPose ? { ...Pose.idle(null), ...EnemyCombo.pose(this.bodyProfile.guardPose) } : Pose.idle(null);
+          const to = last ? guard : EnemyCombo.pose(hits[i + 1].windPose);
+          this.aim(key, to, hits[i].recovery * Game.STEP); this.atkPhase = key;
+        }
+        return;
+      }
+    }
   }
   canChainPunch() {
     if (!this.atk || !this.hitConfirmed) return false;
@@ -1879,6 +2080,7 @@ class Fighter {
       } else if (this.atkPhase !== 'kr') { this.aim('kr', Pose.kickRec(this.classProfile, a.linked), a.re * Game.STEP); this.atkPhase = 'kr'; }
       return;
     }
+    if (a.combo) { this.driveComboPose(a, t); return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -2018,6 +2220,11 @@ class Fighter {
       }
       this.atkT++;
       const a = this.atk, tot = a.su + a.ac + a.re;
+      if (a.combo) {
+        // Each hit of an enemy string may land once: re-arm when the next hit's active window opens.
+        const pulse = EnemyCombo.pulseAt(a, this.atkT);
+        if (pulse >= 0 && pulse !== a.comboPulse) { this.hitDone = 0; a.comboPulse = pulse; }
+      }
       if (this.bladeSuper) {
         this.x = this.bladeSuper.originX; this.depth = this.bladeSuper.depth; this.vx = 0;
         BladeSuper.frame(this.bladeSuper, this.atkT);
@@ -2058,7 +2265,7 @@ class Fighter {
       this.landCheck(wasAir);
       if (this.atkT >= tot) {
         // Chain only continues after a connected punch; whiff clears the string (AC2)
-        if (this.state === 'punch' && this.hitDone && this.chain + 1 < this.punchChainMax())
+        if (this.state === 'punch' && this.hitDone && !a.combo && this.chain + 1 < this.punchChainMax())
           this.chainArmed = Moves.punch.chainWindow;
         else { this.chain = 0; this.chainArmed = 0; }
         if (this.classProfile?.weapon === 'staff' && this.state === 'special') Fx.clearStaffSuper(this);
@@ -2173,6 +2380,12 @@ class Fighter {
     const a = this.atk;
     if (this.atkT <= a.su || this.atkT > a.su + a.ac) return null;
     if (this.bossProfile && this.state === 'special') return BossSignature.strike(this, this.superPulse());
+    if (a.combo && this.state === 'punch') {
+      const pulse = EnemyCombo.pulseAt(a, this.atkT);
+      if (pulse < 0) return null;
+      const h = a.combo.hits[pulse], b = this.combatBones(), tip = b.ra, r = 18 * this.depthScale();
+      return {x:tip.x - r, y:tip.y - r, w:r * 2, h:r * 2, dmg:a.dmg * h.fraction, kb:h.kb, stun:h.stun, chip:0, special:false, critical:false, comboFinisher:false, comboLink:false, chain:0, comboPulse:pulse};
+    }
     if (this.state === 'special' && this.classProfile?.weapon === 'blade') {
       const pulse = this.superPulse();
       if (pulse < 0) return null;
@@ -2786,34 +2999,39 @@ class Fighter {
       ctx.rotate(this.ragdollAngle);
       ctx.translate(-this.x - nudge, -this.groundY() - this.y);
     }
-    const b = this.bones();
+    // Archetype body profiles reshape the shared rig for drawing only; no profile => bones() as before.
+    const b = this.bodyProfile ? ArchetypeSkeleton.drawBones(this) : this.bones();
     const invulnTime = Math.max(this.invincibleT, this.dodgeT);
     const invulnBlink = this.playerControlled && invulnTime > 0 && Math.floor(invulnTime * 14) % 2 === 0;
     const col = this.flash > 0 || invulnBlink ? '#FFFFFF' : this.color;
     const spriteStroke = Math.max(Game.lw, 8 / Game.scale);
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = spriteStroke;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    const chain = (pts) => {
+    const chain = (pts, width = 1) => {
+      const stroke = width === 1 ? spriteStroke : spriteStroke * width;
       ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = spriteStroke + 5 / Game.scale; ctx.stroke();
+      ctx.strokeStyle = 'rgba(3,8,18,.96)'; ctx.lineWidth = stroke + 5 / Game.scale; ctx.stroke();
       ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = spriteStroke;
+      ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = stroke;
       ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale; ctx.stroke(); ctx.restore();
       for (let i = 0; i < pts.length - 1; i++) {
-        const joint = pts[i], jointRadius = spriteStroke * .72;
+        const joint = pts[i], jointRadius = stroke * .72;
         ctx.fillStyle = 'rgba(3,8,18,.96)'; ctx.beginPath(); ctx.arc(joint.x, joint.y, jointRadius, 0, Math.PI * 2); ctx.fill();
         ctx.save(); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5 / Game.scale;
         ctx.beginPath(); ctx.arc(joint.x, joint.y, jointRadius * .68, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       }
     };
-    chain([b.hip, b.chest, b.neck]);
-    // Lead/rear shoulders: shR carries punch shPull (~6px back); shL stays on chest
-    chain([b.shL || b.sh, b.laJ, b.la]);
-    chain([b.shR || b.sh, b.raJ, b.ra]);
-    chain([b.hip, b.llJ, b.ll]);
-    chain([b.hip, b.rlJ, b.rl]);
+    if (b.profile) ArchetypeSkeleton.drawBody(ctx, this, b, chain, spriteStroke, col);
+    else {
+      chain([b.hip, b.chest, b.neck]);
+      // Lead/rear shoulders: shR carries punch shPull (~6px back); shL stays on chest
+      chain([b.shL || b.sh, b.laJ, b.la]);
+      chain([b.shR || b.sh, b.raJ, b.ra]);
+      chain([b.hip, b.llJ, b.ll]);
+      chain([b.hip, b.rlJ, b.rl]);
+    }
     const headX = b.head.x, headY = b.head.y, headRadius = b.hr;
     ctx.fillStyle = 'rgba(3,8,18,.98)'; ctx.beginPath(); ctx.arc(headX, headY, headRadius + 3 / Game.scale, 0, Math.PI * 2); ctx.fill();
     ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 10 / Game.scale;
@@ -3897,12 +4115,14 @@ class BeatEmUp {
     f.specialDamageMultiplier = archetype.specialDamage;
     f.meterGainMultiplier = archetype.specialGain;
     f.tag = kind === 'regular' ? 'ROOKIE' : kind.toUpperCase();
+    f.bodyProfile = ArchetypeSkeleton.profileFor(kind); // draw-only; null for archetypes without a profile
+    f.enemyCombo = archetype.combo || null;
     f.y = 0;
     f.hp = archetype.health * (kind === 'boss' ? BossHardness.health : 1); f.chip = f.hp;
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
-    const speedMul = kind === 'runner' || kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1;
+    const speedMul = archetype.speed ?? (kind === 'runner' || kind === 'tough' ? 1.32 : kind === 'heavy' ? .74 : kind === 'boss' ? .92 : 1);
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
       ai: { mode: 'circle', atkSlot: 0, cool: kind === 'boss' ? .65 : .3 + Math.random() * .4, orbit: Math.random() * Math.PI * 2, preferDepth: depth, tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0 },
@@ -4375,10 +4595,11 @@ class BeatEmUp {
             && (e.kind !== 'boss' || ai.phase >= 2);
           const specialChance = e.kind === 'boss' ? .24 : .12;
           if (canSpecial && Math.random() < specialChance) move = 'special';
+          else if (e.f.enemyCombo) move = 'punch'; // archetype string (Brawler jab-cross) rides the punch input
           else if (e.kind === 'heavy') move = Math.random() < .7 ? 'kick' : 'punch';
           else if (e.kind === 'runner' || e.kind === 'tough') move = Math.random() < .62 ? 'kick' : 'punch';
           else move = Math.random() < .72 ? 'punch' : 'kick';
-          label = move === 'special' ? 'CHARGE' : move.toUpperCase();
+          label = move === 'special' ? 'CHARGE' : move === 'punch' && e.f.enemyCombo ? EnemyCombos[e.f.enemyCombo]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
         }

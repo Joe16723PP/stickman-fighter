@@ -12,7 +12,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "The crew blocks the street while a knife thrower watches from behind the melee line.",
         "enemyFocus": [
           "thrower",
-          "regular",
+          "brawler",
           "regular"
         ],
         "visualCue": "An arcade sign flashes as the thrower winds up behind the street crew."
@@ -84,7 +84,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "PIER WATCH",
         "storyBeat": "Dock guards hold the pier and block the route to the cargo.",
         "enemyFocus": [
-          "regular",
+          "brawler",
           "heavy",
           "regular"
         ],
@@ -157,7 +157,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "STALL GUARDS",
         "storyBeat": "Market crews close in between the stalls.",
         "enemyFocus": [
-          "regular",
+          "brawler",
           "regular",
           "heavy"
         ],
