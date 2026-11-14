@@ -80,6 +80,10 @@ const BossWeapons = {
   cleavers:    { damageMultiplier: 1, reach: 100, color: '#FF7A7A' },
   sledgehammer:{ damageMultiplier: 1, reach: 150, color: '#FF9F43' },
   shieldBaton: { damageMultiplier: 1, reach: 110, color: '#7CEBFF' },
+  // Boss B2 (PR A). crossbow: melee stock strike reach; its kick is a real foot kick (kick: 'foot').
+  crossbow:    { damageMultiplier: 1, reach: 100, color: '#FF3B47', kick: 'foot' },
+  naginata:    { damageMultiplier: 1, reach: 200, color: '#E5E7EB' },
+  girder:      { damageMultiplier: 1, reach: 210, color: '#F59E0B', shoveMul: .6 }, // shove pushes the girder end out 60% of the swing reach
 };
 
 /* Boss signature move tuning. Base values are before BossHardness / difficulty multipliers. */
@@ -89,7 +93,48 @@ const BossSignatures = {
   bossMarketToss:  { label: "BUTCHER'S TOSS", color: '#FF7A7A', projectileSpeed: 700, projectileRange: 500, projectileDmg: 12, flurryDmg: 4, flurryHits: 4, reach: 100, hitCount: 4 },
   bossForgeQuake:  { label: 'FORGE QUAKE',  color: '#FF9F43', projectileSpeed: 600, projectileRange: 420, depthGap: 30, dmg: 16, hitCount: 0 },
   bossShieldCharge:{ label: 'SHIELD WALL',  color: '#7CEBFF', charge: 300, dmg: 14, guardBreak: true, hitCount: 1 },
+  // Boss B2 (PR A). Frames at 60 fps; damage is base (x BossHardness.damage x difficulty).
+  // Laser Lock: laser on the player's lane for lockFrames (= su, 0.6 s), then a full-screen bolt in that lane.
+  // Phase 3: lines at depth 0/.5/1 shown together for lockFrames, then fired in random order gapFrames (0.25 s) apart.
+  bossLaserLock:   { label: 'LASER LOCK',   color: '#FF2D3D', lockFrames: 36, gapFrames: 15, phase3Depths: [0, .5, 1], dmg: 18, laneTol: 14, kb: 160, stun: 12, hitCount: 0 },
+  // Shadow Step: lane locked at the start (the player's lane); on active frame 1 Kage teleports `behind` px behind
+  // the player (opposite the way the player faces) in that lane, leaving an afterimage; naginata cut live from cutStart.
+  bossShadowStep:  { label: 'SHADOW STEP',  color: '#A78BFA', behind: 90, cutStart: 2, dmg: 16, afterimageFrames: 18, hitCount: 1 },
+  // Roadblock: barricade thrown on active frame 1 into the player's lane just behind the player (blocks that lane
+  // for barricadeFrames = 4 s), then after chargeDelay a chargeDist px charge over chargeFrames; girder-tip hitbox only while charging.
+  bossRoadblock:   { label: 'ROADBLOCK',    color: '#F59E0B', barricadeFrames: 240, barricadeOffset: 80, barricadeHalfW: 16, bodyHalf: 22,
+                     chargeDelay: 18, chargeFrames: 20, chargeDist: 400, dmg: 20, guardBreak: true, hitCount: 1 },
 };
+
+/* Boss counter stances (Boss B2). Kage: the stance holds `stance` frames (0.8 s); the first player hit landing in it is
+   parried (no damage to Kage) and he ripostes with a naginata cut after riposteWind frames. Unused, it ends at 0.8 s.
+   Riposte damage 12 = his Wheel cut (proposal; base, x BossHardness.damage x difficulty like every boss normal). */
+const BossCounters = {
+  kage: { label: 'COUNTER', stance: 48, riposteWind: 6, riposteActive: 5, recovery: 24, dmg: 12, kb: 220, stun: 14, chance: .22 },
+};
+class BossCounter {
+  static start(f, spec) {
+    f.atk = { su: spec.stance, ac: spec.riposteActive, re: spec.recovery, dmg: spec.dmg * f.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
+      kind: 'punch', reach: f.bossProfile.reach, armored: false, hitCount: 1, counter: true, parried: false, stanceEnd: spec.stance, parryFrame: 0 };
+  }
+  /** Called after atkT++: an unused stance ends exactly at stanceEnd (no riposte). */
+  static tick(f) {
+    const a = f.atk;
+    if (!a.parried && f.atkT >= a.stanceEnd) { a.su = f.atkT; a.ac = 0; a.re = 0; }
+  }
+  static parries(f, from) {
+    const a = f.atk;
+    return !!(a?.counter && !a.parried && f.atkT <= a.stanceEnd && from?.playerControlled);
+  }
+  static parry(f, atk, from) {
+    const a = f.atk, spec = BossCounters[f.bossProfile.counter];
+    a.parried = true; a.parryFrame = f.atkT; a.su = f.atkT + spec.riposteWind;
+    f.face = from.x >= f.x ? 1 : -1; f.atkPhase = '';
+    f.blockFlash = .12; f.weaponFlashT = .2; f.weaponFlashColor = '#E5E7EB';
+    Sfx.play('block', f.bossProfile);
+    return 'parry';
+  }
+}
 
 /* Boss signature controller. Projectiles live on BeatEmUp.bossProjectiles. */
 class BossSignature {
@@ -105,8 +150,22 @@ class BossSignature {
     f.sigPullFrames = 0;
     f.dashLeft = sig.advance || sig.charge || 0;
     f.blocking = 0;
+    BossSignature.startB2(f, key, sig);
     const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
     Fx.superCharge(f.x - cameraX, f.groundY() + f.y - 44 * f.drawS(), f.bossProfile);
+  }
+  /** Boss B2 (PR A) signature setup; runs after the atk snapshot is built. */
+  static startB2(f, key, sig) {
+    const a = f.atk, player = BeatEmUp.playerEntry(), entry = this.entryFor(f);
+    if (key === 'bossLaserLock') {
+      const phase3 = entry?.ai?.phase === 3;
+      const depths = phase3 ? sig.phase3Depths.slice() : [player ? player.depth : (entry?.depth ?? f.depth)];
+      if (phase3) for (let i = depths.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [depths[i], depths[j]] = [depths[j], depths[i]]; }
+      a.su = sig.lockFrames; a.ac = 1 + (depths.length - 1) * sig.gapFrames;
+      depths.forEach((d, i) => BossFields.add({ kind: 'laser', owner: f, atk: a, depth: d, fireAt: a.su + 1 + i * sig.gapFrames, order: i, fired: false, flash: 0 }));
+    }
+    if (key === 'bossShadowStep') f.sigLaneDepth = player ? player.depth : (entry?.depth ?? f.depth);
+    if (key === 'bossRoadblock') { f.dashLeft = 0; f.sigFace = f.face; f.sigLaneDepth = player ? player.depth : (entry?.depth ?? f.depth); }
   }
   static update(f, dt) {
     if (!f.atk || f.state !== 'special' || !f.bossProfile) return;
@@ -136,6 +195,27 @@ class BossSignature {
           depth: entry ? entry.depth : f.depth, face: f.face, speed: sig.projectileSpeed, range: sig.projectileRange,
           damage, width: 44, height: 10, owner: f,
         });
+      }
+      if (key === 'bossShadowStep' && activeFrame === 1) {
+        const player = BeatEmUp.playerEntry(), entry = this.entryFor(f);
+        if (player) {
+          BossFields.add({ kind: 'afterimage', owner: f, x: f.x, depth: entry ? entry.depth : f.depth, face: f.face, life: sig.afterimageFrames, max: sig.afterimageFrames });
+          const lo = BeatEmUp.lockL + 40, hi = BeatEmUp.lockR - 40;
+          f.x = Math.max(lo, Math.min(hi, player.f.x - player.f.face * sig.behind));
+          if (entry) entry.depth = f.sigLaneDepth;
+          f.face = player.f.x >= f.x ? 1 : -1; f.vx = 0;
+          f.sigTeleported = { x: f.x, depth: f.sigLaneDepth, playerX: player.f.x };
+        }
+      }
+      if (key === 'bossRoadblock') {
+        f.face = f.sigFace;
+        if (activeFrame === 1) {
+          const player = BeatEmUp.playerEntry();
+          const px = player ? player.f.x : f.x + f.face * 200, dir = px >= f.x ? 1 : -1;
+          const x = Math.max(BeatEmUp.lockL + 30, Math.min(BeatEmUp.lockR - 30, px + dir * sig.barricadeOffset));
+          BossFields.add({ kind: 'barricade', owner: f, x, depth: f.sigLaneDepth, halfW: sig.barricadeHalfW, life: sig.barricadeFrames, max: sig.barricadeFrames, side: -dir });
+        }
+        if (activeFrame === sig.chargeDelay + 2) { f.dashLeft = sig.chargeDist; f.sigChargeX = f.x; } // throw f1, pause chargeDelay, charge the last chargeFrames
       }
       if (key === 'bossDockHaulIn') {
         const player = BeatEmUp.playerEntry();
@@ -206,6 +286,15 @@ class BossSignature {
       });
     }
     if (key === 'bossShieldCharge') {
+      return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, guardBreak: sig.guardBreak, pulse: 0 });
+    }
+    if (key === 'bossLaserLock') return null; // bolts resolve in BossFields (full-screen, lane only)
+    if (key === 'bossShadowStep') {
+      if (t < sig.cutStart || f.hitDone) return null;
+      return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, pulse: 0 });
+    }
+    if (key === 'bossRoadblock') {
+      if (t < sig.chargeDelay + 2 || f.hitDone) return null;
       return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, guardBreak: sig.guardBreak, pulse: 0 });
     }
     if (key === 'bossDockHaulIn') {
@@ -282,6 +371,85 @@ class BossSignature {
         ctx.closePath(); ctx.stroke();
         ctx.fillStyle = 'rgba(255,159,67,.25)'; ctx.fill();
         ctx.shadowBlur = 0;
+      }
+      ctx.restore();
+    }
+  }
+}
+
+/* Boss B2 floor/screen fields: Laser Lock lines, Roadblock barricades, Shadow Step afterimages (BeatEmUp.bossFields). */
+class BossFields {
+  static add(f) { BeatEmUp.bossFields.push(f); return f; }
+  static clear() { BeatEmUp.bossFields = []; }
+  static update(player) {
+    const list = BeatEmUp.bossFields;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const z = list[i];
+      if (z.owner && z.owner.hp <= 0 && z.kind !== 'afterimage') { list.splice(i, 1); continue; }
+      if (z.kind === 'afterimage') { if (--z.life <= 0) list.splice(i, 1); continue; }
+      if (z.kind === 'laser') {
+        if (!z.fired) {
+          if (z.owner.atk !== z.atk || z.owner.state !== 'special') { list.splice(i, 1); continue; } // interrupted: never fires
+          if (z.owner.atkT >= z.fireAt) BossFields.fire(z, player);
+        } else if (--z.flash <= 0) list.splice(i, 1);
+        continue;
+      }
+      if (z.kind === 'barricade') {
+        if (z.life-- <= 0) { list.splice(i, 1); continue; } // present for exactly `max` frames
+        const sig = BossSignatures.bossRoadblock, half = z.halfW + sig.bodyHalf;
+        if (player && player.f.hp > 0 && BeatEmUp.depthClose(z.depth, player.depth)) {
+          if ((player.f.x - z.x) * z.side < half) { player.f.x = z.x + z.side * half; if (player.f.vx * z.side < 0) player.f.vx = 0; z.blockedPlayer = (z.blockedPlayer || 0) + 1; }
+        }
+        const oe = BeatEmUp.entryFor(z.owner);
+        if (oe && BeatEmUp.depthClose(z.depth, oe.depth) && (z.owner.x - z.x) * z.side < half && Math.abs(z.owner.x - z.x) < half + 40) {
+          z.owner.x = z.x + z.side * half; z.owner.dashLeft = 0; z.stoppedOwner = true; // the charge stops at its own barricade
+        }
+      }
+    }
+  }
+  static fire(z, player) {
+    const sig = BossSignatures.bossLaserLock;
+    z.fired = true; z.flash = 10; z.firedFrame = z.owner.atkT;
+    if (!player || player.f.hp <= 0) return;
+    if (!BeatEmUp.depthClose(z.depth, player.depth, sig.laneTol)) { z.result = 'miss'; return; }
+    const hb = player.f.hitbox, dmg = sig.dmg * BossHardness.damage * BeatEmUp.difficulty.damage;
+    const hit = { x: hb.x, y: hb.y, w: hb.w, h: hb.h, dmg, kb: sig.kb, stun: sig.stun, chip: 0, special: true, blockable: false,
+      critical: false, comboFinisher: false, comboLink: false, chain: 0 };
+    const kind = player.f.takeHit(hit, z.owner);
+    z.result = kind;
+    const cx = hb.x + hb.w / 2, cy = hb.y + hb.h / 2;
+    if (kind === 'hit') { Fx.hit(cx - BeatEmUp.cameraX, cy); Sfx.play('player-heavy-hit', player.f.classProfile); Game.stop = .05; Game.shake = .08; Game.shMag = 3; }
+  }
+  static draw(ctx) {
+    const camX = BeatEmUp.cameraX;
+    for (const z of BeatEmUp.bossFields) {
+      const y = BeatEmUp.floorDepthPx(z.depth);
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if (z.kind === 'laser') {
+        const chest = y - 58 * BeatEmUp.depthToScale(z.depth) * 1.2;
+        if (!z.fired) {
+          ctx.globalAlpha = .55 + .35 * Math.sin((z.owner.atkT || 0) * .6);
+          ctx.strokeStyle = '#FF2D3D'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(0, chest); ctx.lineTo(Game.W, chest); ctx.stroke();
+          ctx.globalAlpha = .35; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(Game.W, y); ctx.stroke();
+        } else {
+          ctx.globalAlpha = Math.max(0, z.flash / 10);
+          ctx.strokeStyle = '#FFE4E6'; ctx.shadowColor = '#FF2D3D'; ctx.shadowBlur = 12; ctx.lineWidth = 7;
+          ctx.beginPath(); ctx.moveTo(0, chest); ctx.lineTo(Game.W, chest); ctx.stroke();
+        }
+      } else if (z.kind === 'barricade') {
+        const x = z.x - camX, h = 44, w = z.halfW * 2;
+        ctx.globalAlpha = z.life < 30 ? z.life / 30 : 1;
+        ctx.fillStyle = '#F59E0B'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
+        ctx.fillRect(x - w / 2, y - h, w, h); ctx.strokeRect(x - w / 2, y - h, w, h);
+        ctx.strokeStyle = '#F8FAFC'; ctx.lineWidth = 4;
+        for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(x - w / 2, y - h + 8 + k * 13); ctx.lineTo(x + w / 2, y - h + 16 + k * 13); ctx.stroke(); }
+      } else if (z.kind === 'afterimage') {
+        const x = z.x - camX, a = z.life / z.max;
+        ctx.globalAlpha = .45 * a; ctx.strokeStyle = '#A78BFA'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 110); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y - 124, 13, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
     }
@@ -1581,12 +1749,22 @@ const Moves = {
   bossIronSweep:  { su: 13, ac: 4, re: 20, dmg: 12, kb: 220, stun: 14, reach: 150 },
   bossTunnelBaton:{ su: 9, ac: 3, re: 14, dmg: 8,  kb: 140, stun: 10, reach: 110 },
   bossTunnelBash: { su: 14, ac: 4, re: 20, dmg: 10, kb: 190, stun: 13, reach: 110 },
+  // Boss B2 (PR A) normals: base frames x1.3 startup/recovery like the pacing pass (bases in comments).
+  bossSniperStock:{ su: 9, ac: 3, re: 14, dmg: 8,  kb: 140, stun: 10, reach: 100 },  // base 7/3/11
+  bossSniperKick: { su: 13, ac: 4, re: 20, dmg: 10, kb: 200, stun: 12, reach: 100 }, // base 10/4/15
+  bossKageThrust: { su: 12, ac: 4, re: 18, dmg: 10, kb: 160, stun: 11, reach: 200 }, // base 9/4/14
+  bossKageWheel:  { su: 16, ac: 5, re: 21, dmg: 12, kb: 220, stun: 13, reach: 200 }, // base 12/5/16
+  bossBreakerSwing:{ su: 21, ac: 5, re: 29, dmg: 18, kb: 280, stun: 18, reach: 210 }, // base 16/5/22 (slow)
+  bossBreakerShove:{ su: 13, ac: 4, re: 20, dmg: 10, kb: 260, stun: 12, reach: 210 }, // base 10/4/15
   // Boss signatures — base values before BossHardness / difficulty multipliers.
   bossBlockParty:  { su: 10, ac: 9,  re: 16, dmg: 24, kb: 200, stun: 14, reach: 95,  hitCount: 3 },
   bossDockHaulIn:  { su: 14, ac: 24, re: 16, dmg: 14, kb: 240, stun: 16, reach: 230, hitCount: 1 },
   bossMarketToss:  { su: 12, ac: 60, re: 18, dmg: 28, kb: 180, stun: 12, reach: 100, hitCount: 4 },
   bossForgeQuake:  { su: 16, ac: 18, re: 20, dmg: 16, kb: 260, stun: 18, reach: 150, hitCount: 0 },
   bossShieldCharge:{ su: 18, ac: 20, re: 18, dmg: 14, kb: 240, stun: 16, reach: 110, hitCount: 1 },
+  bossLaserLock:   { su: 36, ac: 1,  re: 24, dmg: 18, kb: 160, stun: 12, reach: 100, hitCount: 0 }, // ac 31 in phase 3 (3 bolts 15 f apart)
+  bossShadowStep:  { su: 30, ac: 8,  re: 20, dmg: 16, kb: 220, stun: 14, reach: 200, hitCount: 1 },
+  bossRoadblock:   { su: 36, ac: 39, re: 30, dmg: 20, kb: 300, stun: 18, reach: 210, hitCount: 1 }, // throw f1, charge f20-39
 };
 
 /** Resolved attack snapshot used by Fighter (reads Moves). */
@@ -2458,6 +2636,13 @@ class Fighter {
     if (kind !== 'special') this.specialVisual = null;
     if (this.bossProfile) {
       const profile = this.bossProfile;
+      const counterQueued = this.bossCounterQueued; this.bossCounterQueued = false;
+      if (kind === 'punch' && counterQueued && BossCounters[profile.counter]) {
+        BossCounter.start(this, BossCounters[profile.counter]);
+        this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = 'punch'; this.blocking = 0;
+        this.chain = 0; this.chainArmed = 0; this.dashLeft = 0; this.hitTargets = new Map(); this.atkPhase = '';
+        return;
+      }
       let key, state;
       if (kind === 'punch') { key = profile.normal1.key; state = profile.normal1.state; }
       else if (kind === 'kick') { key = profile.normal2.key; state = profile.normal2.state; }
@@ -3027,6 +3212,7 @@ class Fighter {
     if (a.bash) { this.driveBashPose(a, t); return; }
     if (a.grab) { this.driveGrabPose(a, t); return; }
     if (a.deploy) { this.driveDeployPose(a, t); return; }
+    if (a.counter && !a.parried) { if (this.atkPhase !== 'kc') { this.aim('kc', Pose.block(null), .08); this.atkPhase = 'kc'; } return; }
     // punch — visual pull-back on bones() only (AC6/AC7); combatBones/hit frames unchanged
     const pullFr = Math.max(1, Math.round(a.su * 0.4));
     if (t <= pullFr) {
@@ -3176,6 +3362,7 @@ class Fighter {
       if (this.atk.bash) EnemyBash.tick(this); // fixed short shove; may shorten re on a hit
       if (this.atk.grab) EnemyGrab.tick(this, other); // reach / catch / hold / headbutt; may extend re on a catch
       if (this.atk.deploy) EnemyDeploy.tick(this, other); // zone created on the activation frame; step-back recovery
+      if (this.atk.counter) BossCounter.tick(this); // unused counter stance ends at 0.8 s
       if (this.atk.rush) EnemyRush.tick(this); // fixed-distance dash / braking skid; may shorten re on a hit
       const a = this.atk, tot = a.su + a.ac + a.re;
       if (a.combo) {
@@ -3397,7 +3584,7 @@ class Fighter {
       return pulse < 0 ? null : this.staffSpecialHitbox(pulse);
     }
     const weapon = this.classProfile?.weapon || this.weaponType;
-    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade' || weapon === 'stick' || weapon === 'knife' || BossWeapons[weapon])));
+    const weaponAttack = weapon && (this.state === 'special' || this.state === 'punch' || (this.state === 'kick' && (weapon === 'staff' || weapon === 'blade' || weapon === 'stick' || weapon === 'knife' || (BossWeapons[weapon] && BossWeapons[weapon].kick !== 'foot'))));
     if (weaponAttack) {
       const geometry = this.weaponGeometry(this.combatBones(), true);
       if (geometry) {
@@ -3461,6 +3648,7 @@ class Fighter {
   takeHit(atk, from) {
     if (this.heldBy && from !== this.heldBy) return 'held'; // only the holder's headbutt reaches a held player
     if (this.playerControlled && this.invincibleT > 0) return 'invulnerable';
+    if (BossCounter.parries(this, from)) return BossCounter.parry(this, atk, from); // Kage counter stance: no damage, riposte
     if (atk.special && (!this.grounded || this.dodgeT > 0)) return 'evade';
     if (this.enemyGuard && EnemyGuard.blocks(this, atk, from)) return EnemyGuard.block(this, atk, from); // frontal same-lane normal: 0 damage
     if (this.enemyGuard) { this.guardBlocks = 0; this.guardChainT = 0; }
@@ -3689,6 +3877,22 @@ class Fighter {
           ? { x: hand.x + face * reach, y: hand.y - 10 * reachMul }
           : { x: hand.x + face * 20 * reachMul, y: hand.y - 66 * reachMul } };
       }
+      if (weapon === 'crossbow') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 6 * reachMul }
+          : { x: hand.x + face * 40 * reachMul, y: hand.y - 8 * reachMul } };
+      }
+      if (weapon === 'naginata') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 14 * reachMul }
+          : { x: hand.x + face * 26 * reachMul, y: hand.y - 96 * reachMul } };
+      }
+      if (weapon === 'girder') {
+        const r = this.state === 'kick' ? reach * bossWeapon.shoveMul : reach;
+        return { start, tip: active
+          ? { x: hand.x + face * r, y: hand.y - 18 * reachMul }
+          : { x: hand.x + face * 30 * reachMul, y: hand.y - 90 * reachMul } };
+      }
       // knuckles and fallback boss weapons
       return { start, tip: active
         ? { x: hand.x + face * reach, y: hand.y - 10 * reachMul }
@@ -3833,6 +4037,33 @@ class Fighter {
       ctx.beginPath(); ctx.moveTo(sh.x - f * 4 * s, sh.y - 14 * s); ctx.lineTo(sh.x - f * 4 * s, sh.y + 26 * s); ctx.stroke();
       ctx.strokeStyle = '#E5E7EB'; ctx.lineWidth = 5 * s;
       ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    } else if (weapon === 'crossbow') {
+      const s = this.drawS(), dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+      ctx.strokeStyle = '#2B2F3A'; ctx.lineWidth = 6 * s;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+      const bx = tip.x - dx / len * 10 * s, by = tip.y - dy / len * 10 * s, bw = 20 * s;
+      ctx.strokeStyle = '#111827'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(bx + nx * bw, by + ny * bw); ctx.quadraticCurveTo(tip.x, tip.y, bx - nx * bw, by - ny * bw); ctx.stroke();
+      ctx.strokeStyle = '#FF3B47'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(bx + nx * bw, by + ny * bw); ctx.lineTo(bx - dx / len * 14 * s, by - dy / len * 14 * s); ctx.lineTo(bx - nx * bw, by - ny * bw); ctx.stroke();
+    } else if (weapon === 'naginata') {
+      const s = this.drawS(), dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+      const bladeLen = Math.min(34 * s, len * .3), base = { x: tip.x - ux * bladeLen, y: tip.y - uy * bladeLen };
+      ctx.strokeStyle = '#3B2A1E'; ctx.lineWidth = 5 * s;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(base.x, base.y); ctx.stroke();
+      ctx.fillStyle = '#E5E7EB'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(base.x - uy * 5 * s, base.y + ux * 5 * s);
+      ctx.quadraticCurveTo(base.x + ux * bladeLen * .6 - uy * 9 * s, base.y + uy * bladeLen * .6 + ux * 9 * s, tip.x, tip.y);
+      ctx.lineTo(base.x + uy * 4 * s, base.y - ux * 4 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#B91C1C'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(base.x - uy * 7 * s, base.y + ux * 7 * s); ctx.lineTo(base.x + uy * 7 * s, base.y - ux * 7 * s); ctx.stroke();
+    } else if (weapon === 'girder') {
+      const s = this.drawS(), dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len * 9 * s, ny = dx / len * 9 * s;
+      ctx.fillStyle = '#B45309'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(start.x + nx, start.y + ny); ctx.lineTo(tip.x + nx, tip.y + ny); ctx.lineTo(tip.x - nx, tip.y - ny); ctx.lineTo(start.x - nx, start.y - ny); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#78350F'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+      for (let k = 1; k < 4; k++) { const q = { x: start.x + dx * k / 4, y: start.y + dy * k / 4 }; ctx.beginPath(); ctx.arc(q.x, q.y, 2.5 * s, 0, Math.PI * 2); ctx.stroke(); }
     }
     ctx.restore();
   }
@@ -3971,6 +4202,34 @@ class Fighter {
         ctx.fillStyle = '#FDBA74'; ctx.beginPath(); ctx.ellipse(chest.x, chest.y + 10 * s, 10 * s, 6 * s, 0, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 1;
       }
+    }
+    if (acc.includes('longHair')) {
+      ctx.strokeStyle = '#0B0B0F'; ctx.lineWidth = 4;
+      for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(headX - f * hr * .4, headY - hr * .6 + k * 4); ctx.quadraticCurveTo(headX - f * hr * 1.6, headY + hr * .6, headX - f * hr * 1.3, headY + hr * 2 + k * 5); ctx.stroke(); }
+    }
+    if (acc.includes('hood')) {
+      ctx.fillStyle = '#1E2230'; ctx.strokeStyle = '#0B0D14'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(headX - f * hr * .1, headY, hr * 1.25, Math.PI * .9, Math.PI * 2.1); ctx.lineTo(headX - f * hr * 1.1, headY + hr * 1.3); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    if (acc.includes('redVisor')) {
+      ctx.fillStyle = '#FF2D3D'; ctx.strokeStyle = '#3F0A10'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(headX - hr * .2 + (f > 0 ? 0 : -hr * .9), headY - hr * .25, hr * 1.1, hr * .4, 3); ctx.fill(); ctx.stroke();
+    }
+    if (acc.includes('hardHat')) {
+      ctx.fillStyle = '#FACC15'; ctx.strokeStyle = '#11131A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(headX, headY - hr * .2, hr * 1.1, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(headX - hr * 1.5, headY - hr * .2); ctx.lineTo(headX + hr * 1.5, headY - hr * .2); ctx.stroke();
+    }
+    if (acc.includes('gi')) {
+      const chest = b.chest, w = 26 * s, h = 34 * s;
+      ctx.fillStyle = '#F3F4F6'; ctx.strokeStyle = '#11131A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(chest.x - w / 2, chest.y - h / 2, w, h, 4); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(chest.x - w / 2 + 3, chest.y - h / 2 + 2); ctx.lineTo(chest.x + f * 4, chest.y + 4); ctx.lineTo(chest.x + w / 2 - 3, chest.y - h / 2 + 2); ctx.stroke();
+    }
+    if (acc.includes('hakama')) {
+      const hip = b.hip, w = 30 * s, h = 30 * s;
+      ctx.fillStyle = '#111318'; ctx.strokeStyle = '#000000'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(hip.x - w * .35, hip.y - 4 * s); ctx.lineTo(hip.x + w * .35, hip.y - 4 * s); ctx.lineTo(hip.x + w * .55, hip.y + h); ctx.lineTo(hip.x - w * .55, hip.y + h); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
     if (acc.includes('lanternCrown')) {
       ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 3;
@@ -4816,6 +5075,7 @@ class BeatEmUp {
   static cast = [];
   static items = [];
   static bossProjectiles = [];
+  static bossFields = []; // Boss B2: laser lines, barricades, afterimages
   static enemyProjectiles = [];
   static hazards = []; // Disruptor shock zones (ShockZones)
   static medkitDropChance = .25;
@@ -5036,6 +5296,7 @@ class BeatEmUp {
     BeatEmUp.items = [];
     BladeSuper.clear();
     BeatEmUp.bossProjectiles = [];
+    BossFields.clear();
     BeatEmUp.enemyProjectiles = [];
     ShockZones.clear();
     BeatEmUp.baseS = Fighter.S * .8;
@@ -5130,7 +5391,7 @@ class BeatEmUp {
     const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
     f.hp = Math.round(f.hp * stageHealth); f.chip = f.hp;
     f.meter = 0;
-    const speedMul = archetype.speed ?? (kind === 'boss' ? .92 : 1);
+    const speedMul = archetype.speed ?? (kind === 'boss' ? (f.bossProfile?.speedMul ?? .92) : 1);
     return {
       f, depth, role: 'enemy', kind, scaleMul, speedMul,
       ai: { mode: 'circle', atkSlot: 0, cool: kind === 'boss' ? .65 : .3 + Math.random() * .4, orbit: Math.random() * Math.PI * 2, preferDepth: depth, tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0 },
@@ -5228,6 +5489,7 @@ class BeatEmUp {
     BeatEmUp.waveSpawnQueue = [];
     BeatEmUp.waveSpawnTimer = 0;
     BeatEmUp.bossProjectiles = [];
+    BossFields.clear();
     const boss = BeatEmUp.makeEnemy('boss', BeatEmUp.lockL + Game.W * 0.62, 0.55);
     BeatEmUp.bossMaxHp = boss.f.hp;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
@@ -5505,6 +5767,7 @@ class BeatEmUp {
     BeatEmUp.resolveHits();
     BladeSuper.update(dt);
     BossSignature.updateProjectiles(dt, player);
+    BossFields.update(player);
     EnemyProjectile.update(dt, player);
     ShockZones.update(player);
     BeatEmUp.checkWaveState();
@@ -5555,6 +5818,7 @@ class BeatEmUp {
         ai.tellT = Math.max(0, ai.tellT - dt);
         if (ai.tellT <= 0) {
           Input.pad[1][ai.tellMove] = 1;
+          if (ai.counterQueued) { e.f.bossCounterQueued = true; ai.counterQueued = false; }
           ai.cool = e.kind === 'boss'
             ? Math.max(.42, .8 - ai.phase * .12) / BossHardness.rate
             : e.f.enemyBash && ai.tellMove === 'punch' ? .5 + EnemyBash.timeline(EnemyBashes[e.f.enemyBash]).total * Game.STEP
@@ -5658,6 +5922,10 @@ class BeatEmUp {
             : move === 'punch' && e.f.enemyDeploy ? EnemyDeploys[e.f.enemyDeploy]?.label || 'PUNCH' : move.toUpperCase();
           tell = e.kind === 'boss' ? Math.max(BossHardness.tellMin, .72 / BossHardness.rate)
             : e.kind === 'heavy' ? BeatEmUp.pacing.attackTell.heavy : BeatEmUp.pacing.attackTell.regular;
+          // Boss B2: Kage sometimes takes his counter stance instead of a normal (only bosses with a counter roll for it).
+          const counter = e.kind === 'boss' && move !== 'special' ? BossCounters[e.f.bossProfile?.counter] : null;
+          ai.counterQueued = !!(counter && Math.random() < counter.chance);
+          if (ai.counterQueued) { move = 'punch'; label = counter.label; }
         }
         ai.tellMove = move; ai.tellKind = label; ai.tellT = tell;
       }
@@ -5791,7 +6059,7 @@ class BeatEmUp {
           const slot = Fx.karateSuperSlot(ba, bt);
           Fx.karateSuperText(attacker.f, attacker.f.atk, slot.x - BeatEmUp.cameraX, slot.y, damage, criticalHit, comboText, attacker.f.classProfile);
         } else {
-          Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block', criticalHit);
+          Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block' || kind === 'parry', criticalHit);
         }
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && attacker.f.classProfile?.style === 'ward') {
@@ -5813,7 +6081,7 @@ class BeatEmUp {
             Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile);
             attacker.f.specialEffectDone = 1;
           }
-          else if (kind === 'block') Fx.blocked(cx, cy);
+          else if (kind === 'block' || kind === 'parry') Fx.blocked(cx, cy);
           else if (!criticalHit) Fx.hit(cx, cy);
           Game.stop = .05; Game.shake = .1; Game.shMag = 3;
         }
@@ -6168,6 +6436,7 @@ class BeatEmUp {
       .sort((a, b) => a.depth - b.depth);
     for (const e of ordered) BeatEmUp.drawFighter(ctx, e);
     BossSignature.drawProjectiles(ctx);
+    BossFields.draw(ctx);
     EnemyProjectile.draw(ctx);
     BladeSuper.draw(ctx, BeatEmUp.cameraX);
     Fx.draw(ctx);
