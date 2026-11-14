@@ -615,6 +615,151 @@ HEAVY = r"""
 }
 """
 
+GRAPPLER = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const gp = BeatEmUp.makeEnemy('grappler', 400, .5), rk = BeatEmUp.makeEnemy('regular', 400, .5);
+  r.stats = { hp: gp.f.hp, expectHp: Math.round(115 * stageHealth), speedMul: gp.speedMul, scaleMul: gp.scaleMul, weapon: gp.f.weaponType,
+    dmgMul: gp.f.damageMultiplier, tag: gp.f.tag, grab: gp.f.enemyGrab, combo: gp.f.enemyCombo, rush: gp.f.enemyRush, slam: gp.f.enemySlam,
+    guard: gp.f.enemyGuard, bash: gp.f.enemyBash, profile: gp.f.bodyProfile === ArchetypeBodyProfiles.grappler };
+  let armed = 0; for (let i = 0; i < 60; i++) if (BeatEmUp.makeEnemy('grappler', 400, .5).f.weaponType) armed++;
+  r.armed = armed;
+  // Archetype only: no authored wave anywhere spawns it.
+  r.grapplerSpawns = BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(x => x === 'grappler').length, 0), 0);
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  const hb = { grappler: box(gp), rookie: box(rk) };
+  r.hurtboxSame = hb.grappler.w === hb.rookie.w && hb.grappler.h === hb.rookie.h;
+  const trace = f => { const ops = []; const ctx = new Proxy({}, {
+      get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+      set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+    f.draw(ctx); return ops.join('|'); };
+  const plain = new Fighter(400, gp.f.color, -1, ''); plain.reset(400, -1); gp.f.reset(400, -1);
+  r.gameplayBonesSame = BeatEmUp.withDepth(gp, () => JSON.stringify(gp.f.combatBones()) === JSON.stringify(plain.combatBones()));
+  r.profileDrawn = BeatEmUp.withDepth(gp, () => trace(gp.f) !== trace(plain));
+  // Long arms are draw-only: drawn hand farther from the shoulder than the gameplay hand.
+  r.longArms = BeatEmUp.withDepth(gp, () => { const d = ArchetypeSkeleton.drawBones(gp.f), c = gp.f.combatBones();
+    const cs = c.shL || c.sh; return Math.hypot(d.la.x - d.shL.x, d.la.y - d.shL.y) > Math.hypot(c.la.x - cs.x, c.la.y - cs.y) * 1.15; });
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const sp = EnemyGrabs.clinch, tl = EnemyGrab.timeline(sp);
+  const x0 = 900;
+  const setup = (px, pdepth = .5) => {
+    player.reset(px, px < x0 ? 1 : -1); player.depth = pdepth; pEntry.depth = pdepth; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.grounded = true; player.stun = 0;
+    gp.f.reset(x0, -1); gp.depth = .5; gp.f.face = -1; gp.f.hp = 500; gp.f.stun = 0;
+    BeatEmUp.cast = [pEntry, gp];
+    Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    BeatEmUp.withDepth(pEntry, () => player.clamp()); BeatEmUp.withDepth(gp, () => gp.f.clamp());
+  };
+  const pStep = () => BeatEmUp.withDepth(pEntry, () => player.update(Game.STEP, gp.f, 0));
+  const gStep = () => BeatEmUp.withDepth(gp, () => gp.f.update(Game.STEP, player, 1));
+  const frame = () => { pStep(); gStep(); BeatEmUp.resolveHits(); };
+  const normal = () => ({ x: 0, y: 0, w: 1, h: 1, dmg: 5, kb: 160, stun: 10, chip: 0, special: false, chain: 0 });
+  const s0 = BeatEmUp.withDepth(gp, () => gp.f.drawS());
+  // Run one grab against a player at `gap` px in front (grappler faces -1, player at lower x). Player stays still.
+  const grab = (gap, opts = {}) => {
+    setup(x0 - gap, opts.depth ?? .5);
+    if (opts.prep) opts.prep();
+    BeatEmUp.withDepth(gp, () => gp.f.startAtk('punch'));
+    const o = { caught: 0, frames: 0, strikes: 0, heldFrames: 0, pinned: true, reasons: new Set(), hpLoss: 0, release: '', releaseFrame: 0, noRegrab: 0, phases: [] };
+    const hp0 = player.hp;
+    for (let i = 0; i < 300 && gp.f.atk; i++) {
+      if (opts.hold) opts.hold(i);
+      if (player.heldBy) Input.pad[0].left = 1; // input is ignored while held
+      frame(); Input.pad[0].left = 0; o.frames++;
+      if (opts.every) opts.every(i);
+      if (BeatEmUp.withDepth(gp, () => gp.f.strike())) o.strikes++;
+      if (gp.f.atk?.lastCheck) o.reasons.add(gp.f.atk.lastCheck);
+      if (gp.f.atk?.grabHit && !o.caught) o.caught = gp.f.atk.holdStart;
+      if (gp.f.atk && o.phases[o.phases.length - 1] !== gp.f.atkPhase) o.phases.push(gp.f.atkPhase);
+      if (player.heldBy) { o.heldFrames++; if (Math.abs(player.x - (gp.f.x + gp.f.atk.grabDir * gp.f.atk.holdOffset)) > 1e-6) o.pinned = false; }
+      else if (o.caught && !o.release) { o.release = player.grabRelease; o.releaseFrame = gp.f.atkT || o.frames; o.noRegrab = player.noRegrabT; o.stun = player.stun; o.vxAway = player.vx * -1 > 0; }
+    }
+    o.hpLoss = +(hp0 - player.hp).toFixed(6); o.travel = +((x0 - gp.f.x)).toFixed(3); o.reasons = [...o.reasons];
+    return o;
+  };
+  const maxGap = sp.reach * s0 + sp.reachStep;
+  // Range sweep (same lane).
+  r.sweep = []; for (let gap = -20; gap <= 120; gap += 5) { const o = grab(gap); r.sweep.push({ gap, c: o.caught ? 1 : 0, reasons: o.reasons.join('/') }); }
+  r.maxGap = +maxGap.toFixed(3);
+  // Expected from the spec alone: some reach frame k puts the forward centre gap inside [-overlap, reach x drawS].
+  const expectCatch = gap => { for (let k = 1; k <= sp.active; k++) { const g = gap - Math.min(sp.reachStep, k * sp.reachStep / sp.active); if (g >= -sp.overlap - 1e-6 && g <= sp.reach * s0 + 1e-6) return 1; } return 0; };
+  r.rangeOk = r.sweep.every(o => o.c === expectCatch(o.gap)) && r.sweep.some(o => o.c) && r.sweep.some(o => !o.c && o.gap > 0);
+  // Lane: floor-px gap within the shared enemy tolerance catches, beyond it never.
+  const tol = BeatEmUp.depthHitTolerance(gp, pEntry);
+  const depthFor = px => { for (let d = .5; d <= 1; d += .0005) if (Math.abs(BeatEmUp.floorDepthPx(d) - BeatEmUp.floorDepthPx(.5)) >= px) return d; return 1; };
+  r.tol = tol;
+  r.lane = [0, tol - 2, tol + 2, Depth.lanePx()].map(px => ({ px: +px.toFixed(2), c: grab(40, { depth: depthFor(px) }).caught ? 1 : 0 }));
+  r.laneOk = r.lane.map(o => o.c).join('') === '1100';
+  // Ineligible targets: invulnerable, rolling, airborne, in hitstun.
+  r.invuln = grab(40, { prep: () => { player.invincibleT = 5; } }).caught;
+  r.roll = grab(40, { every: () => { player.dodgeT = .3; }, prep: () => { player.dodgeT = .3; } }).caught;
+  r.air = grab(40, { every: () => { player.grounded = false; player.y = -30; }, prep: () => { player.grounded = false; player.y = -30; } }).caught;
+  r.stunned = grab(40, { every: () => { player.stun = 5; }, prep: () => { player.stun = 5; } }).caught;
+  // Interrupt: hitting the Grappler during the arms-spread wind-up cancels the grab.
+  let intKind = '';
+  const intr = grab(40, { hold: i => { if (i === 10 && gp.f.atk) intKind = BeatEmUp.withDepth(gp, () => gp.f.takeHit(normal(), player)); } });
+  r.interrupt = { kind: intKind, caught: intr.caught, held: intr.heldFrames, frames: intr.frames };
+  // Success: hold -> headbutt -> release.
+  const ok = grab(40);
+  const atkDmg = sp.dmg * gp.f.damageMultiplier;
+  r.success = { caught: ok.caught, held: ok.heldFrames, pinned: ok.pinned, release: ok.release, releaseFrame: ok.releaseFrame, hpLoss: ok.hpLoss, expectDmg: +atkDmg.toFixed(6),
+    noRegrab: ok.noRegrab, stun: ok.stun, vxAway: ok.vxAway, frames: ok.frames, strikes: ok.strikes, phases: ok.phases.join(','), coolT: +gp.f.grabCoolT.toFixed(4) };
+  // No-regrab window: immediately after the release a fresh grab in range cannot catch; frames until it can.
+  let nrFrames = 0; while (player.noRegrabT > 0 && nrFrames < 400) { pStep(); nrFrames++; }
+  r.noRegrabFrames = nrFrames + (ok.frames - ok.releaseFrame); // window already running through the Grappler's recovery frames
+  const again = grab(40, { prep: () => { player.noRegrabT = sp.noRegrab; } });
+  r.regrabBlocked = { caught: again.caught, reasons: again.reasons.join('/') };
+  // Release when the Grappler is hit during the hold; held player is immune to other attackers.
+  let others = '', heldHp = 0;
+  const hit = grab(40, { hold: i => {
+    if (player.heldBy && player.heldT === 5) { const hp = player.hp; others = BeatEmUp.withDepth(pEntry, () => player.takeHit(normal(), rk.f)); heldHp = hp - player.hp; }
+    if (player.heldBy && player.heldT === 10) BeatEmUp.withDepth(gp, () => gp.f.takeHit(normal(), player));
+  } });
+  r.holderHit = { release: hit.release, held: hit.heldFrames, hpLoss: hit.hpLoss, others, heldHp, noRegrab: hit.noRegrab };
+  // Release when the Grappler dies during the hold (killing hit, and death without a hit).
+  const kill = grab(40, { hold: i => { if (player.heldBy && player.heldT === 10) BeatEmUp.withDepth(gp, () => gp.f.takeHit({ ...normal(), dmg: 9999 }, player)); } });
+  r.holderKilled = { release: kill.release, held: kill.heldFrames, hpLoss: kill.hpLoss, gpDead: gp.f.hp <= 0 };
+  let downRelease = '', downHeld = 0;
+  setup(x0 - 40); BeatEmUp.withDepth(gp, () => gp.f.startAtk('punch'));
+  for (let i = 0; i < 120; i++) { frame(); if (player.heldBy) { downHeld++; if (player.heldT === 10) { gp.f.hp = 0; BeatEmUp.withDepth(gp, () => gp.f.startRagdoll(null, true)); } } else if (downHeld) { downRelease = player.grabRelease; break; } }
+  r.holderDown = { release: downRelease, held: downHeld, playerState: player.state };
+  // Miss: nobody in range -> overreach + overcommit, 0.8 s punishable recovery, no hitbox.
+  let missPunish = '';
+  const miss = grab(300, { hold: i => { if (gp.f.atk && gp.f.atkT === tl.su + tl.ac + 20) missPunish = BeatEmUp.withDepth(gp, () => gp.f.takeHit(normal(), player)); } });
+  const missClean = grab(300);
+  r.miss = { frames: missClean.frames, travel: missClean.travel, strikes: missClean.strikes, phases: missClean.phases.join(','), punish: missPunish, coolT: gp.f.grabCoolT };
+  // AI: tells 'GRAB' only when allowed; holds off during its cooldown / the player's no-regrab window.
+  const aiTell = (prep) => { setup(x0 - 60); gp.ai.cool = 0; gp.ai.tellT = 0; gp.ai.tellKind = ''; prep(); BeatEmUp.updateGroupAI(Game.STEP, pEntry); return gp.ai.tellT > 0 ? gp.ai.tellKind : ''; };
+  r.ai = { free: aiTell(() => {}), cooling: aiTell(() => { gp.f.grabCoolT = 1; }), noRegrab: aiTell(() => { player.noRegrabT = 1; }), behind: aiTell(() => { player.x = x0 + 60; }) };
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode;
+  Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+  player.reset(200, 1);
+  const s = r.stats, su = r.success, m = r.miss;
+  r.pass = s.hp === s.expectHp && s.speedMul === .9 && s.scaleMul === 1 && s.weapon === null && r.armed === 0 && s.dmgMul === EnemyWeaponProfiles.freehand.damage
+    && s.tag === 'GRAPPLER' && s.grab === 'clinch' && s.combo === null && s.rush === null && s.slam === null && s.guard === null && s.bash === null && s.profile
+    && r.grapplerSpawns === 0 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn && r.longArms && sp.label === 'GRAB'
+    && r.rangeOk && r.laneOk && !r.invuln && !r.roll && !r.air && !r.stunned
+    && r.interrupt.kind === 'hit' && !r.interrupt.caught && r.interrupt.held === 0
+    // Catch on the first reach frame in range; hold exactly headbuttAt frames, headbutt = release, then hitRecovery.
+    && su.caught === tl.su + 1 && su.held === sp.headbuttAt && su.pinned && su.release === 'headbutt' && su.releaseFrame === tl.su + 1 + sp.headbuttAt
+    && Math.abs(su.hpLoss - su.expectDmg) < 1e-6 && su.noRegrab === sp.noRegrab && su.stun === sp.stun && su.vxAway && su.strikes === 0
+    && su.frames === tl.su + 1 + sp.headbuttAt + sp.hitRecovery && su.phases === 'xw,xh,xb,xs,xg' && su.coolT > 0
+    && r.noRegrabFrames === Math.round(sp.noRegrab * 60) && !r.regrabBlocked.caught && r.regrabBlocked.reasons.includes('no-regrab')
+    && r.holderHit.release === 'holder-hit' && r.holderHit.hpLoss === 0 && r.holderHit.others === 'held' && r.holderHit.heldHp === 0 && Math.abs(r.holderHit.noRegrab - (sp.noRegrab - Game.STEP)) < 1e-9
+    && r.holderKilled.release === 'holder-hit' && r.holderKilled.hpLoss === 0 && r.holderKilled.gpDead
+    && r.holderDown.release === 'holder-down' && r.holderDown.held > 0 && r.holderDown.held <= 12
+    && m.frames === tl.total && Math.abs(m.travel - (sp.reachStep + sp.overStep)) < 1e-6 && m.strikes === 0 && m.phases === 'xw,xr,xm,xg' && m.punish === 'hit' && m.coolT === 0
+    && r.ai.free === 'GRAB' && r.ai.cooling === '' && r.ai.noRegrab === '' && r.ai.behind === '';
+  return r;
+}
+"""
+
 GUARD = r"""
 () => {
   const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
@@ -803,6 +948,12 @@ def main():
             if not guard['pass']:
                 print('guard sweep', json.dumps(guard['sweep']))
                 failures.append('Guard archetype failed: expected 125hp stage-scaled, 0.85 speed, no weapon, TOUGH fully replaced (21 spawns), ROOKIE hurtbox, draw-only profile, frontal same-lane normals blocked for 0 (back/other lane/specials land), 3 quick blocks open the guard for exactly 1 s, 0.45 s turn delay, no shield hitbox, 14f/5f/48f bash with a 28px shove live only on frames 15-19 and one-ROOKIE-punch damage')
+            grappler = page.evaluate(GRAPPLER)
+            print('grappler archetype', json.dumps({k: v for k, v in grappler.items() if k not in ('pass', 'sweep')}))
+            stage_src = (ROOT / 'stage-settings.js').read_text(encoding='utf-8')
+            if not grappler['pass'] or 'grappler' in stage_src:
+                print('grappler sweep', json.dumps(grappler['sweep']))
+                failures.append('Grappler archetype failed: expected 115hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only long-arm open-hand profile, grab only within reach and the same-lane tolerance, no grab on invulnerable/rolling/airborne/stunned players, wind-up hit cancels it, 27f wind-up -> 30f hold -> headbutt release -> 24f recovery, release on Grappler hit/death, held player immune to others, 1.5 s no-regrab, 0.8 s miss recovery, AI GRAB tell gated by cooldown')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
