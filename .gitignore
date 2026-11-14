@@ -1,2 +1,4 @@
 # Review/test proof (screenshots, measurements) lives outside the repo.
 proof/
+__pycache__/
+*.pyc

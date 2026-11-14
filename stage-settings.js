@@ -1,3 +1,12 @@
+/* Stage settings for Beat 'em up.
+   Per wave: "enemyFocus" lists the enemies in spawn order (archetype keys).
+   Optional spawn spots (per enemy, aligned with enemyFocus by index):
+     wave  "spawns":       [{ "ox": 0-1, "depth": 0-1 }, ...]
+     stage "spawnLayouts": { "default": [...], "1": [...], "2": [...], "3": [...] }  (same entry shape)
+   ox = entry point across the locked screen (0 left .. 1 right), depth = lane (0 back .. 1 front). Values are clamped to 0-1.
+   Each field falls back per enemy: wave spawns -> stage spawnLayouts[wave] -> stage spawnLayouts.default -> built-in
+   layout (BeatEmUp.SPAWN_LAYOUTS). Spawning still keeps enemies in the revealed area (x >= .42 screen, .12 on Wave 2).
+   Difficulty extras and reinforcements are derived from these spots as before. */
 window.ARCADE_STAGE_SETTINGS = [
   {
     "stage": 1,
@@ -8,36 +17,78 @@ window.ARCADE_STAGE_SETTINGS = [
     "waves": [
       {
         "wave": 1,
-        "title": "ARCADE BLOCKADE",
-        "storyBeat": "The crew blocks the street while a hooded kunai thrower watches from behind the melee line.",
+        "title": "BRAWLER BLOCKADE",
+        "storyBeat": "Two crew brawlers block the arcade street and trade jab-cross strings as they close in.",
         "enemyFocus": [
-          "ranged",
           "brawler",
-          "regular"
+          "brawler"
         ],
-        "visualCue": "An arcade sign flashes as the kunai thrower takes aim behind the street crew."
+        "spawns": [
+          {
+            "ox": 0.58,
+            "depth": 0.25
+          },
+          {
+            "ox": 0.78,
+            "depth": 0.75
+          }
+        ],
+        "visualCue": "An arcade sign flickers as two brawlers square up across the street."
       },
       {
         "wave": 2,
-        "title": "COIN-RUNNERS",
-        "storyBeat": "Fast fighters rush in from both ends of the block.",
+        "title": "COIN-RUSH",
+        "storyBeat": "A rusher crouches at the far end of the block while two brawlers keep you busy.",
         "enemyFocus": [
+          "brawler",
           "rusher",
-          "rusher",
-          "regular"
+          "brawler"
         ],
-        "visualCue": "Neon signs briefly flash as enemies enter from both sides."
+        "spawns": [
+          {
+            "ox": 0.3,
+            "depth": 0.3
+          },
+          {
+            "ox": 0.86,
+            "depth": 0.55
+          },
+          {
+            "ox": 0.62,
+            "depth": 0.82
+          }
+        ],
+        "visualCue": "Neon signs flash as the rusher drops into a crouch before charging."
       },
       {
         "wave": 3,
-        "title": "CAPTAIN'S GUARD",
-        "storyBeat": "Bruisers protect the Block Captain and refuse to let you pass.",
+        "title": "CAPTAIN'S CREW",
+        "storyBeat": "Brawlers hold the line while rushers charge from the back to protect the Block Captain.",
         "enemyFocus": [
-          "heavy",
-          "regular",
-          "heavy"
+          "brawler",
+          "rusher",
+          "brawler",
+          "rusher"
         ],
-        "visualCue": "The arcade entrance opens behind the final group."
+        "spawns": [
+          {
+            "ox": 0.5,
+            "depth": 0.22
+          },
+          {
+            "ox": 0.86,
+            "depth": 0.5
+          },
+          {
+            "ox": 0.64,
+            "depth": 0.84
+          },
+          {
+            "ox": 0.93,
+            "depth": 0.12
+          }
+        ],
+        "visualCue": "The arcade entrance opens behind the final crew."
       }
     ],
     "boss": {
