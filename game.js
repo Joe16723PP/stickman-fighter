@@ -5255,7 +5255,7 @@ class BeatEmUp {
   }));
   static backgrounds = [
     'assets/backgrounds/stage-01-street-brawl.webp',
-    'assets/backgrounds/stage-02-docks.webp',
+    'assets/backgrounds/stage-02-dockyard.webp',
     'assets/backgrounds/stage-03-night-market.webp',
     'assets/backgrounds/stage-04-ironworks.webp',
     'assets/backgrounds/stage-05-undercity.webp',
@@ -5266,20 +5266,28 @@ class BeatEmUp {
     'assets/backgrounds/stage-10-coliseum.webp',
   ];
   static backgroundCache = new Map();
-  /** Stage 1 panorama (Wave 1-3 + Boss extension, 3371x725 source px). Drawn at full screen height with the aspect kept;
-      bgX is the left edge of the visible source window, anchored per wave/boss and eased with the wave-travel glide. */
-  static PANO = { w: 3371, h: 725, seam: 2170, wave2: 723 };
+  /** Per-stage panoramas (Wave 1-3 + Boss extension, source px; seam = panorama/Boss join). A stage listed here is drawn
+      at full screen height with the aspect kept; bgX is the left edge of the visible source window, anchored per wave/boss
+      and eased with the wave-travel glide. Other stages keep the stretched draw. */
+  static PANOS = {
+    1: { w: 3371, h: 725, seam: 2170, wave2: 723 }, // Street Brawl
+    2: { w: 3371, h: 725, seam: 2170, wave2: 723 }, // Dockyard
+  };
+  static PANO = BeatEmUp.PANOS[1];
+  static pano(stage = BeatEmUp.stage) { return BeatEmUp.PANOS[stage] || null; }
   static PANO_FOLLOW = .25; // source px per camera px while walking unlocked (capped at the next anchor, never left)
   static bgX = 0;
   static bgTravelFrom = 0;
   static bgTravelTo = 0;
-  static bgViewW(W = Game.W, H = Game.H) { return W * BeatEmUp.PANO.h / H; }
+  static bgViewW(W = Game.W, H = Game.H, stage = BeatEmUp.stage) { return W * (BeatEmUp.pano(stage) || BeatEmUp.PANO).h / H; }
   /** Left edge of the view for wave n (1-3) or the boss (4), clamped to the panorama. Wave 3 ends at the panorama/Boss
       join, the boss shows the right end; Wave 2 is ~723 but never past 3/4 of the way to Wave 3, so every glide moves right. */
-  static bgAnchor(n, W = Game.W, H = Game.H) {
-    const P = BeatEmUp.PANO, max = Math.max(0, P.w - BeatEmUp.bgViewW(W, H));
+  static bgAnchor(n, W = Game.W, H = Game.H, stage = BeatEmUp.stage) {
+    const P = BeatEmUp.pano(stage);
+    if (!P) return 0;
+    const viewW = BeatEmUp.bgViewW(W, H, stage), max = Math.max(0, P.w - viewW);
     const clamp = v => Math.max(0, Math.min(max, v));
-    const w3 = clamp(P.seam - BeatEmUp.bgViewW(W, H));
+    const w3 = clamp(P.seam - viewW);
     if (n <= 1) return 0;
     if (n === 2) return Math.min(clamp(P.wave2), w3 * .75);
     if (n === 3) return w3;
@@ -6363,7 +6371,7 @@ class BeatEmUp {
     const image = BeatEmUp.background(BeatEmUp.stage - 1);
     if (!image?.complete || !image.naturalWidth) return;
     ctx.save();
-    if (BeatEmUp.stage === 1) {
+    if (BeatEmUp.pano()) {
       // Panorama: aspect kept at full height; source window bgX..bgX+viewW, clamped to the image.
       const iw = image.naturalWidth, ih = image.naturalHeight;
       const viewW = Math.min(iw, Game.W * ih / Game.H);
