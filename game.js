@@ -5254,7 +5254,7 @@ class BeatEmUp {
     ][index],
   }));
   static backgrounds = [
-    'assets/backgrounds/stage-01-backstreet.webp',
+    'assets/backgrounds/stage-01-street-brawl.webp',
     'assets/backgrounds/stage-02-docks.webp',
     'assets/backgrounds/stage-03-night-market.webp',
     'assets/backgrounds/stage-04-ironworks.webp',
@@ -5266,6 +5266,34 @@ class BeatEmUp {
     'assets/backgrounds/stage-10-coliseum.webp',
   ];
   static backgroundCache = new Map();
+  /** Stage 1 panorama (Wave 1-3 + Boss extension, 3371x725 source px). Drawn at full screen height with the aspect kept;
+      bgX is the left edge of the visible source window, anchored per wave/boss and eased with the wave-travel glide. */
+  static PANO = { w: 3371, h: 725, seam: 2170, wave2: 723 };
+  static PANO_FOLLOW = .25; // source px per camera px while walking unlocked (capped at the next anchor, never left)
+  static bgX = 0;
+  static bgTravelFrom = 0;
+  static bgTravelTo = 0;
+  static bgViewW(W = Game.W, H = Game.H) { return W * BeatEmUp.PANO.h / H; }
+  /** Left edge of the view for wave n (1-3) or the boss (4), clamped to the panorama. Wave 3 ends at the panorama/Boss
+      join, the boss shows the right end; Wave 2 is ~723 but never past 3/4 of the way to Wave 3, so every glide moves right. */
+  static bgAnchor(n, W = Game.W, H = Game.H) {
+    const P = BeatEmUp.PANO, max = Math.max(0, P.w - BeatEmUp.bgViewW(W, H));
+    const clamp = v => Math.max(0, Math.min(max, v));
+    const w3 = clamp(P.seam - BeatEmUp.bgViewW(W, H));
+    if (n <= 1) return 0;
+    if (n === 2) return Math.min(clamp(P.wave2), w3 * .75);
+    if (n === 3) return w3;
+    return max;
+  }
+  static bgSet(n) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom = BeatEmUp.bgTravelTo = BeatEmUp.bgAnchor(n); }
+  /** Unlocked walk: drift right with the camera, never left, never past the next anchor. */
+  static bgFollow(dx) {
+    if (!(dx > 0)) return;
+    const cap = Math.max(BeatEmUp.bgX, BeatEmUp.bgAnchor(Math.min(4, BeatEmUp.wave + 1)));
+    BeatEmUp.bgX = Math.min(cap, BeatEmUp.bgX + dx * BeatEmUp.PANO_FOLLOW);
+  }
+  /** Wave travel: same smoothstep progress as the camera glide. */
+  static bgGlide(eased) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom + (BeatEmUp.bgTravelTo - BeatEmUp.bgTravelFrom) * eased; }
   /** Load a stage background on first use (index is 0-based). */
   static background(index) {
     const src = BeatEmUp.backgrounds[index];
@@ -5442,6 +5470,7 @@ class BeatEmUp {
     BeatEmUp.waveTravelNext = 0;
     BeatEmUp.cameraX = 0;
     BeatEmUp.skyOffset = 0;
+    BeatEmUp.bgX = BeatEmUp.bgTravelFrom = BeatEmUp.bgTravelTo = 0;
     BeatEmUp.stage = 1;
     BeatEmUp.loadStageBackgrounds(1);
     BeatEmUp.wave = 0;
@@ -5492,7 +5521,7 @@ class BeatEmUp {
   static startCampaignStage(stage, retry = false) {
     BeatEmUp.stage = Math.max(1, Math.min(BeatEmUp.stageTotal, stage));
     BeatEmUp.loadStageBackgrounds(BeatEmUp.stage);
-    BeatEmUp.cameraX = 0; BeatEmUp.skyOffset = 0;
+    BeatEmUp.cameraX = 0; BeatEmUp.skyOffset = 0; BeatEmUp.bgSet(1);
     BeatEmUp.lockL = 0; BeatEmUp.lockR = Game.W * .95;
     BeatEmUp.spawnX = Game.W * .7; BeatEmUp.worldMax = Game.W * 4.2;
     BeatEmUp.locked = 1; BeatEmUp.showGo = 0; BeatEmUp.goArmed = 0;
@@ -5606,6 +5635,7 @@ class BeatEmUp {
 
   static startWave(n, retry = false, chapterIntro = false) {
     BeatEmUp.wave = n;
+    BeatEmUp.bgSet(n);
     BeatEmUp.stageIntroT = !retry && chapterIntro ? 5 : 0;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
     const wave = chapter.waves[n - 1];
@@ -5671,6 +5701,7 @@ class BeatEmUp {
   static startBoss(retry = false) {
     BeatEmUp.stageIntroT = 0;
     BeatEmUp.wave = 4;
+    BeatEmUp.bgSet(4);
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
     BeatEmUp.lockL = BeatEmUp.cameraX;
@@ -5708,6 +5739,8 @@ class BeatEmUp {
     BeatEmUp.waveTravelStartCam = BeatEmUp.cameraX;
     BeatEmUp.waveTravelTargetCam = Math.min(BeatEmUp.worldMax - Game.W, BeatEmUp.cameraX + Game.W * .22);
     BeatEmUp.waveTravelNext = nextWave;
+    BeatEmUp.bgTravelFrom = BeatEmUp.bgX;
+    BeatEmUp.bgTravelTo = Math.max(BeatEmUp.bgX, BeatEmUp.bgAnchor(nextWave));
     BeatEmUp.showGo = 0;
     BeatEmUp.locked = 1;
     Game.fighting = 0;
@@ -5892,6 +5925,7 @@ class BeatEmUp {
       if (BeatEmUp.cameraX < prev) BeatEmUp.cameraX = prev; // only right
       const dx = BeatEmUp.cameraX - prev;
       BeatEmUp.skyOffset += dx * 0.5;
+      BeatEmUp.bgFollow(dx);
     } else {
       // Soft clamp camera to lock window
       BeatEmUp.cameraX = Math.max(BeatEmUp.lockL, Math.min(BeatEmUp.lockR - Game.W * 0.85, Math.max(BeatEmUp.lockL, player.f.x - Game.W * 0.35)));
@@ -6329,7 +6363,13 @@ class BeatEmUp {
     const image = BeatEmUp.background(BeatEmUp.stage - 1);
     if (!image?.complete || !image.naturalWidth) return;
     ctx.save();
-    ctx.drawImage(image, 0, 0, Game.W, Game.H);
+    if (BeatEmUp.stage === 1) {
+      // Panorama: aspect kept at full height; source window bgX..bgX+viewW, clamped to the image.
+      const iw = image.naturalWidth, ih = image.naturalHeight;
+      const viewW = Math.min(iw, Game.W * ih / Game.H);
+      const sx = Math.max(0, Math.min(iw - viewW, BeatEmUp.bgX));
+      ctx.drawImage(image, sx, 0, viewW, ih, 0, 0, Game.W, Game.H);
+    } else ctx.drawImage(image, 0, 0, Game.W, Game.H);
     ctx.restore();
   }
   static drawStageVisualCue(ctx) {
@@ -7433,6 +7473,7 @@ class Game {
         const prevCamera = BeatEmUp.cameraX;
         BeatEmUp.cameraX = BeatEmUp.waveTravelStartCam + (BeatEmUp.waveTravelTargetCam - BeatEmUp.waveTravelStartCam) * eased;
         BeatEmUp.skyOffset += (BeatEmUp.cameraX - prevCamera) * .5;
+        BeatEmUp.bgGlide(eased);
         BeatEmUp.waveTravelT = Math.max(0, BeatEmUp.waveTravelT - step);
         if (BeatEmUp.waveTravelT <= 0) {
           BeatEmUp.cameraX = BeatEmUp.waveTravelTargetCam;
