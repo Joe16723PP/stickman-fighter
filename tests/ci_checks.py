@@ -148,112 +148,110 @@ CLEARANCE = '''() => {
 }'''
 
 BLADE_SUPER = '''() => {
+  // IAI Crescent Storm: single slash + travelling Blade Wave, 60 frames. Scripted frame by frame (1v1, fixed step), no sims.
   Game.mode = '1v1'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
   Game.minX = 0; Game.maxX = Game.W; Game.wins = [0,0];
   BladeSuper.clear(); if (Fx.clear) Fx.clear();
   if (Input.syncMode) Input.syncMode();
-  const owner = fighters[0], target = fighters[1];
-  owner.setClass('blade'); owner.reset(Game.W * .35, 1); owner.playerControlled = true;
-  target.setClass(null); target.reset(Game.W * .7, -1); target.playerControlled = false;
-  owner.depth = target.depth = 0; owner.meter = 100; owner.startAtk('special'); // back edge, so the far edge (72px) is beyond Blade's 54px Special coverage
-  owner.face = 1; owner.pose = Pose.specialDash(owner.classProfile); owner.poseFrom = owner.poseTo = owner.pose;
-  owner.blendT = owner.blendDur = 0;
-  const overlap = box => {
-    const seg=box.segment, x=(seg.x1+seg.x2)/2, y=(seg.y1+seg.y2)/2;
-    target.hitbox={x:x-5,y:y-5,w:10,h:10};
+  const pads0 = () => Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
+  const owner = fighters[0], target = fighters[1], STEP = Game.STEP, r = {};
+  const setup = dx => {
+    BladeSuper.clear(); pads0(); Game.stop = 0;
+    owner.setClass('blade'); owner.reset(Game.W * .35, 1); owner.playerControlled = true;
+    target.setClass(null); target.reset(Game.W * .35 + dx, -1); target.playerControlled = false;
+    owner.depth = target.depth = 0; owner.meter = 100; owner.startAtk('special');
   };
-  owner.atkT = BladeSuper.activeStart(0);
-  const quick = owner.strike();
-  if (!quick) return {pass:false,debug:{state:owner.state,atkT:owner.atkT,atk:owner.atk,weapon:owner.classProfile?.weapon,meter:owner.meter,pulse:owner.superPulse()}};
-  overlap(quick); Game.resolve(); const afterQuick = target.hp;
-  Game.resolve(); const afterQuickDuplicate = target.hp;
-  owner.atkT = BladeSuper.activeStart(0) + BladeSuper.STRIKES[0].active; // impact hold: no hitbox
-  const pause = owner.strike();
-  owner.atkT = BladeSuper.activeStart(1);
-  const diagonal = owner.strike();
-  overlap(diagonal); Game.resolve(); const afterDiagonal = target.hp;
-  Game.resolve(); const afterDiagonalDuplicate = target.hp;
-  owner.atkT = BladeSuper.activeStart(1) + BladeSuper.STRIKES[1].active;
-  const gap = owner.strike();
-  owner.atkT = BladeSuper.activeStart(2);
-  owner.pose = Pose.bladeSuperVertical(owner.classProfile); owner.poseFrom = owner.poseTo = owner.pose;
-  owner.blendT = owner.blendDur = 0;
-  const vertical = owner.strike();
-  overlap(vertical); Game.resolve(); const afterVertical = target.hp;
-  Game.resolve(); const afterVerticalDuplicate = target.hp;
-  const launchAt = owner.atkT;
-  BladeSuper.launch(owner.bladeSuper);
-  const locked = {face:owner.bladeSuper.face,depth:owner.bladeSuper.depth,x:owner.bladeSuper.originX};
-  owner.face = -1; owner.depth = .9; owner.x += 50;
-  BladeSuper.update(Game.STEP);
-  const wave = BladeSuper.waves[0];
-  const launched = wave && {face:wave.sequence.face,depth:wave.sequence.depth,startX:wave.startX,travel:Math.abs(wave.x-wave.startX)};
-  const sequence = owner.bladeSuper;
-  owner.face = locked.face; owner.depth = locked.depth; owner.x = locked.x;
-  target.depth = locked.depth; target.ragdollActive = false; target.grounded = true; target.dodgeT = 0;
-  const targetEntry = target;
-  BladeSuper.hit(sequence,targetEntry,true); const afterWave = target.hp;
-  BladeSuper.hit(sequence,targetEntry,true); const afterWaveDuplicate = target.hp;
-  const pierceTarget = new Fighter(Game.W*.8,'#EF4444',-1,'PIERCE'); pierceTarget.reset(Game.W*.8,-1); pierceTarget.depth=locked.depth;
-  const offLaneTarget = new Fighter(Game.W*.82,'#EF4444',-1,'OFF LANE'); offLaneTarget.reset(Game.W*.82,-1); offLaneTarget.depth=1;
-  const offLaneHp=offLaneTarget.hp;
-  const lateWaveTarget = new Fighter(Game.W*.85,'#EF4444',-1,'LATE WAVE'); lateWaveTarget.reset(Game.W*.85,-1); lateWaveTarget.depth=locked.depth;
-  target.x = Game.W * .95; pierceTarget.x = wave.startX + 75; offLaneTarget.x = wave.startX + 125; lateWaveTarget.x = wave.startX + 350;
-  fighters.push(pierceTarget,offLaneTarget,lateWaveTarget);
-  for (let i=0;i<8;i++) BladeSuper.update(Game.STEP);
-  const piercedDuringTravel = pierceTarget.hp===68 && offLaneTarget.hp===offLaneHp;
-  BladeSuper.hit(sequence,pierceTarget,true); BladeSuper.hit(sequence,offLaneTarget,true);
-  owner.atkT=owner.atk.su+owner.atk.ac+owner.atk.re;
-  BladeSuper.noto(sequence);
-  const notoKnockdown=sequence.notoDone && target.ragdollActive;
-  for (let i=0;i<16;i++) BladeSuper.update(Game.STEP);
+  const overlapSlash = () => { // put the hurtbox on the drawn cut (as the old harness did) so the slash connects
+    const box = owner.strike(); if (!box) return false;
+    const seg = box.segment, x = (seg.x1 + seg.x2) / 2, y = (seg.y1 + seg.y2) / 2;
+    target.hitbox = {x:x-5, y:y-5, w:10, h:10}; return true;
+  };
+  // One real step: fighters update, resolve, BladeSuper.update (the game loop order). Returns a trace row.
+  const step = (frame, opts = {}) => {
+    pads0();
+    owner.update(STEP, target, 0); target.update(STEP, owner, 1);
+    if (opts.slash && owner.state === 'special' && BladeSuper.pulseForFrame(owner.atkT) === 0) overlapSlash();
+    else if (!opts.slash && owner.state === 'special' && owner.atkT > owner.atk.su && owner.atkT <= owner.atk.su + owner.atk.ac) target.hitbox = {x:-9999, y:-9999, w:1, h:1};
+    Game.stop = 0; Game.resolve(); BladeSuper.update(STEP);
+  };
+  // --- A. frame table
+  setup(200);
+  const a = owner.atk, phases = [12,13,20,21,24,25,36,37,50,51,60].map(f => { const p = BladeSuper.phaseAt(f); return p.part + (p.strike >= 0 ? p.strike : ''); }).join(',');
   const windows = []; let cur = null;
-  for (let f=1; f<=owner.atk.su+owner.atk.ac+owner.atk.re; f++) {
+  for (let f = 1; f <= a.su + a.ac + a.re; f++) {
     const p = BladeSuper.pulseForFrame(f);
-    if (p >= 0 && (!cur || cur[0] !== p)) { cur = [p,f,f]; windows.push(cur); }
-    else if (p >= 0) cur[2] = f; else cur = null;
+    if (p >= 0 && (!cur || cur[0] !== p)) { cur = [p, f, f]; windows.push(cur); } else if (p >= 0) cur[2] = f; else cur = null;
   }
-  const parts = BladeSuper.STRIKES.map((s,k) => [s.windup,s.active,s.hold,s.gap].join('/'));
-  const phaseAt = [18,19,22,23,25,26,33,34,38,39,46,47,49,50,59,60,64,65,74,75,78,79,92,93,114]
-    .map(f => { const p = BladeSuper.phaseAt(f); return p.part + (p.strike >= 0 ? p.strike : ''); }).join(',');
-  const frameProbe = {
-    charge:owner.atk.su, strikes:BladeSuper.STRIKES.map((_s,k)=>BladeSuper.strikeLength(k)), parts,
-    recovery:owner.atk.re, noto:BladeSuper.NOTO_FRAME, launch:BladeSuper.LAUNCH_FRAME, faceLock:BladeSuper.FACE_LOCK_FRAME,
-    total:owner.atk.su+owner.atk.ac+owner.atk.re, windows:windows.map(w=>w.join('-')).join(','), phaseAt,
-    damages:BladeSuper.STRIKES.map(s=>s.damage), totalDamage:owner.atk.dmg, waveDamage:BladeSuper.WAVE_DAMAGE,
-    activeFrames:BladeSuper.STRIKES.reduce((n,s)=>n+s.active,0), strikeFrames:BladeSuper.STRIKE_FRAMES, stun:owner.atk.stun,
-    stunConst:BladeSuper.STUN_FRAMES, visual:owner.classProfile.superVisualDuration, hitCount:owner.atk.hitCount,
+  r.table = { su:a.su, ac:a.ac, re:a.re, total:a.su + a.ac + a.re, phases, windows:windows.map(w => w.join('-')).join(','), strikes:BladeSuper.STRIKES.length,
+    parts:BladeSuper.STRIKES.map(s => [s.windup, s.active, s.hold, s.gap].join('/')).join(' '), recovery:BladeSuper.RECOVERY_FRAMES, sheath:BladeSuper.SHEATH_FRAMES,
+    launch:BladeSuper.LAUNCH_FRAME, faceLock:BladeSuper.FACE_LOCK_FRAME, noto:BladeSuper.NOTO_FRAME, dmg:a.dmg, hitCount:a.hitCount, fractions:(a.superFractions || []).join(','),
+    stun:a.stun, stunConst:BladeSuper.STUN_FRAMES, visual:owner.classProfile.superVisualDuration, superHits:owner.classProfile.superHits,
+    waveDamage:BladeSuper.WAVE_DAMAGE, range:BladeSuper.RANGE, speed:BladeSuper.SPEED };
+  r.tableOk = r.table.su === 12 && r.table.ac === 24 && r.table.re === 24 && r.table.total === 60 && r.table.noto === 60
+    && r.table.phases === 'charge,windup0,windup0,active0,active0,hold0,hold0,recovery,recovery,sheath,sheath'
+    && r.table.windows === '0-21-24' && r.table.strikes === 1 && r.table.parts === '8/4/12/0' && r.table.recovery === 14 && r.table.sheath === 10
+    && r.table.launch === 21 && r.table.faceLock === 21 && r.table.dmg === 74 && r.table.hitCount === 1 && r.table.fractions === '1'
+    && r.table.stun === 210 && r.table.stunConst === 210 && r.table.visual === 1 && r.table.superHits === 1 && r.table.waveDamage === 74
+    && r.table.range === 420 && r.table.speed === 900;
+  // --- B. integrated runs: hit frame, single damage event, stun held to hit+210, knockdown at hit+210, owner free at 60
+  const run = (dx, opts = {}) => {
+    setup(dx);
+    if (opts.hp) target.hp = opts.hp; // tough target so a second super's hit does not KO it
+    const out = { hpEvents:[], launchAt:0, hitFrame:0, knockFrame:0, freeFrame:0, stunGap:false, stunAtHit:0, ownerX:owner.x, ownerMoved:false, face:0 };
+    let hp = target.hp;
+    for (let f = 1; f <= (opts.frames || 300); f++) {
+      const before = BladeSuper.waves.length;
+      if (opts.at && opts.at[f]) opts.at[f]();
+      step(f, opts);
+      if (!out.launchAt && BladeSuper.waves.length > before) out.launchAt = f;
+      if (target.hp !== hp) { out.hpEvents.push([f, +(hp - target.hp).toFixed(3)]); hp = target.hp; if (!out.hitFrame) { out.hitFrame = f; out.stunAtHit = target.stun; } }
+      if (!out.knockFrame && target.ragdollActive) out.knockFrame = f;
+      if (out.hitFrame && f > out.hitFrame && !out.knockFrame && target.stun <= 0 && target.hp > 0) out.stunGap = true;
+      if (!out.freeFrame && owner.state !== 'special' && owner.atk === null) out.freeFrame = f;
+      if (owner.state === 'special' && Math.abs(owner.x - out.ownerX) > 1e-9) out.ownerMoved = true;
+      if (f === 30) out.face = owner.face;
+    }
+    out.damage = out.hpEvents.reduce((s, e) => s + e[1], 0);
+    out.pending = BladeSuper.sequences.reduce((n, s) => n + s.knockdowns.size, 0);
+    return out;
   };
-  return {
-    frameProbe, quick:quick&&{pulse:quick.pulse,damage:quick.dmg}, pause:pause===null, gap:gap===null,
-    diagonal:diagonal&&{pulse:diagonal.pulse,damage:diagonal.dmg,seg:diagonal.segment},
-    vertical:vertical&&{pulse:vertical.pulse,damage:vertical.dmg,vertical:vertical.segment.y2>vertical.segment.y1},
-    launchAt, wave:launched, locked,
-    hp:{afterQuick,afterQuickDuplicate,afterDiagonal,afterDiagonalDuplicate,afterVertical,afterVerticalDuplicate,afterWave,afterWaveDuplicate,
-      pierce:pierceTarget.hp,lateWave:lateWaveTarget.hp,offLane:offLaneTarget.hp},
-    piercing: piercedDuringTravel && pierceTarget.hp===68, offLane:offLaneTarget.hp===offLaneHp,
-    notoKnockdown, lateWave:lateWaveTarget.hp===68,
-    // Crescent Storm 114 f (1.9 s): charge 18, strikes 20/26/28 (= 74), recovery 22; 10 active frames, 74 damage, stun pinned at 210
-    pass:frameProbe.charge===18 && frameProbe.strikes.join('/')==='20/26/28'
-      && frameProbe.parts.join(' ')==='4/3/8/5 8/3/10/5 10/4/14/0'
-      && frameProbe.recovery===22 && frameProbe.noto===114 && frameProbe.total===114 && frameProbe.strikeFrames===74
-      && frameProbe.activeFrames===10 && frameProbe.stun===210 && frameProbe.stunConst===210 && frameProbe.hitCount===3
-      && Math.abs(frameProbe.visual-1.9)<1e-9 && Math.abs(frameProbe.visual-frameProbe.noto/60)<1e-9
-      && frameProbe.launch===75 && frameProbe.faceLock===23
-      && frameProbe.windows==='0-23-25,1-47-49,2-75-78'
-      && frameProbe.phaseAt==='charge,windup0,windup0,active0,active0,hold0,hold0,gap0,gap0,windup1,windup1,active1,active1,hold1,hold1,gap1,gap1,windup2,windup2,active2,active2,hold2,hold2,recovery,recovery'
-      && frameProbe.damages.join('/')==='20/22/32' && Math.abs(frameProbe.totalDamage-74)<1e-9 && frameProbe.waveDamage===32
-      && quick?.pulse===0 && quick?.dmg===20 && pause===null && gap===null
-      && diagonal?.pulse===1 && diagonal?.dmg===22
-      && diagonal.segment.y2>diagonal.segment.y1 && (diagonal.segment.x2-diagonal.segment.x1)*owner.face>40
-      && vertical?.pulse===2 && vertical?.dmg===32 && vertical.segment.y2>vertical.segment.y1
-      && launchAt===75 && locked.face===1 && locked.depth===0 && locked.x===Game.W*.35
-      && launched?.face===locked.face && launched?.depth===locked.depth && launched.travel===15
-      && afterQuick===80 && afterQuickDuplicate===80 && afterDiagonal===58 && afterDiagonalDuplicate===58
-      && afterVertical===26 && afterVerticalDuplicate===26
-      && afterWave===26 && afterWaveDuplicate===26 && pierceTarget.hp===68 && offLaneTarget.hp===offLaneHp
-      && notoKnockdown && lateWaveTarget.hp===68 && BladeSuper.RANGE===420 && BladeSuper.SPEED===900,
-  };
+  // B1: close target, slash and Wave both overlap it -> one 74 hit on frame 21
+  r.close = run(60, { slash:true });
+  // B2: far target in lane, slash misses, the Wave hits on its way
+  r.far = run(260);
+  // B3: wave first, then a slash that also overlaps -> still one hit
+  setup(60); for (let f = 1; f <= 20; f++) step(f);
+  owner.update(STEP, target, 1 - 1); // atkT 21: Wave launched
+  BladeSuper.update(STEP); const afterWave = target.hp; overlapSlash(); Game.resolve(); r.waveFirst = { afterWave, afterSlash:target.hp, launched:!!owner.bladeSuper?.launched };
+  // B4: pierce + off-lane: the Wave hits every in-lane target once, never an off-lane one
+  setup(800);
+  const pierce = new Fighter(Game.W*.35 + 120,'#EF4444',-1,'PIERCE'); pierce.reset(Game.W*.35 + 120,-1); pierce.depth = 0;
+  const offLane = new Fighter(Game.W*.35 + 160,'#EF4444',-1,'OFF LANE'); offLane.reset(Game.W*.35 + 160,-1); offLane.depth = 1;
+  fighters.push(pierce, offLane);
+  for (let f = 1; f <= 60; f++) step(f);
+  r.pierce = { pierce:pierce.hp, offLane:offLane.hp };
+  fighters.splice(2);
+  // C. robustness: owner hit after the slash, target killed during stun, round clear, a new super while pending
+  r.ownerHit = run(60, { slash:true, frames:240, at:{ 30:() => owner.takeHit({dmg:5, kb:100, stun:12, chip:0}, target) } });
+  r.targetKilled = run(60, { slash:true, frames:240, at:{ 100:() => { target.hp = 0; } } });
+  r.roundClear = run(60, { slash:true, frames:240, at:{ 100:() => BladeSuper.clear() } });
+  // A new super at frame 90 hits the still-stunned target again (its own 210 timer); the first knockdown still fires at 231.
+  r.secondSuper = run(60, { slash:true, frames:240, hp:500, at:{ 90:() => { owner.meter = 100; owner.startAtk('special'); } } });
+  const c = r.close, fr = r.far;
+  r.pass = !!(r.tableOk
+    && c.launchAt === 21 && c.hitFrame === 21 && c.hpEvents.length === 1 && c.damage === 74 && c.stunAtHit === 210 && !c.stunGap
+    && c.knockFrame === c.hitFrame + 210 && c.freeFrame === 60 && !c.ownerMoved && c.face === 1 && c.pending === 0
+    && fr.launchAt === 21 && fr.hitFrame > 21 && fr.hitFrame <= 21 + Math.ceil(BladeSuper.RANGE / BladeSuper.SPEED * 60) && fr.hpEvents.length === 1 && fr.damage === 74
+    && fr.stunAtHit === 210 && !fr.stunGap && fr.knockFrame === fr.hitFrame + 210 && fr.freeFrame === 60
+    && r.waveFirst.launched && r.waveFirst.afterWave === 26 && r.waveFirst.afterSlash === 26
+    && r.pierce.pierce === 26 && r.pierce.offLane === 100
+    && r.ownerHit.hitFrame === 21 && r.ownerHit.knockFrame === 231 && r.ownerHit.hpEvents.length === 1
+    && r.targetKilled.hitFrame === 21 && r.targetKilled.pending === 0
+    && r.roundClear.hitFrame === 21 && r.roundClear.knockFrame === 0 && r.roundClear.pending === 0
+    && r.secondSuper.hitFrame === 21 && r.secondSuper.knockFrame === 231 && r.secondSuper.hpEvents.length === 2
+    && r.secondSuper.hpEvents[1][0] === 110 && r.secondSuper.pending === 1);
+  BladeSuper.clear(); owner.setClass(Game.selectedClass || null); owner.reset(Game.W * .3, 1); target.reset(Game.W * .7, -1);
+  return r;
 }'''
 
 STAFF_AOE = '''() => {
@@ -1980,7 +1978,7 @@ def main():
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
-                failures.append('Blade Super harness failed: expected the 114-frame Crescent Storm (charge 18, strikes 4/3/8/5 8/3/10/5 10/4/14/0, recovery 22, 10 active frames, stun 210, visual 1.9 s), 20/24/30 independent damage, piercing, lane lock, and Noto timing')
+                failures.append('Blade Super harness failed: expected the 60-frame single-slash Crescent Storm (charge 12, draw 8, active 21-24 with the Wave launched on 21, hold 12, recovery 14, sheath 10; su/ac/re 12/24/24), one 74-damage event per target shared by slash and Wave (either order), stun 210 held until a per-target knockdown at hit+210, Blade free at frame 60 and planted/face-locked, Wave piercing in lane only, and safe knockdown timers when Blade is hit, the target dies, the round clears or a new super starts')
             stage1_bg = page.evaluate(STAGE1_BG)
             print('panorama backdrops', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
             if not stage1_bg['pass']:
