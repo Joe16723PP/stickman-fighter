@@ -233,7 +233,7 @@ STAFF_AOE = '''() => {
   BeatEmUp.stageOver = 0; BeatEmUp.cast = []; BeatEmUp.score = 0; BeatEmUp.combo = 0; BeatEmUp.comboT = 0;
   Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.stop = 0; Game.shake = 0;
   Game.GROUND = Game.H * .72;
-  const laneStep = BeatEmUp.DEPTH_HIT_PX / (Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP));
+  const laneStep = Depth.hitTolerance(true) / (Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP));
   const makeOwner = face => {
     const f = fighters[0]; f.setClass('staff'); f.reset(500, face); f.depth = .55; f.face = face;
     f.state = 'special'; f.pose = Pose.staffSuperSpin(f.classProfile, 0, face, false);
