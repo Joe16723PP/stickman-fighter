@@ -22,8 +22,8 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "COIN-RUNNERS",
         "storyBeat": "Fast fighters rush in from both ends of the block.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "regular"
         ],
         "visualCue": "Neon signs briefly flash as enemies enter from both sides."
@@ -77,7 +77,7 @@ window.ARCADE_STAGE_SETTINGS = [
     "key": "dockside-ambush",
     "title": "DOCKSIDE AMBUSH",
     "location": "Industrial harbor",
-    "storyIntro": "The crest leads to the harbor, where a shipment is guarded by runners and bruisers.",
+    "storyIntro": "The crest leads to the harbor, where a shipment is guarded by rushers and bruisers.",
     "waves": [
       {
         "wave": 1,
@@ -93,10 +93,10 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 2,
         "title": "HARBOR FLANK",
-        "storyBeat": "Runners attack from both sides while the guards hold the center.",
+        "storyBeat": "Rushers attack from both sides while the guards hold the center.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "heavy"
         ],
         "visualCue": "A warning light flashes near the waterline."
@@ -108,7 +108,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "heavy",
           "heavy",
-          "runner"
+          "rusher"
         ],
         "visualCue": "The guarded cargo area becomes visible."
       }
@@ -166,10 +166,10 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 2,
         "title": "CROWD RUSH",
-        "storyBeat": "Runners rush through the market lanes to surround you.",
+        "storyBeat": "Rushers charge through the market lanes to surround you.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "regular"
         ],
         "visualCue": "A brief silhouette movement crosses the market background."
@@ -243,7 +243,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "heavy",
           "heavy",
-          "runner"
+          "rusher"
         ],
         "visualCue": "Sparks flare in the foundry background."
       },
@@ -312,10 +312,10 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 2,
         "title": "SIDE-LANE AMBUSH",
-        "storyBeat": "Runners attack from side lanes and try to cut off the route.",
+        "storyBeat": "Rushers attack from side lanes and try to cut off the route.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "tough"
         ],
         "visualCue": "A side passage briefly lights up as enemies enter."
@@ -327,7 +327,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "enemyFocus": [
           "heavy",
           "heavy",
-          "runner"
+          "rusher"
         ],
         "visualCue": "The exit warning light flashes during the last wave."
       }
@@ -385,10 +385,10 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 2,
         "title": "SKYLINE RUNNERS",
-        "storyBeat": "Runners pressure the rooftop lanes to keep you from reaching the signal.",
+        "storyBeat": "Rushers pressure the rooftop lanes to keep you from reaching the signal.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "tough"
         ],
         "visualCue": "The signal light pulses faster."
@@ -434,7 +434,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "INNER HALL",
         "storyBeat": "A mixed group defends the inner hall and the dojo’s old teachings.",
         "enemyFocus": [
-          "runner",
+          "rusher",
           "tough",
           "heavy"
         ],
@@ -479,10 +479,10 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 2,
         "title": "BRIDGE FLANK",
-        "storyBeat": "Runners attack around the convoy to force you away from the lead vehicle.",
+        "storyBeat": "Rushers attack around the convoy to force you away from the lead vehicle.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "heavy"
         ],
         "visualCue": "The convoy lights shift forward during the transition."
@@ -526,10 +526,10 @@ window.ARCADE_STAGE_SETTINGS = [
       {
         "wave": 2,
         "title": "CONTROL ROOM RUSH",
-        "storyBeat": "Runners rush toward the control room to stop the broadcast takeover.",
+        "storyBeat": "Rushers charge toward the control room to stop the broadcast takeover.",
         "enemyFocus": [
-          "runner",
-          "runner",
+          "rusher",
+          "rusher",
           "tough"
         ],
         "visualCue": "Monitor lights flicker as the control room is approached."
@@ -565,7 +565,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "storyBeat": "Syndicate fighters enter the arena to delay the final confrontation.",
         "enemyFocus": [
           "regular",
-          "runner",
+          "rusher",
           "regular"
         ],
         "visualCue": "Arena lights sweep across the fighting floor."
@@ -575,7 +575,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "title": "CHAMPION'S GUARD",
         "storyBeat": "Stronger mixed groups build pressure before the chief’s entrance.",
         "enemyFocus": [
-          "runner",
+          "rusher",
           "tough",
           "heavy"
         ],
