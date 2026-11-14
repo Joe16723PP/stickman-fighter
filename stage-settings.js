@@ -629,7 +629,33 @@ window.ARCADE_STAGE_SETTINGS = [
     "boss": {
       "name": "THE DIRECTOR",
       "intro": "The Director moves to stop the message and protect the syndicate’s final plan.",
-      "clear": "The leader is waiting at the coliseum. The whole city is watching."
+      "clear": "The leader is waiting at the coliseum. The whole city is watching.",
+      "profile": {
+        "weapon": "shockBaton",
+        "reach": 115,
+        "scale": 1.3,
+        "accessory": [
+          "suit",
+          "headset"
+        ],
+        "normal1": {
+          "key": "bossDirectorJab",
+          "state": "punch",
+          "label": "SHOCK JAB"
+        },
+        "normal2": {
+          "key": "bossDirectorSweep",
+          "state": "kick",
+          "label": "BATON SWEEP"
+        },
+        "signature": {
+          "key": "bossLiveBroadcast",
+          "label": "LIVE BROADCAST",
+          "tellBase": 0.72,
+          "phase3TellMul": 0.8,
+          "tellMin": 0.5
+        }
+      }
     }
   },
   {
@@ -676,7 +702,81 @@ window.ARCADE_STAGE_SETTINGS = [
     "boss": {
       "name": "SYNDICATE CHIEF",
       "intro": "The leader enters the arena for the final fight.",
-      "clear": "The streets are free again. The arcade district belongs to its people."
+      "clear": "The streets are free again. The arcade district belongs to its people.",
+      "profile": {
+        "weapon": "twinBlades",
+        "reach": 110,
+        "scale": 1.35,
+        "accessory": [
+          "suit",
+          "goldCrown"
+        ],
+        "normal1": {
+          "key": "bossChiefSlash",
+          "state": "punch",
+          "label": "TWIN SLASH"
+        },
+        "normal2": {
+          "key": "bossChiefCross",
+          "state": "kick",
+          "label": "CROSS CUT"
+        },
+        "phases": {
+          "1": {
+            "weapon": "twinBlades",
+            "reach": 110,
+            "normal1": {
+              "key": "bossChiefSlash",
+              "state": "punch",
+              "label": "TWIN SLASH"
+            },
+            "normal2": {
+              "key": "bossChiefCross",
+              "state": "kick",
+              "label": "CROSS CUT"
+            }
+          },
+          "2": {
+            "weapon": "sledgehammer",
+            "reach": 150,
+            "normal1": {
+              "key": "bossChiefSmash",
+              "state": "punch",
+              "label": "HAMMER SMASH"
+            },
+            "normal2": {
+              "key": "bossChiefSweep",
+              "state": "kick",
+              "label": "HAMMER SWEEP"
+            }
+          },
+          "3": {
+            "weapon": "gauntlets",
+            "reach": 90,
+            "normal1": {
+              "key": "bossChiefJab",
+              "state": "punch",
+              "label": "IRON JAB"
+            },
+            "normal2": {
+              "key": "bossChiefHook",
+              "state": "kick",
+              "label": "IRON HOOK"
+            }
+          }
+        },
+        "replay": {
+          "picks": 3,
+          "from": 9
+        },
+        "signature": {
+          "key": "bossColiseumFinale",
+          "label": "COLISEUM FINALE",
+          "tellBase": 0.72,
+          "phase3TellMul": 0.8,
+          "tellMin": 0.5
+        }
+      }
     }
   }
 ];

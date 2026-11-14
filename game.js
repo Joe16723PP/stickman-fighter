@@ -84,6 +84,10 @@ const BossWeapons = {
   crossbow:    { damageMultiplier: 1, reach: 100, color: '#FF3B47', kick: 'foot' },
   naginata:    { damageMultiplier: 1, reach: 200, color: '#E5E7EB' },
   girder:      { damageMultiplier: 1, reach: 210, color: '#F59E0B', shoveMul: .6 }, // shove pushes the girder end out 60% of the swing reach
+  // Boss B2 (PR B). The Director's shock baton; the Syndicate Chief swaps twin blades -> sledgehammer -> gauntlets by phase.
+  shockBaton:  { damageMultiplier: 1, reach: 115, color: '#38BDF8' },
+  twinBlades:  { damageMultiplier: 1, reach: 110, color: '#E2E8F0' },
+  gauntlets:   { damageMultiplier: 1, reach: 90,  color: '#FACC15' },
 };
 
 /* Boss signature move tuning. Base values are before BossHardness / difficulty multipliers. */
@@ -104,6 +108,47 @@ const BossSignatures = {
   // for barricadeFrames = 4 s), then after chargeDelay a chargeDist px charge over chargeFrames; girder-tip hitbox only while charging.
   bossRoadblock:   { label: 'ROADBLOCK',    color: '#F59E0B', barricadeFrames: 240, barricadeOffset: 80, barricadeHalfW: 16, bodyHalf: 22,
                      chargeDelay: 18, chargeFrames: 20, chargeDist: 400, dmg: 20, guardBreak: true, hitCount: 1 },
+  // Boss B2 (PR B). Live Broadcast: glitch tell for su (0.5 s); on active frame 1 three spots are marked at the player's
+  // x + spotOffsets in the player's lane; markDelay (0.7 s) later lightning strikes every spot at once (each spot hits
+  // a player within spotHalfW px and laneTol px of floor depth, once). Unblockable, like Laser Lock.
+  bossLiveBroadcast:{ label: 'LIVE BROADCAST', color: '#38BDF8', markDelay: 42, spotOffsets: [0, -150, 150], spotHalfW: 40, laneTol: 14,
+                     dmg: 14, kb: 200, stun: 18, flashFrames: 12, hitCount: 0 },
+  // Coliseum Finale: 5 hits, one per `slot` frames (live for live[i] frames at the start of each slot), damage hits[i];
+  // the last hit breaks guard and knocks down. Advances like Block Party so the string stays connected.
+  bossColiseumFinale:{ label: 'COLISEUM FINALE', color: '#F43F5E', hits: [10, 10, 12, 14, 24], slot: 7, live: [3, 3, 3, 3, 4], advance: 160, hitCount: 5 },
+};
+/* Syndicate Chief phase 2 replay: `picks` distinct signatures drawn from the stage 1..`from` boss profiles. */
+const BossReplay = {
+  pool(from) {
+    const keys = [];
+    for (const c of BeatEmUp.chapters.slice(0, from)) { const k = c?.boss?.profile?.signature?.key; if (k && BossSignatures[k] && Moves[k] && !keys.includes(k)) keys.push(k); }
+    return keys;
+  },
+  /** Special key for this use: phase 2 = picks[0..n-1] one at a time, then the Finale, then a new cycle; phase 3 = the Finale. */
+  next(f) {
+    const spec = f.bossProfile?.replay, own = f.bossProfile?.signature?.key;
+    if (!spec) return own;
+    if ((f.bossPhase || 1) !== 2) return own;
+    if (!f.replayCycle || f.replayCycle.idx > spec.picks) {
+      const pool = this.pool(spec.from);
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      f.replayCycle = { picks: pool.slice(0, spec.picks), idx: 0, n: (f.replayCycle?.n || 0) + 1 };
+    }
+    const c = f.replayCycle, key = c.idx < c.picks.length ? c.picks[c.idx] : own;
+    c.idx++;
+    return key;
+  },
+};
+/* Per-phase loadouts (Syndicate Chief): weapon + normals swap when the boss is not mid-attack. */
+const BossPhases = {
+  spec(f) { const ph = f.bossProfile?.phases; return ph ? ph[f.bossPhase || 1] || ph[1] : null; },
+  apply(f, phase) {
+    if (!f.bossProfile?.phases) return;
+    f.bossPhase = phase;
+    const s = this.spec(f);
+    f.weaponType = s.weapon;
+    f.damageMultiplier = BossWeapons[s.weapon]?.damageMultiplier || 1;
+  },
 };
 
 /* Boss counter stances (Boss B2). Kage: the stance holds `stance` frames (0.8 s); the first player hit landing in it is
@@ -139,8 +184,9 @@ class BossCounter {
 /* Boss signature controller. Projectiles live on BeatEmUp.bossProjectiles. */
 class BossSignature {
   static entryFor(f) { return BeatEmUp.cast.find(e => e.f === f); }
-  static start(f) {
-    const key = f.bossProfile.signature.key;
+  /** Key of the signature being performed (Syndicate Chief replays other bosses' signatures). */
+  static keyOf(f) { return f.sigKey || f.bossProfile.signature.key; }
+  static start(f, key = f.bossProfile.signature.key) {
     const sig = BossSignatures[key];
     f.sigKey = key;
     f.sigProjectileSpawned = false;
@@ -166,10 +212,11 @@ class BossSignature {
     }
     if (key === 'bossShadowStep') f.sigLaneDepth = player ? player.depth : (entry?.depth ?? f.depth);
     if (key === 'bossRoadblock') { f.dashLeft = 0; f.sigFace = f.face; f.sigLaneDepth = player ? player.depth : (entry?.depth ?? f.depth); }
+    if (key === 'bossLiveBroadcast') BossFields.add({ kind: 'glitch', owner: f, atk: a });
   }
   static update(f, dt) {
     if (!f.atk || f.state !== 'special' || !f.bossProfile) return;
-    const key = f.bossProfile.signature.key;
+    const key = this.keyOf(f);
     const sig = BossSignatures[key];
     const a = f.atk;
     const t = f.atkT;
@@ -217,6 +264,12 @@ class BossSignature {
         }
         if (activeFrame === sig.chargeDelay + 2) { f.dashLeft = sig.chargeDist; f.sigChargeX = f.x; } // throw f1, pause chargeDelay, charge the last chargeFrames
       }
+      if (key === 'bossLiveBroadcast' && activeFrame === 1) {
+        const player = BeatEmUp.playerEntry(), entry = this.entryFor(f);
+        const px = player ? player.f.x : f.x + f.face * 120, depth = player ? player.depth : (entry?.depth ?? f.depth);
+        sig.spotOffsets.forEach((off, i) => BossFields.add({ kind: 'spot', owner: f, atk: a, x: Math.max(BeatEmUp.lockL + 20, Math.min(BeatEmUp.lockR - 20, px + off)),
+          depth, markedAt: t, fireAt: t + sig.markDelay, order: i, fired: false, flash: 0 }));
+      }
       if (key === 'bossDockHaulIn') {
         const player = BeatEmUp.playerEntry();
         if (player && !f.sigHooked && activeFrame <= sig.hookFrames) {
@@ -237,7 +290,7 @@ class BossSignature {
   }
   static drivePose(f, dt) {
     const a = f.atk, t = f.atkT;
-    const key = f.bossProfile.signature.key;
+    const key = this.keyOf(f);
     if (t <= a.su) {
       if (f.atkPhase !== 'sw') {
         const pose = key === 'bossShieldCharge' ? Pose.block(null) : Pose.specialWind(null);
@@ -268,7 +321,7 @@ class BossSignature {
     };
   }
   static strike(f, pulse) {
-    const key = f.bossProfile.signature.key;
+    const key = this.keyOf(f);
     const sig = BossSignatures[key];
     const a = f.atk;
     const t = f.atkT - a.su;
@@ -288,7 +341,14 @@ class BossSignature {
     if (key === 'bossShieldCharge') {
       return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, guardBreak: sig.guardBreak, pulse: 0 });
     }
-    if (key === 'bossLaserLock') return null; // bolts resolve in BossFields (full-screen, lane only)
+    if (key === 'bossLaserLock' || key === 'bossLiveBroadcast') return null; // bolts / lightning resolve in BossFields (lane only)
+    if (key === 'bossColiseumFinale') {
+      const slot = Math.floor((t - 1) / sig.slot), last = slot === sig.hits.length - 1;
+      if (slot !== pulse || slot >= sig.hits.length || (t - 1) - slot * sig.slot >= sig.live[slot]) return null;
+      const total = sig.hits.reduce((x, y) => x + y, 0);
+      return this.weaponHitbox(f, { dmg: a.dmg * sig.hits[slot] / total, kb: last ? a.kb : a.kb * .3, stun: a.stun,
+        guardBreak: last, blockable: !last, knockdown: last, deferKnockdown: !last, pulse: slot }); // hits 1-4 never burst-knock down
+    }
     if (key === 'bossShadowStep') {
       if (t < sig.cutStart || f.hitDone) return null;
       return this.weaponHitbox(f, { dmg: a.dmg, kb: a.kb, stun: a.stun, pulse: 0 });
@@ -394,6 +454,14 @@ class BossFields {
         } else if (--z.flash <= 0) list.splice(i, 1);
         continue;
       }
+      if (z.kind === 'glitch') { if (z.owner.atk !== z.atk || z.owner.state !== 'special' || z.owner.atkT > z.atk.su) list.splice(i, 1); continue; }
+      if (z.kind === 'spot') {
+        if (!z.fired) {
+          if (z.owner.atk !== z.atk || z.owner.state !== 'special') { list.splice(i, 1); continue; } // interrupted: no lightning
+          if (z.owner.atkT >= z.fireAt) BossFields.lightning(z, player);
+        } else if (--z.flash <= 0) list.splice(i, 1);
+        continue;
+      }
       if (z.kind === 'barricade') {
         if (z.life-- <= 0) { list.splice(i, 1); continue; } // present for exactly `max` frames
         const sig = BossSignatures.bossRoadblock, half = z.halfW + sig.bodyHalf;
@@ -406,6 +474,18 @@ class BossFields {
         }
       }
     }
+  }
+  static lightning(z, player) {
+    const sig = BossSignatures.bossLiveBroadcast;
+    z.fired = true; z.flash = sig.flashFrames; z.firedFrame = z.owner.atkT;
+    if (!player || player.f.hp <= 0) return;
+    if (Math.abs(player.f.x - z.x) > sig.spotHalfW || !BeatEmUp.depthClose(z.depth, player.depth, sig.laneTol)) { z.result = 'miss'; return; }
+    const hb = player.f.hitbox, dmg = sig.dmg * BossHardness.damage * BeatEmUp.difficulty.damage;
+    const hit = { x: hb.x, y: hb.y, w: hb.w, h: hb.h, dmg, kb: sig.kb, stun: sig.stun, chip: 0, special: true, blockable: false,
+      critical: false, comboFinisher: false, comboLink: false, chain: 0 };
+    const kind = player.f.takeHit(hit, z.owner);
+    z.result = kind;
+    if (kind === 'hit') { Fx.hit(z.x - BeatEmUp.cameraX, hb.y + hb.h / 2); Sfx.play('player-heavy-hit', player.f.classProfile); Game.stop = .05; Game.shake = .08; Game.shMag = 3; }
   }
   static fire(z, player) {
     const sig = BossSignatures.bossLaserLock;
@@ -445,6 +525,24 @@ class BossFields {
         ctx.fillRect(x - w / 2, y - h, w, h); ctx.strokeRect(x - w / 2, y - h, w, h);
         ctx.strokeStyle = '#F8FAFC'; ctx.lineWidth = 4;
         for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(x - w / 2, y - h + 8 + k * 13); ctx.lineTo(x + w / 2, y - h + 16 + k * 13); ctx.stroke(); }
+      } else if (z.kind === 'glitch') {
+        const t = z.owner.atkT || 0;
+        ctx.globalAlpha = .18; ctx.fillStyle = '#38BDF8';
+        for (let k = 0; k < 6; k++) { const gy = (k * 61 + t * 23) % Game.H; ctx.fillRect(((k * 37 + t * 11) % 40) - 20, gy, Game.W + 40, 3 + (k % 3) * 2); }
+        ctx.globalAlpha = .12; ctx.fillStyle = '#F43F5E'; ctx.fillRect(0, (t * 47) % Game.H, Game.W, 2);
+      } else if (z.kind === 'spot') {
+        const x = z.x - camX, sig = BossSignatures.bossLiveBroadcast, sc = BeatEmUp.depthToScale(z.depth);
+        if (!z.fired) {
+          const k = Math.min(1, ((z.owner.atkT || 0) - z.markedAt) / sig.markDelay);
+          ctx.globalAlpha = .45 + .4 * k; ctx.strokeStyle = '#38BDF8'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.ellipse(x, y, sig.spotHalfW, sig.spotHalfW * .3, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = .25 + .3 * k; ctx.fillStyle = '#38BDF8';
+          ctx.beginPath(); ctx.ellipse(x, y, sig.spotHalfW * k, sig.spotHalfW * .3 * k, 0, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.globalAlpha = Math.max(0, z.flash / sig.flashFrames);
+          ctx.strokeStyle = '#E0F2FE'; ctx.shadowColor = '#38BDF8'; ctx.shadowBlur = 14; ctx.lineWidth = 6 * sc;
+          ctx.beginPath(); ctx.moveTo(x - 6, 0); ctx.lineTo(x + 10, y * .35); ctx.lineTo(x - 8, y * .65); ctx.lineTo(x, y); ctx.stroke();
+        }
       } else if (z.kind === 'afterimage') {
         const x = z.x - camX, a = z.life / z.max;
         ctx.globalAlpha = .45 * a; ctx.strokeStyle = '#A78BFA'; ctx.lineWidth = 6;
@@ -1756,6 +1854,15 @@ const Moves = {
   bossKageWheel:  { su: 16, ac: 5, re: 21, dmg: 12, kb: 220, stun: 13, reach: 200 }, // base 12/5/16
   bossBreakerSwing:{ su: 21, ac: 5, re: 29, dmg: 18, kb: 280, stun: 18, reach: 210 }, // base 16/5/22 (slow)
   bossBreakerShove:{ su: 13, ac: 4, re: 20, dmg: 10, kb: 260, stun: 12, reach: 210 }, // base 10/4/15
+  // Boss B2 (PR B) normals, same x1.3 convention. Director baton hits stun 0.3 s (18 f).
+  bossDirectorJab: { su: 9, ac: 3, re: 14, dmg: 8,  kb: 140, stun: 18, reach: 115 }, // base 7/3/11
+  bossDirectorSweep:{ su: 13, ac: 4, re: 20, dmg: 10, kb: 190, stun: 18, reach: 115 }, // base 10/4/15
+  bossChiefSlash:  { su: 9, ac: 3, re: 14, dmg: 9,  kb: 150, stun: 10, reach: 110 }, // phase 1 twin blades, base 7/3/11
+  bossChiefCross:  { su: 12, ac: 4, re: 16, dmg: 11, kb: 180, stun: 12, reach: 110 }, // base 9/4/12
+  bossChiefSmash:  { su: 18, ac: 5, re: 26, dmg: 16, kb: 260, stun: 18, reach: 150, armored: true }, // phase 2 hammer, base 14/5/20
+  bossChiefSweep:  { su: 13, ac: 4, re: 20, dmg: 12, kb: 220, stun: 14, reach: 150 }, // base 10/4/15
+  bossChiefJab:    { su: 8, ac: 3, re: 13, dmg: 8,  kb: 150, stun: 10, reach: 90 },  // phase 3 gauntlets, base 6/3/10
+  bossChiefHook:   { su: 12, ac: 4, re: 17, dmg: 12, kb: 220, stun: 13, reach: 90 },  // base 9/4/13
   // Boss signatures — base values before BossHardness / difficulty multipliers.
   bossBlockParty:  { su: 10, ac: 9,  re: 16, dmg: 24, kb: 200, stun: 14, reach: 95,  hitCount: 3 },
   bossDockHaulIn:  { su: 14, ac: 24, re: 16, dmg: 14, kb: 240, stun: 16, reach: 230, hitCount: 1 },
@@ -1765,6 +1872,8 @@ const Moves = {
   bossLaserLock:   { su: 36, ac: 1,  re: 24, dmg: 18, kb: 160, stun: 12, reach: 100, hitCount: 0 }, // ac 31 in phase 3 (3 bolts 15 f apart)
   bossShadowStep:  { su: 30, ac: 8,  re: 20, dmg: 16, kb: 220, stun: 14, reach: 200, hitCount: 1 },
   bossRoadblock:   { su: 36, ac: 39, re: 30, dmg: 20, kb: 300, stun: 18, reach: 210, hitCount: 1 }, // throw f1, charge f20-39
+  bossLiveBroadcast:{ su: 30, ac: 43, re: 24, dmg: 14, kb: 200, stun: 18, reach: 115, hitCount: 0 }, // glitch 0.5 s, mark f1, lightning f43 (0.7 s later)
+  bossColiseumFinale:{ su: 30, ac: 35, re: 30, dmg: 70, kb: 300, stun: 18, reach: 150, hitCount: 5 }, // 10/10/12/14/24, one hit per 7 f, last knocks down
 };
 
 /** Resolved attack snapshot used by Fighter (reads Moves). */
@@ -2644,9 +2753,10 @@ class Fighter {
         return;
       }
       let key, state;
-      if (kind === 'punch') { key = profile.normal1.key; state = profile.normal1.state; }
-      else if (kind === 'kick') { key = profile.normal2.key; state = profile.normal2.state; }
-      else if (kind === 'special') { key = profile.signature.key; state = 'special'; }
+      const load = BossPhases.spec(this) || profile; // Syndicate Chief: normals follow the phase weapon
+      if (kind === 'punch') { key = load.normal1.key; state = load.normal1.state; }
+      else if (kind === 'kick') { key = load.normal2.key; state = load.normal2.state; }
+      else if (kind === 'special') { key = BossReplay.next(this); state = 'special'; }
       else return;
       const m = Moves[key];
       if (!m) return;
@@ -3893,7 +4003,17 @@ class Fighter {
           ? { x: hand.x + face * r, y: hand.y - 18 * reachMul }
           : { x: hand.x + face * 30 * reachMul, y: hand.y - 90 * reachMul } };
       }
-      // knuckles and fallback boss weapons
+      if (weapon === 'shockBaton') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 8 * reachMul }
+          : { x: hand.x + face * 16 * reachMul, y: hand.y - 64 * reachMul } };
+      }
+      if (weapon === 'twinBlades') {
+        return { start, tip: active
+          ? { x: hand.x + face * reach, y: hand.y - 14 * reachMul }
+          : { x: hand.x + face * 24 * reachMul, y: hand.y - 68 * reachMul } };
+      }
+      // knuckles, gauntlets and fallback boss weapons
       return { start, tip: active
         ? { x: hand.x + face * reach, y: hand.y - 10 * reachMul }
         : { x: hand.x + face * 18 * reachMul, y: hand.y - 62 * reachMul } };
@@ -4057,6 +4177,26 @@ class Fighter {
       ctx.lineTo(base.x + uy * 4 * s, base.y - ux * 4 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.strokeStyle = '#B91C1C'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(base.x - uy * 7 * s, base.y + ux * 7 * s); ctx.lineTo(base.x + uy * 7 * s, base.y - ux * 7 * s); ctx.stroke();
+    } else if (weapon === 'shockBaton') {
+      const s = this.drawS();
+      ctx.strokeStyle = '#111827'; ctx.lineWidth = 7 * s;
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+      ctx.strokeStyle = '#38BDF8'; ctx.lineWidth = 3 * s;
+      const mx = start.x + (tip.x - start.x) * .7, my = start.y + (tip.y - start.y) * .7;
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+      ctx.fillStyle = '#E0F2FE'; ctx.beginPath(); ctx.arc(tip.x, tip.y, 4 * s, 0, Math.PI * 2); ctx.fill();
+    } else if (weapon === 'twinBlades') {
+      const s = this.drawS(), dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+      for (const o of [0, 9 * s]) {
+        ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 6 * s;
+        ctx.beginPath(); ctx.moveTo(start.x + nx * o, start.y + ny * o); ctx.lineTo(tip.x + nx * o * .4, tip.y + ny * o * .4); ctx.stroke();
+        ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 3 * s;
+        ctx.beginPath(); ctx.moveTo(start.x + nx * o + dx * .2, start.y + ny * o + dy * .2); ctx.lineTo(tip.x + nx * o * .4, tip.y + ny * o * .4); ctx.stroke();
+      }
+    } else if (weapon === 'gauntlets') {
+      const s = this.drawS();
+      ctx.fillStyle = '#FACC15'; ctx.strokeStyle = '#3F2E07'; ctx.lineWidth = 3;
+      for (const h of [b.la, b.ra]) { ctx.beginPath(); ctx.roundRect(h.x - 8 * s, h.y - 8 * s, 16 * s, 16 * s, 4 * s); ctx.fill(); ctx.stroke(); }
     } else if (weapon === 'girder') {
       const s = this.drawS(), dx = tip.x - start.x, dy = tip.y - start.y, len = Math.hypot(dx, dy) || 1, nx = -dy / len * 9 * s, ny = dx / len * 9 * s;
       ctx.fillStyle = '#B45309'; ctx.strokeStyle = '#1F2937'; ctx.lineWidth = 3;
@@ -4230,6 +4370,22 @@ class Fighter {
       const hip = b.hip, w = 30 * s, h = 30 * s;
       ctx.fillStyle = '#111318'; ctx.strokeStyle = '#000000'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(hip.x - w * .35, hip.y - 4 * s); ctx.lineTo(hip.x + w * .35, hip.y - 4 * s); ctx.lineTo(hip.x + w * .55, hip.y + h); ctx.lineTo(hip.x - w * .55, hip.y + h); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    if (acc.includes('suit')) {
+      const chest = b.chest, w = 28 * s, h = 36 * s;
+      ctx.fillStyle = '#111827'; ctx.strokeStyle = '#000000'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(chest.x - w / 2, chest.y - h / 2, w, h, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#B91C1C'; ctx.beginPath(); ctx.moveTo(chest.x - 3 * s, chest.y - h / 2 + 2); ctx.lineTo(chest.x + 3 * s, chest.y - h / 2 + 2); ctx.lineTo(chest.x, chest.y + 6 * s); ctx.closePath(); ctx.fill();
+    }
+    if (acc.includes('headset')) {
+      ctx.strokeStyle = '#0F172A'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(headX, headY, hr * 1.05, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+      ctx.strokeStyle = '#38BDF8'; ctx.beginPath(); ctx.moveTo(headX + f * hr * .9, headY); ctx.lineTo(headX + f * hr * 1.2, headY + hr * .7); ctx.stroke();
+    }
+    if (acc.includes('goldCrown')) {
+      ctx.fillStyle = '#FBBF24'; ctx.strokeStyle = '#3F2E07'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(headX - hr, headY - hr * .8); ctx.lineTo(headX - hr, headY - hr * 1.7); ctx.lineTo(headX - hr * .5, headY - hr * 1.2);
+      ctx.lineTo(headX, headY - hr * 1.9); ctx.lineTo(headX + hr * .5, headY - hr * 1.2); ctx.lineTo(headX + hr, headY - hr * 1.7); ctx.lineTo(headX + hr, headY - hr * .8); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
     if (acc.includes('lanternCrown')) {
       ctx.strokeStyle = '#FBBF24'; ctx.lineWidth = 3;
@@ -5127,6 +5283,7 @@ class BeatEmUp {
   static waveTotal = 3;
   static waveSpawnQueue = [];
   static waveSpawnTimer = 0;
+  static BOSS_CUE = true; // boss silhouette cue (draw-only)
   static pacing = {
     spawnInterval: 0.35,
     attackTell: { regular: 0.42, heavy: 0.55 },
@@ -5358,6 +5515,7 @@ class BeatEmUp {
         f.damageMultiplier = (BossWeapons[profile.weapon]?.damageMultiplier) || 1;
         f.attackSpeed = 1;
         scaleMul = profile.scale;
+        BossPhases.apply(f, 1);
       } else {
         const armed = Math.random() < archetype.weaponChance;
         const weaponKey = armed ? (Math.random() < .5 ? 'stick' : 'knife') : 'freehand';
@@ -5801,6 +5959,8 @@ class BeatEmUp {
           ai.phaseCallout = 1.1;
           e.scaleMul = phase === 3 ? 1.42 : phase === 2 ? 1.32 : 1.25;
         }
+        // Boss B2: per-phase loadout (Syndicate Chief) swaps once the current attack ends.
+        if (e.f.bossProfile?.phases && !e.f.atk && e.f.bossPhase !== ai.phase) BossPhases.apply(e.f, ai.phase);
       }
       const dist = Math.abs(e.f.x - player.f.x);
       const depthGap = Math.abs(e.depth - player.depth);
@@ -6287,6 +6447,19 @@ class BeatEmUp {
   }
 
 
+  /** Boss-only silhouette cue (draw-only): a pulsing two-tone floor ring + glow under the boss, so it never reads as a
+      regular enemy at 667x375. Reads nothing that gameplay writes back; hurtboxes/hitboxes never see it. */
+  static drawBossCue(ctx, entry, rw, rh) {
+    const f = entry.f, x = f.x, y = Game.GROUND + 1, pulse = .75 + .25 * Math.sin((f.animT || 0) * 5);
+    ctx.save();
+    ctx.globalAlpha = .22 * pulse; ctx.fillStyle = f.color || '#F04458';
+    ctx.beginPath(); ctx.ellipse(x, y, rw * 1.7, rh * 1.7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = .9; ctx.strokeStyle = '#0B0B0F'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.ellipse(x, y, rw * 1.55, rh * 1.55, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = pulse; ctx.strokeStyle = f.color || '#F04458'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(x, y, rw * 1.55, rh * 1.55, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
   static drawFighter(ctx, entry) {
     BeatEmUp.withDepth(entry, () => {
       ctx.save();
@@ -6300,6 +6473,7 @@ class BeatEmUp {
       ctx.ellipse(entry.f.x, Game.GROUND + 1, rw, rh, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+      if (entry.kind === 'boss' && entry.f.bossProfile && BeatEmUp.BOSS_CUE) BeatEmUp.drawBossCue(ctx, entry, rw, rh);
       const drawTag = entry.f.tag;
       const showAlert = entry.ai && (entry.ai.tellT > 0 || entry.ai.phaseCallout > 0);
       // Repeated rookie/regular labels stack into noise when a wave crowds

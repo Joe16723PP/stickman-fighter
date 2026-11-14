@@ -1123,7 +1123,6 @@ BOSS_B2A = r"""
   // --- Profiles / stats
   const prof = s => BeatEmUp.chapters[s - 1].boss.profile;
   r.profiles = [6, 7, 8].map(s => { const p = prof(s), b = setup(s); return [p.weapon, p.reach, BossWeapons[p.weapon].reach, b.scaleMul, +b.speedMul.toFixed(3), p.signature.key, p.counter || ''].join('/'); });
-  r.noProfile910 = !prof(9) && !prof(10);
   const base = { bossSniperStock: [7, 3, 11], bossSniperKick: [10, 4, 15], bossKageThrust: [9, 4, 14], bossKageWheel: [12, 5, 16], bossBreakerSwing: [16, 5, 22], bossBreakerShove: [10, 4, 15] };
   r.normalsPaced = Object.entries(base).every(([k, [su, ac, re]]) => Moves[k].su === Math.round(su * 1.3) && Moves[k].ac === ac && Moves[k].re === Math.round(re * 1.3));
   r.normalDmg = Object.keys(base).map(k => Moves[k].dmg).join(',');
@@ -1273,7 +1272,185 @@ BOSS_B2A = r"""
   BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; Game.phase = prev.phase; BeatEmUp.bossProjectiles = []; BossFields.clear(); BeatEmUp.lockL = prev.lockL; BeatEmUp.lockR = prev.lockR; Math.random = prev.random;
   Game.minX = prev.minX; Game.maxX = prev.maxX; Game.GROUND = prev.ground; pads0(); player.reset(200, 1);
   r.pass = r.profiles.join(' ') === 'crossbow/100/100/1.25/0.92/bossLaserLock/ naginata/200/200/1.28/0.92/bossShadowStep/kage girder/210/210/1.4/0.7/bossRoadblock/'
-    && r.noProfile910 && r.normalsPaced && r.normalDmg === '8,10,10,12,18,10' && r.normalsOk && r.laserOk && r.phase3Ok && r.shadowOk && r.counterOk && r.aiOk && r.roadOk && r.tellOk && r.drawOk;
+    && r.normalsPaced && r.normalDmg === '8,10,10,12,18,10' && r.normalsOk && r.laserOk && r.phase3Ok && r.shadowOk && r.counterOk && r.aiOk && r.roadOk && r.tellOk && r.drawOk;
+  return r;
+}
+"""
+
+BOSS_B2B = r"""
+() => {
+  // Boss B2 PR B: stage 9-10 profiles + signatures + boss silhouette cue, scripted frame by frame (no sims).
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast, phase: Game.phase, lockL: BeatEmUp.lockL, lockR: BeatEmUp.lockR, random: Math.random, minX: Game.minX, maxX: Game.maxX, ground: Game.GROUND, bossMaxHp: BeatEmUp.bossMaxHp, cue: BeatEmUp.BOSS_CUE };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0; Game.banner = '';
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0; BeatEmUp.lockL = 0; BeatEmUp.lockR = BeatEmUp.worldMax;
+  Game.GROUND = Game.H * .72;
+  const STEP = Game.STEP, BH = BossHardness.damage, DIFF = BeatEmUp.difficulty.damage, r = {};
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const gapD = (base, px) => { for (let d = base; d <= 1; d += .0002) if (Math.abs(BeatEmUp.floorDepthPx(d) - BeatEmUp.floorDepthPx(base)) >= px) return d; return 1; };
+  const pads0 = () => Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  let e = null;
+  const resetPlayer = (px, pFace = 1) => { player.reset(px, pFace); player.face = pFace; player.depth = .5; pEntry.depth = .5; player.hp = 1000; player.invincibleT = 0; player.dodgeT = 0; player.stun = 0; player.blocking = 0; };
+  const setup = (stage, bx = 900, px = 700, pFace = 1, phase = 2) => {
+    BeatEmUp.stage = stage; BeatEmUp.bossProjectiles = []; BossFields.clear(); pads0();
+    e = BeatEmUp.makeEnemy('boss', bx, .5); e.ai.phase = phase; BossPhases.apply(e.f, phase); e.f.meter = 100; e.f.face = -1;
+    resetPlayer(px, pFace);
+    BeatEmUp.cast = [pEntry, e]; Game.minX = -1e4; Game.maxX = 1e5;
+    BeatEmUp.withDepth(pEntry, () => player.clamp()); BeatEmUp.withDepth(e, () => e.f.clamp());
+    return e;
+  };
+  const tune = () => { if (e.f.atk && e.f.atk !== e._tunedAtk) { e._tunedAtk = e.f.atk; e.f.atk.dmg *= DIFF; e.f.atk.dmg *= BH; } };
+  const frame = () => {
+    pads0();
+    BeatEmUp.withDepth(pEntry, () => player.clamp());
+    BeatEmUp.withDepth(e, () => { Game.minX = -1e4; Game.maxX = 1e5; e.f.update(STEP, player, 1); tune(); });
+    BeatEmUp.withDepth(pEntry, () => player.clamp());
+    BeatEmUp.resolveHits();
+    BossFields.update(pEntry);
+  };
+  const start = kind => BeatEmUp.withDepth(e, () => { e.f.startAtk(kind); tune(); });
+  const prof = s => BeatEmUp.chapters[s - 1].boss.profile;
+  // --- Profiles
+  r.profiles = [9, 10].map(s => { const p = prof(s), b = setup(s, 900, 700, 1, 1); return [p.weapon, p.reach, BossWeapons[p.weapon].reach, b.scaleMul, +b.speedMul.toFixed(3), p.signature.key, b.f.weaponType].join('/'); });
+  const base = { bossDirectorJab: [7, 3, 11], bossDirectorSweep: [10, 4, 15], bossChiefSlash: [7, 3, 11], bossChiefCross: [9, 4, 12], bossChiefSmash: [14, 5, 20], bossChiefSweep: [10, 4, 15], bossChiefJab: [6, 3, 10], bossChiefHook: [9, 4, 13] };
+  r.normalsPaced = Object.entries(base).every(([k, [su, ac, re]]) => Moves[k].su === Math.round(su * 1.3) && Moves[k].ac === ac && Moves[k].re === Math.round(re * 1.3));
+  r.normalDmg = Object.keys(base).map(k => Moves[k].dmg).join(',');
+  // --- Normals: key per phase, hitbox ends at the weapon tip, reach = weapon reach
+  const normalRun = (stage, kind, phase) => {
+    setup(stage, 900, 600, 1, phase); start(kind); const o = { key: Object.keys(Moves).find(k => Moves[k].su === e.f.atk.su && Moves[k].re === e.f.atk.re && Moves[k].ac === e.f.atk.ac && k.startsWith(stage === 9 ? 'bossDirector' : 'bossChief')), weapon: e.f.weaponType };
+    for (let i = 0; i < 80 && e.f.atk; i++) {
+      frame();
+      if (o.tip == null && e.f.atk && e.f.atkT === e.f.atk.su + 1) BeatEmUp.withDepth(e, () => {
+        const hit = e.f.strike(), b = e.f.combatBones(), geo = e.f.weaponGeometry(b, true);
+        o.tip = !!hit?.segment && near(hit.segment.x2, geo.tip.x) && near(hit.segment.y2, geo.tip.y);
+        o.reach = +Math.abs(geo.tip.x - b.ra.x).toFixed(3); o.stun = hit?.stun;
+      });
+    }
+    return o;
+  };
+  r.normals = {};
+  for (const [nm, st, kind, ph] of [['dirJab', 9, 'punch', 1], ['dirSweep', 9, 'kick', 1], ['p1Slash', 10, 'punch', 1], ['p1Cross', 10, 'kick', 1], ['p2Smash', 10, 'punch', 2], ['p2Sweep', 10, 'kick', 2], ['p3Jab', 10, 'punch', 3], ['p3Hook', 10, 'kick', 3]]) r.normals[nm] = normalRun(st, kind, ph);
+  const N = r.normals, nOk = (o, key, w, reach) => o.key === key && o.weapon === w && o.tip && o.reach === reach;
+  r.normalsOk = nOk(N.dirJab, 'bossDirectorJab', 'shockBaton', 115) && nOk(N.dirSweep, 'bossDirectorSweep', 'shockBaton', 115)
+    && nOk(N.p1Slash, 'bossChiefSlash', 'twinBlades', 110) && nOk(N.p1Cross, 'bossChiefCross', 'twinBlades', 110)
+    && nOk(N.p2Smash, 'bossChiefSmash', 'sledgehammer', 150) && nOk(N.p2Sweep, 'bossChiefSweep', 'sledgehammer', 150)
+    && nOk(N.p3Jab, 'bossChiefJab', 'gauntlets', 90) && nOk(N.p3Hook, 'bossChiefHook', 'gauntlets', 90);
+  // --- Director stun: baton hits leave the player in 18 f (0.3 s) of hitstun
+  const stunRun = kind => {
+    setup(9, 900, 830, 1, 1); start(kind); const o = { dmg: 0, stun: null };
+    for (let i = 0; i < 60 && e.f.atk; i++) { const before = player.hp; frame(); if (o.stun == null && player.hp < before) { o.stun = player.stun; o.dmg = +(before - player.hp).toFixed(6); } }
+    return o;
+  };
+  r.stun = { jab: stunRun('punch'), sweep: stunRun('kick') };
+  r.stunOk = r.stun.jab.stun === 18 && r.stun.sweep.stun === 18 && near(r.stun.jab.dmg, 8 * BH * DIFF) && near(r.stun.sweep.dmg, 10 * BH * DIFF);
+  // --- Live Broadcast: glitch tell 0.5 s, 3 spots marked on active f1, lightning on all 3 exactly 42 f (0.7 s) later, 14 each
+  const broadcast = (moveTo = null, laneMove = 0) => {
+    setup(9, 900, 700); start('special');
+    const o = { su: e.f.atk.su, key: e.f.sigKey, glitchDuringSu: true, glitchAfter: false, spots: null, fired: [], hp0: player.hp, stunAfter: null };
+    for (let i = 0; i < 140 && e.f.atk; i++) {
+      const before = player.hp; frame();
+      const t = e.f.atk ? e.f.atkT : -1, g = BeatEmUp.bossFields.some(z => z.kind === 'glitch');
+      if (t > 0 && t <= o.su && !g) o.glitchDuringSu = false;
+      if (t > o.su && g) o.glitchAfter = true;
+      const spots = BeatEmUp.bossFields.filter(z => z.kind === 'spot');
+      if (!o.spots && spots.length) {
+        o.spots = spots.map(z => ({ x: z.x, depth: z.depth, markedAt: z.markedAt, fireAt: z.fireAt })); o.markFrame = t; o._z = spots;
+        if (moveTo != null) player.x = moveTo;
+        if (laneMove) player.depth = pEntry.depth = gapD(.5, laneMove);
+      }
+      (o._z || []).forEach(z => { if (z.fired && !z._seen) { z._seen = 1; o.fired.push({ frame: z.firedFrame, x: z.x, result: z.result || 'none' }); } });
+      if (o.stunAfter == null && player.hp < before) o.stunAfter = player.stun;
+      if (player.hp < before) player.stun = 0;
+    }
+    delete o._z; o.dmg = +(o.hp0 - player.hp).toFixed(6); return o;
+  };
+  r.bcStay = broadcast(); r.bcGap = broadcast(760); r.bcSide = broadcast(850); r.bcLane = broadcast(null, 15); r.bcEdge = broadcast(null, 13);
+  const bs = r.bcStay, expL = 14 * BH * DIFF;
+  r.broadcastOk = bs.su === 30 && bs.key === 'bossLiveBroadcast' && bs.glitchDuringSu && !bs.glitchAfter && bs.markFrame === 31 && bs.spots.length === 3
+    && bs.spots.map(s => s.x).join(',') === '700,550,850' && bs.spots.every(s => s.depth === .5 && s.fireAt - s.markedAt === 42)
+    && bs.fired.length === 3 && bs.fired.every(f => f.frame === 73) && bs.fired.filter(f => f.result === 'hit').length === 1 && near(bs.dmg, expL) && bs.stunAfter === 18
+    && r.bcGap.dmg === 0 && r.bcGap.fired.length === 3 && near(r.bcSide.dmg, expL) && r.bcSide.fired.find(f => f.result === 'hit').x === 850
+    && r.bcLane.dmg === 0 && near(r.bcEdge.dmg, expL);
+  // --- Chief phase loadouts follow the AI phase, never mid-attack
+  setup(10, 900, 300, 1, 1); BeatEmUp.bossMaxHp = e.f.hp; const full = e.f.hp; const ws = [e.f.weaponType];
+  e.f.hp = full * .5; BeatEmUp.updateGroupAI(STEP, pEntry); ws.push(e.f.weaponType, e.ai.phase);
+  e.f.hp = full * .2; start('punch'); BeatEmUp.updateGroupAI(STEP, pEntry); ws.push(e.f.weaponType); e.f.atk = null; e.f.state = 'idle'; BeatEmUp.updateGroupAI(STEP, pEntry); ws.push(e.f.weaponType, e.ai.phase);
+  r.phaseWeapons = ws.join('/');
+  r.phaseOk = r.phaseWeapons === 'twinBlades/sledgehammer/2/sledgehammer/gauntlets/3';
+  // --- Replay: phase 2 picks 3 distinct signatures of bosses 1-9 one at a time, then the Finale; new cycle after
+  const pool = BossReplay.pool(9); r.pool = pool.join(',');
+  const expectPool = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(s => prof(s).signature.key);
+  setup(10, 900, 300, 1, 2); const cycles = [], sets = new Set();
+  for (let c = 0; c < 12; c++) { const keys = []; for (let k = 0; k < 4; k++) keys.push(BossReplay.next(e.f)); cycles.push(keys); sets.add(keys.slice(0, 3).join(',')); }
+  r.replaySample = cycles.slice(0, 3).map(k => k.join(' '));
+  r.replayCycles = cycles.every(k => new Set(k.slice(0, 3)).size === 3 && k.slice(0, 3).every(x => expectPool.includes(x) && x !== 'bossColiseumFinale') && k[3] === 'bossColiseumFinale');
+  e.f.bossPhase = 3; const p3 = [BossReplay.next(e.f), BossReplay.next(e.f)]; e.f.bossPhase = 1; const p1 = BossReplay.next(e.f);
+  r.replayOk = pool.length === 9 && pool.join(',') === expectPool.join(',') && new Set(expectPool).size === 9 && r.replayCycles && sets.size >= 3
+    && p3.every(k => k === 'bossColiseumFinale') && p1 === 'bossColiseumFinale';
+  // each replayed signature runs to completion on the Chief and has its effect
+  r.replayRuns = {};
+  for (const key of expectPool) {
+    setup(10, 900, 820, 1, 2); e.f.replayCycle = { picks: [key], idx: 0, n: 0 };
+    start('special'); const o = { key: e.f.sigKey, su: e.f.atk?.su, eff: false, done: false };
+    for (let i = 0; i < 400; i++) {
+      const before = player.hp; frame();
+      if (player.hp < before || BeatEmUp.bossProjectiles.length || BeatEmUp.bossFields.length || e.f.sigTeleported) o.eff = true;
+      player.stun = 0; player.x = 820; player.vx = 0; if (player.ragdollActive || player.state === 'knockdown') resetPlayer(820);
+      if (!e.f.atk) { o.done = e.f.state !== 'special'; break; }
+    }
+    o.ok = o.key === key && o.su === (key === 'bossLaserLock' ? BossSignatures.bossLaserLock.lockFrames : Moves[key].su) && o.eff && o.done;
+    r.replayRuns[key] = o.ok;
+  }
+  r.replayRunsOk = Object.values(r.replayRuns).length === 9 && Object.values(r.replayRuns).every(Boolean);
+  // --- Coliseum Finale: 0.5 s tell, live windows per hit, 10/10/12/14/24 landed in order, last knocks down
+  setup(10, 900, 840, 1, 3); start('special');
+  const fin = { key: e.f.sigKey, su: e.f.atk.su, ac: e.f.atk.ac, live: [], hits: [] };
+  BeatEmUp.withDepth(e, () => { const a = e.f.atk, t0 = e.f.atkT; for (let t = 1; t <= a.ac; t++) { e.f.atkT = a.su + t; e.f.state = 'special'; const h = e.f.strike(); if (h) fin.live.push(t + ':' + h.pulse + (h.knockdown ? 'K' : '')); } e.f.atkT = t0; });
+  for (let i = 0; i < 120 && e.f.atk; i++) {
+    const before = player.hp; frame();
+    if (player.hp < before) fin.hits.push({ t: e.f.atkT - fin.su, dmg: +(before - player.hp).toFixed(6), kd: !!(player.ragdollActive || player.state === 'knockdown') });
+    player.stun = 0; player.x = e.f.x + 60; player.vx = 0;
+  }
+  r.finale = fin;
+  const expF = [10, 10, 12, 14, 24];
+  r.finaleOk = fin.key === 'bossColiseumFinale' && fin.su === 30 && fin.ac === 35
+    && fin.live.join(',') === '1:0,2:0,3:0,8:1,9:1,10:1,15:2,16:2,17:2,22:3,23:3,24:3,29:4K,30:4K,31:4K,32:4K'
+    && fin.hits.length === 5 && fin.hits.every((h, i) => Math.abs(h.dmg - expF[i] * BH * DIFF) < 1e-6) && fin.hits.map(h => h.kd).join(',') === 'false,false,false,false,true';
+  // --- Tells
+  r.tells = { broadcast: Moves.bossLiveBroadcast.su, finale: Moves.bossColiseumFinale.su, tellMin9: prof(9).signature.tellMin, tellMin10: prof(10).signature.tellMin, aiBossTell: +Math.max(BossHardness.tellMin, .72 / BossHardness.rate).toFixed(4) };
+  r.tellOk = r.tells.broadcast >= 30 && r.tells.finale >= 30 && r.tells.tellMin9 >= .5 && r.tells.tellMin10 >= .5 && r.tells.aiBossTell >= .5;
+  // --- Silhouette cue: draw-only. Recording ctx counts ops; gameplay state is identical with the cue on/off.
+  const rec = () => { const c = { n: 0, ellipse: 0 }; return [c, new Proxy({}, { get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { c.n++; if (k === 'ellipse') c.ellipse++; } : undefined, set: () => true })]; };
+  const snap = () => JSON.stringify({ x: e.f.x, y: e.f.y, hp: e.f.hp, d: e.depth, hb: e.f.hitbox, st: e.f.state, t: e.f.atkT, px: player.x, php: player.hp, s: BeatEmUp.withDepth(e, () => e.f.strike()) });
+  const runCue = (stage, cue) => {
+    let rnd = 0; const seed = [.37]; Math.random = () => { rnd++; return seed[0]; };
+    BeatEmUp.BOSS_CUE = cue; setup(stage, 900, 840, 1, 1); start('punch'); const [c, ctx] = rec(); const states = [];
+    for (let i = 0; i < 40; i++) { frame(); BeatEmUp.drawFighter(ctx, e); states.push(snap()); }
+    Math.random = prev.random; return { c, states: states.join('|'), rnd };
+  };
+  r.cue = {}; let cueOk = true;
+  for (let st = 1; st <= 10; st++) {
+    const on = runCue(st, true), off = runCue(st, false);
+    const ok = on.states === off.states && on.rnd === off.rnd && on.c.ellipse - off.c.ellipse === 3 * 40 && on.c.n > off.c.n;
+    r.cue[st] = ok; cueOk = cueOk && ok;
+  }
+  // regular enemies never draw it
+  BeatEmUp.BOSS_CUE = true; const reg = BeatEmUp.makeEnemy('regular', 600, .5); const [c1, x1] = rec(); BeatEmUp.drawFighter(x1, reg); BeatEmUp.BOSS_CUE = false; const [c2, x2] = rec(); BeatEmUp.drawFighter(x2, reg);
+  r.cueRegularSame = c1.n === c2.n; BeatEmUp.BOSS_CUE = prev.cue;
+  r.cueOk = cueOk && r.cueRegularSame;
+  // --- Draw smoke for bosses 9-10 (all Chief phases) and the new field kinds
+  const nop = new Proxy({}, { get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? () => {} : undefined, set: () => true });
+  r.drawOk = true;
+  try {
+    for (const [st, ph] of [[9, 1], [9, 3], [10, 1], [10, 2], [10, 3]]) for (const kind of [null, 'punch', 'kick', 'special']) {
+      setup(st, 900, 700, 1, ph); if (kind) start(kind); for (let i = 0; i < 80 && (kind ? e.f.atk : i < 2); i++) { frame(); if (i % 10 === 0) { BeatEmUp.drawFighter(nop, e); BossFields.draw(nop); } }
+    }
+  } catch (err) { r.drawOk = false; r.drawErr = String(err); }
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; Game.phase = prev.phase; BeatEmUp.bossProjectiles = []; BossFields.clear(); BeatEmUp.lockL = prev.lockL; BeatEmUp.lockR = prev.lockR; Math.random = prev.random;
+  Game.minX = prev.minX; Game.maxX = prev.maxX; Game.GROUND = prev.ground; BeatEmUp.bossMaxHp = prev.bossMaxHp; BeatEmUp.BOSS_CUE = prev.cue; pads0(); player.reset(200, 1);
+  r.pass = r.profiles.join(' ') === 'shockBaton/115/115/1.3/0.92/bossLiveBroadcast/shockBaton twinBlades/110/110/1.35/0.92/bossColiseumFinale/twinBlades'
+    && r.normalsPaced && r.normalDmg === '8,10,9,11,16,12,8,12' && r.normalsOk && r.stunOk && r.broadcastOk && r.phaseOk && r.replayOk && r.replayRunsOk && r.finaleOk && r.tellOk && r.cueOk && r.drawOk;
   return r;
 }
 """
@@ -1480,6 +1657,11 @@ def main():
             print('boss b2a', json.dumps({k: v for k, v in boss_b2a.items() if k != 'pass'}))
             if not boss_b2a['pass']:
                 failures.append('Boss B2 PR A failed: expected stage 6-8 profiles (crossbow/naginata/girder, reach at the weapon tip, x1.3 paced normals), Laser Lock 0.6 s lane-locked full-screen bolt 18 (phase 3: 0/.5/1 together, random order 15 f apart, 14px each), Shadow Step 0.5 s tell + teleport behind + cut 16 at the naginata tip, Kage counter 0.8 s (parry = no damage, riposte 12 seven frames later, unused ends at 48 f, only Kage rolls it), Roadblock barricade 240 f lane block + 400px charge 20, signature tells >= 0.5 s')
+            boss_b2b = page.evaluate(BOSS_B2B)
+            print('boss b2b', json.dumps({k: v for k, v in boss_b2b.items() if k not in ('pass', 'bcStay', 'bcGap', 'bcSide', 'bcLane', 'bcEdge')}))
+            if not boss_b2b['pass']:
+                print('boss b2b broadcast', json.dumps({k: boss_b2b.get(k) for k in ('bcStay', 'bcGap', 'bcSide', 'bcLane', 'bcEdge')}))
+                failures.append('Boss B2 PR B failed: expected stage 9-10 profiles (shock baton 115 / twin blades 110 -> sledgehammer 150 -> gauntlets 90 by phase, x1.3 paced normals, hitbox at the weapon tip), Director hits stun 18 f, Live Broadcast 0.5 s glitch tell + 3 spots at player x/-150/+150 in the player lane + lightning 42 f later for 14 (40px / 14px windows), Chief phase-2 replay of 3 distinct stage 1-9 signatures then the Finale (each replay runs), Coliseum Finale 0.5 s tell 10/10/12/14/24 with knockdown on the last hit only, and a draw-only boss cue')
             pacing = page.evaluate(PACING)
             print('pacing pass', json.dumps({k: v for k, v in pacing.items() if k != 'pass'}))
             if not pacing['pass']:
