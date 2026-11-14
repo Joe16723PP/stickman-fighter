@@ -760,6 +760,143 @@ GRAPPLER = r"""
 }
 """
 
+DISRUPTOR = r"""
+() => {
+  const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0; BeatEmUp.stageOver = 0;
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const r = {};
+  BeatEmUp.stage = 2;
+  const stageHealth = (1 + (BeatEmUp.stage - 1) * .055) * BeatEmUp.difficulty.health;
+  const ds = BeatEmUp.makeEnemy('disruptor', 400, .5), rk = BeatEmUp.makeEnemy('regular', 400, .5);
+  r.stats = { hp: ds.f.hp, expectHp: Math.round(85 * stageHealth), speedMul: ds.speedMul, scaleMul: ds.scaleMul, weapon: ds.f.weaponType,
+    tag: ds.f.tag, deploy: ds.f.enemyDeploy, combo: ds.f.enemyCombo, rush: ds.f.enemyRush, slam: ds.f.enemySlam, guard: ds.f.enemyGuard,
+    bash: ds.f.enemyBash, grab: ds.f.enemyGrab, profile: ds.f.bodyProfile === ArchetypeBodyProfiles.disruptor };
+  let armed = 0; for (let i = 0; i < 60; i++) if (BeatEmUp.makeEnemy('disruptor', 400, .5).f.weaponType) armed++;
+  r.armed = armed;
+  r.spawns = BeatEmUp.chapters.reduce((n, c) => n + c.waves.reduce((m, w) => m + w.enemyFocus.filter(x => x === 'disruptor').length, 0), 0);
+  const box = e => BeatEmUp.withDepth(e, () => { e.f.clamp(); return { w: e.f.hitbox.w, h: e.f.hitbox.h }; });
+  const hb = { d: box(ds), rookie: box(rk) };
+  r.hurtboxSame = hb.d.w === hb.rookie.w && hb.d.h === hb.rookie.h;
+  const proxy = ops => new Proxy({}, {
+    get: (_, k) => typeof CanvasRenderingContext2D.prototype[k] === 'function' ? (...a) => { ops.push(k + ':' + a.map(v => typeof v === 'number' ? v.toFixed(3) : String(v)).join(',')); } : undefined,
+    set: (_, k, v) => { ops.push(k + '=' + (typeof v === 'number' ? v.toFixed(3) : String(v))); return true; } });
+  const trace = f => { const ops = []; f.draw(proxy(ops)); return ops.join('|'); };
+  const plain = new Fighter(400, ds.f.color, -1, ''); plain.reset(400, -1); ds.f.reset(400, -1);
+  r.gameplayBonesSame = BeatEmUp.withDepth(ds, () => JSON.stringify(ds.f.combatBones()) === JSON.stringify(plain.combatBones()));
+  r.profileDrawn = BeatEmUp.withDepth(ds, () => trace(ds.f) !== trace(plain));
+  const player = fighters[0]; player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const sp = EnemyDeploys.shockZone, tl = EnemyDeploy.timeline(sp);
+  const x0 = 900, px0 = x0 - 200;
+  const setup = (px = px0, pdepth = .5) => {
+    player.reset(px, 1); player.depth = pdepth; pEntry.depth = pdepth; player.hp = 100; player.invincibleT = 0; player.dodgeT = 0; player.grounded = true; player.stun = 0;
+    ds.f.reset(x0, -1); ds.depth = .5; ds.f.face = -1; ds.f.hp = 300; ds.f.stun = 0;
+    BeatEmUp.cast = [pEntry, ds]; ShockZones.clear();
+    Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+    BeatEmUp.withDepth(pEntry, () => player.clamp());
+  };
+  const gStep = () => { if (ds.f.hp > 0) BeatEmUp.withDepth(ds, () => ds.f.update(Game.STEP, player, 1)); };
+  const keep = () => { player.stun = 0; player.state = 'idle'; player.vx = 0; player.invincibleT = 0; }; // stand still, re-hittable
+  const normal = () => ({ x: 0, y: 0, w: 1, h: 1, dmg: 5, kb: 160, stun: 10, chip: 0, special: false, chain: 0 });
+  // Deploy timeline: zone appears on exactly the activation frame at the player's position then; no hitbox ever.
+  setup();
+  BeatEmUp.withDepth(ds, () => ds.f.startAtk('punch'));
+  const dep = { zoneFrame: 0, poseAtZone: '', frames: 0, strikes: 0, faces: new Set(), x0: ds.f.x, phases: [] };
+  for (let i = 0; i < 200 && ds.f.atk; i++) {
+    if (i === 10) player.x = px0 + 30; // moves during the wind-up: the zone uses the activation-frame position
+    gStep(); dep.frames++;
+    if (!ds.f.atk) break;
+    if (BeatEmUp.withDepth(ds, () => ds.f.strike())) dep.strikes++;
+    dep.faces.add(ds.f.face);
+    if (dep.phases[dep.phases.length - 1] !== ds.f.atkPhase) dep.phases.push(ds.f.atkPhase);
+    if (!dep.zoneFrame && BeatEmUp.hazards.length) { dep.zoneFrame = ds.f.atkT; dep.poseAtZone = ds.f.atkPhase; }
+  }
+  const z0 = BeatEmUp.hazards[0];
+  r.deploy = { zoneFrame: dep.zoneFrame, poseAtZone: dep.poseAtZone, frames: dep.frames, strikes: dep.strikes, faces: [...dep.faces], back: +(ds.f.x - dep.x0).toFixed(3),
+    phases: dep.phases.join(','), zoneX: z0?.x, expectX: px0 + 30, zoneDepth: z0?.depth, coolT: ds.f.deployCoolT, zones: BeatEmUp.hazards.length };
+  // One-zone limit: a second placement while the first is out is refused.
+  r.secondPlace = ShockZones.place(ds.f, player, sp) === null && BeatEmUp.hazards.length === 1;
+  // Zone run: player at `dx` from the zone centre and `dpx` floor-px lane offset; returns hit frames.
+  const zoneRun = (opts = {}) => {
+    setup(px0, opts.depth ?? .5);
+    const z = ShockZones.place(ds.f, player, sp);
+    player.x = z.x + (opts.dx || 0);
+    const o = { hits: [], removedAt: 0, maxT: 0, dmg: 0, stun: 0, xFixed: true, draws: { warn: 0, live: 0 } };
+    for (let t = 1; t <= 200; t++) {
+      if (opts.each) opts.each(t, z);
+      if (opts.kill && t === opts.kill) { ds.f.hp = 0; BeatEmUp.withDepth(ds, () => ds.f.startRagdoll(null, true)); }
+      gStep();
+      const hp = player.hp;
+      ShockZones.update(pEntry);
+      if (player.hp < hp) { o.hits.push(z.t); o.dmg = +(hp - player.hp).toFixed(6); o.stun = player.stun; }
+      if (!BeatEmUp.hazards.includes(z)) { o.removedAt = t; break; }
+      o.maxT = z.t; if (z.x !== z.x0 && z.x0 !== undefined) o.xFixed = false; z.x0 = z.x0 ?? z.x;
+      const ph = ShockZones.phase(z); if ((t === 20 || t === 80) && (ph === 'warn' || ph === 'live')) { const ops = []; ShockZones.draw(proxy(ops)); o.draws[ph] = ops.length; }
+      keep();
+    }
+    return o;
+  };
+  const expectDmg = +(sp.dmg * BeatEmUp.difficulty.damage).toFixed(6);
+  r.expectDmg = expectDmg;
+  r.inside = zoneRun();
+  r.edge = zoneRun({ dx: sp.halfW });
+  r.stepOut = zoneRun({ each: (t, z) => { if (t === 30) player.x = z.x + sp.halfW + 1; } });
+  r.outside = zoneRun({ dx: sp.halfW + 1 });
+  const tol = BeatEmUp.depthHitTolerance({ role: 'enemy', scaleMul: 1 }, pEntry);
+  const depthFor = px => { for (let d = .5; d <= 1; d += .0005) if (Math.abs(BeatEmUp.floorDepthPx(d) - BeatEmUp.floorDepthPx(.5)) >= px) return d; return 1; };
+  r.tol = tol;
+  r.lane = [tol - 2, tol + 2, Depth.lanePx()].map(px => zoneRun({ each: (t) => { if (t === 1) { pEntry.depth = player.depth = depthFor(px); } } }).hits.length);
+  r.laneChange = zoneRun({ each: (t) => { if (t === 30) { pEntry.depth = player.depth = depthFor(Depth.lanePx()); } } }).hits.length;
+  r.lateEntry = zoneRun({ dx: 200, each: (t, z) => { if (t === 80) player.x = z.x; } }).hits;
+  r.invuln = zoneRun({ each: (t) => { if (t < 70) player.invincibleT = 1; else player.invincibleT = 0; } }).hits;
+  r.air = zoneRun({ each: () => { player.grounded = false; player.y = -40; } }).hits.length;
+  r.blocking = zoneRun({ each: () => { player.blocking = 1; } });
+  r.notHoming = zoneRun({ each: (t, z) => { if (t > 5) player.x = z.x + 300 + t; } });
+  r.ownerDead = zoneRun({ kill: 10 });
+  r.deadPlace = ShockZones.place(ds.f, player, sp) === null;
+  // Interrupt: a hit in the wind-up cancels the deploy (no zone).
+  setup(); BeatEmUp.withDepth(ds, () => ds.f.startAtk('punch'));
+  let intKind = ''; for (let i = 0; i < 80 && ds.f.atk; i++) { if (i === 10) intKind = BeatEmUp.withDepth(ds, () => ds.f.takeHit(normal(), player)); gStep(); }
+  r.interrupt = { kind: intKind, zones: BeatEmUp.hazards.length };
+  // Cooldown: exactly 4 s of sim time from the activation frame.
+  setup(); ShockZones.place(ds.f, player, sp); ShockZones.clear();
+  let cool = 0; while (ds.f.deployCoolT > 0 && cool < 600) { gStep(); cool++; }
+  r.coolFrames = cool;
+  // AI gating: ZAP tell when free, none during cooldown, none while its zone is out, backs off when too close.
+  const aiTell = prep => { setup(x0 - 180); ds.ai.cool = 0; ds.ai.tellT = 0; ds.ai.tellKind = ''; ds.f.deployCoolT = 0; prep(); BeatEmUp.updateGroupAI(Game.STEP, pEntry); return ds.ai.tellT > 0 ? ds.ai.tellKind : ''; };
+  r.ai = { free: aiTell(() => {}), cooling: aiTell(() => { ds.f.deployCoolT = 1; }), zoneOut: aiTell(() => { ShockZones.place(ds.f, player, sp); ds.f.deployCoolT = 0; }) };
+  setup(x0 - 40); ds.ai.cool = 0; BeatEmUp.updateGroupAI(Game.STEP, pEntry); r.ai.close = { tell: ds.ai.tellT > 0, pad: ds._pad && ds._pad.right ? 'away' : ds._pad && ds._pad.left ? 'toward' : '' };
+  // Cleanup: zone hooks on every stage / wave / boss / down / lose / begin path.
+  r.cleanupHooks = ['resetStage', 'startWave', 'startBoss', 'playerDown', 'loseStage', 'begin'].filter(k => !BeatEmUp[k].toString().includes('ShockZones.clear()'));
+  setup(); ShockZones.place(ds.f, player, sp); ShockZones.clear(); r.cleared = BeatEmUp.hazards.length;
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; ShockZones.clear();
+  Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+  player.reset(200, 1);
+  const s = r.stats, d = r.deploy, end = sp.warn + sp.live;
+  const once = o => o.hits.length === 1;
+  r.pass = s.hp === s.expectHp && s.speedMul === .9 && s.scaleMul === 1 && s.weapon === null && r.armed === 0 && s.tag === 'DISRUPTOR' && s.deploy === 'shockZone'
+    && s.combo === null && s.rush === null && s.slam === null && s.guard === null && s.bash === null && s.grab === null && s.profile && sp.label === 'ZAP'
+    && r.spawns === 0 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn
+    && d.zoneFrame === tl.su + 1 && d.poseAtZone === 'da' && d.frames === tl.total && d.strikes === 0 && d.faces.join() === '-1' && Math.abs(d.back - sp.backStep) < 1e-6
+    && d.phases === 'dw,da,dr,dg' && d.zoneX === d.expectX && d.zoneDepth === .5 && d.coolT > 0 && d.zones === 1 && r.secondPlace
+    // Warning first: no damage before frame warn+1; exactly one zap of dmg x difficulty with the short stun; removed after warn+live.
+    && once(r.inside) && r.inside.hits[0] === sp.warn + 1 && Math.abs(r.inside.dmg - r.expectDmg) < 1e-6 && r.inside.stun === sp.stun
+    && r.inside.maxT === end && r.inside.removedAt === end + 1 && r.inside.xFixed && r.inside.draws.warn > 0 && r.inside.draws.live > 0
+    && once(r.edge) && r.stepOut.hits.length === 0 && r.outside.hits.length === 0
+    && r.lane.join() === '1,0,0' && r.laneChange === 0 && r.lateEntry.join() === '80' && r.invuln.join() === '70' && r.air === 0 && once(r.blocking)
+    && r.notHoming.hits.length === 0 && r.notHoming.xFixed
+    // Owner dies at frame 10: the zone still finishes its cycle (zaps at warn+1, removed after warn+live); dead owners place nothing.
+    && once(r.ownerDead) && r.ownerDead.hits[0] === sp.warn + 1 && r.ownerDead.removedAt === end + 1 && r.deadPlace
+    && r.interrupt.kind === 'hit' && r.interrupt.zones === 0
+    && r.coolFrames === Math.round(sp.cooldown * 60)
+    && r.ai.free === 'ZAP' && r.ai.cooling === '' && r.ai.zoneOut === '' && !r.ai.close.tell && r.ai.close.pad === 'away'
+    && r.cleanupHooks.length === 0 && r.cleared === 0;
+  return r;
+}
+"""
+
 GUARD = r"""
 () => {
   const prev = { mode: Game.mode, stage: BeatEmUp.stage, cast: BeatEmUp.cast };
@@ -954,6 +1091,10 @@ def main():
             if not grappler['pass'] or 'grappler' in stage_src:
                 print('grappler sweep', json.dumps(grappler['sweep']))
                 failures.append('Grappler archetype failed: expected 115hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only long-arm open-hand profile, grab only within reach and the same-lane tolerance, no grab on invulnerable/rolling/airborne/stunned players, wind-up hit cancels it, 27f wind-up -> 30f hold -> headbutt release -> 24f recovery, release on Grappler hit/death, held player immune to others, 1.5 s no-regrab, 0.8 s miss recovery, AI GRAB tell gated by cooldown')
+            disruptor = page.evaluate(DISRUPTOR)
+            print('disruptor archetype', json.dumps({k: v for k, v in disruptor.items() if k != 'pass'}))
+            if not disruptor['pass'] or 'disruptor' in stage_src:
+                failures.append('Disruptor archetype failed: expected 85hp stage-scaled, 0.9 speed, no weapon, no stage spawns, ROOKIE hurtbox, draw-only profile, no deploy hitbox, zone created on the activation frame at the player x/lane, 0.8 s harmless warning then 1.5 s live, exactly one zap per zone inside halfW and the shared lane tolerance, step-out / lane change / airborne / invulnerable avoid it, fixed position, finishes its cycle after the Disruptor dies, wind-up hit cancels, 4 s cooldown, one zone per Disruptor, ZAP AI tell gated, zones cleared on every reset path')
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
