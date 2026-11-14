@@ -5283,6 +5283,7 @@ class BeatEmUp {
   static waveTotal = 3;
   static waveSpawnQueue = [];
   static waveSpawnTimer = 0;
+  static MAX_ATTACKERS = 2; // at most two regular enemies attack at once (a ranged attacker takes one slot)
   static BOSS_CUE = true; // boss silhouette cue (draw-only)
   static pacing = {
     spawnInterval: 0.35,
@@ -5556,18 +5557,36 @@ class BeatEmUp {
     };
   }
 
-  static waveDefs(n) {
-    const wave = BeatEmUp.chapters[BeatEmUp.stage - 1]?.waves?.[n - 1];
-    if (!wave) return [];
-    // Use authored enemy compositions with staggered lanes and entry positions.
-    const layouts = n === 2 ? [
+  // Built-in spawn layouts (used when stage-settings.js sets none): one for every Wave 2, one for all other waves.
+  static SPAWN_LAYOUTS = {
+    wave2: [
       { ox: .16, depth: .18 }, { ox: .60, depth: .72 }, { ox: .72, depth: .40 },
       { ox: .28, depth: .54 }, { ox: .82, depth: .84 },
-    ] : [
+    ],
+    other: [
       { ox: .55, depth: .15 }, { ox: .62, depth: .55 }, { ox: .48, depth: .95 },
       { ox: .70, depth: .34 }, { ox: .40, depth: .76 },
-    ];
-    return wave.enemyFocus.map((kind, index) => ({ kind, ...layouts[index % layouts.length] }));
+    ],
+  };
+  /** Spawn {ox, depth} for enemy `index` of wave `n`. Per field, first finite value wins:
+      wave.spawns[index] -> chapter.spawnLayouts[n][index] -> chapter.spawnLayouts.default[index] -> built-in layout.
+      Settings values are clamped to 0..1. */
+  static spawnFor(chapter, wave, n, index) {
+    const builtIn = (n === 2 ? BeatEmUp.SPAWN_LAYOUTS.wave2 : BeatEmUp.SPAWN_LAYOUTS.other);
+    const base = builtIn[index % builtIn.length];
+    const sources = [wave?.spawns?.[index], chapter?.spawnLayouts?.[n]?.[index], chapter?.spawnLayouts?.default?.[index]];
+    const pick = field => {
+      for (const src of sources) { const v = src?.[field]; if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.min(1, v)); }
+      return base[field];
+    };
+    return { ox: pick('ox'), depth: pick('depth') };
+  }
+  static waveDefs(n) {
+    const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
+    const wave = chapter?.waves?.[n - 1];
+    if (!wave) return [];
+    // Authored enemy compositions; spawn spots from stage settings, else the built-in staggered layouts.
+    return wave.enemyFocus.map((kind, index) => ({ kind, ...BeatEmUp.spawnFor(chapter, wave, n, index) }));
   }
 
   static startWave(n, retry = false, chapterIntro = false) {
@@ -5945,7 +5964,7 @@ class BeatEmUp {
     const ranged = sorted.find(e => e.kind === 'ranged');
     const attackers = boss ? new Set([boss]) : new Set([
       ...(ranged ? [ranged] : []),
-      ...sorted.filter(e => e !== ranged).slice(0, ranged ? 1 : 2),
+      ...sorted.filter(e => e !== ranged).slice(0, BeatEmUp.MAX_ATTACKERS - (ranged ? 1 : 0)),
     ]);
     for (const e of alive) {
       const ai = e.ai;
