@@ -214,13 +214,15 @@ BLADE_SUPER = '''() => {
     else if (p >= 0) cur[2] = f; else cur = null;
   }
   const parts = BladeSuper.STRIKES.map((s,k) => [s.windup,s.active,s.hold,s.gap].join('/'));
-  const phaseAt = [24,25,28,29,31,32,47,48,59,60,67,68,70,71,90,91,102,103,112,113,116,117,144,145,180]
+  const phaseAt = [18,19,22,23,25,26,33,34,38,39,46,47,49,50,59,60,64,65,74,75,78,79,92,93,114]
     .map(f => { const p = BladeSuper.phaseAt(f); return p.part + (p.strike >= 0 ? p.strike : ''); }).join(',');
   const frameProbe = {
     charge:owner.atk.su, strikes:BladeSuper.STRIKES.map((_s,k)=>BladeSuper.strikeLength(k)), parts,
     recovery:owner.atk.re, noto:BladeSuper.NOTO_FRAME, launch:BladeSuper.LAUNCH_FRAME, faceLock:BladeSuper.FACE_LOCK_FRAME,
     total:owner.atk.su+owner.atk.ac+owner.atk.re, windows:windows.map(w=>w.join('-')).join(','), phaseAt,
     damages:BladeSuper.STRIKES.map(s=>s.damage), totalDamage:owner.atk.dmg, waveDamage:BladeSuper.WAVE_DAMAGE,
+    activeFrames:BladeSuper.STRIKES.reduce((n,s)=>n+s.active,0), strikeFrames:BladeSuper.STRIKE_FRAMES, stun:owner.atk.stun,
+    stunConst:BladeSuper.STUN_FRAMES, visual:owner.classProfile.superVisualDuration, hitCount:owner.atk.hitCount,
   };
   return {
     frameProbe, quick:quick&&{pulse:quick.pulse,damage:quick.dmg}, pause:pause===null, gap:gap===null,
@@ -231,18 +233,21 @@ BLADE_SUPER = '''() => {
       pierce:pierceTarget.hp,lateWave:lateWaveTarget.hp,offLane:offLaneTarget.hp},
     piercing: piercedDuringTravel && pierceTarget.hp===68, offLane:offLaneTarget.hp===offLaneHp,
     notoKnockdown, lateWave:lateWaveTarget.hp===68,
-    pass:frameProbe.charge===24 && frameProbe.strikes.join('/')==='35/43/42'
-      && frameProbe.parts.join(' ')==='4/3/16/12 8/3/20/12 10/4/28/0'
-      && frameProbe.recovery===36 && frameProbe.noto===180 && frameProbe.total===180
-      && frameProbe.launch===113 && frameProbe.faceLock===29
-      && frameProbe.windows==='0-29-31,1-68-70,2-113-116'
+    // Crescent Storm 114 f (1.9 s): charge 18, strikes 20/26/28 (= 74), recovery 22; 10 active frames, 74 damage, stun pinned at 210
+    pass:frameProbe.charge===18 && frameProbe.strikes.join('/')==='20/26/28'
+      && frameProbe.parts.join(' ')==='4/3/8/5 8/3/10/5 10/4/14/0'
+      && frameProbe.recovery===22 && frameProbe.noto===114 && frameProbe.total===114 && frameProbe.strikeFrames===74
+      && frameProbe.activeFrames===10 && frameProbe.stun===210 && frameProbe.stunConst===210 && frameProbe.hitCount===3
+      && Math.abs(frameProbe.visual-1.9)<1e-9 && Math.abs(frameProbe.visual-frameProbe.noto/60)<1e-9
+      && frameProbe.launch===75 && frameProbe.faceLock===23
+      && frameProbe.windows==='0-23-25,1-47-49,2-75-78'
       && frameProbe.phaseAt==='charge,windup0,windup0,active0,active0,hold0,hold0,gap0,gap0,windup1,windup1,active1,active1,hold1,hold1,gap1,gap1,windup2,windup2,active2,active2,hold2,hold2,recovery,recovery'
       && frameProbe.damages.join('/')==='20/22/32' && Math.abs(frameProbe.totalDamage-74)<1e-9 && frameProbe.waveDamage===32
       && quick?.pulse===0 && quick?.dmg===20 && pause===null && gap===null
       && diagonal?.pulse===1 && diagonal?.dmg===22
       && diagonal.segment.y2>diagonal.segment.y1 && (diagonal.segment.x2-diagonal.segment.x1)*owner.face>40
       && vertical?.pulse===2 && vertical?.dmg===32 && vertical.segment.y2>vertical.segment.y1
-      && launchAt===113 && locked.face===1 && locked.depth===0 && locked.x===Game.W*.35
+      && launchAt===75 && locked.face===1 && locked.depth===0 && locked.x===Game.W*.35
       && launched?.face===locked.face && launched?.depth===locked.depth && launched.travel===15
       && afterQuick===80 && afterQuickDuplicate===80 && afterDiagonal===58 && afterDiagonalDuplicate===58
       && afterVertical===26 && afterVerticalDuplicate===26
@@ -1975,7 +1980,7 @@ def main():
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
-                failures.append('Blade Super harness failed: expected 24/3/3/3/24-frame sequence, 20/24/30 independent damage, piercing, lane lock, and Noto timing')
+                failures.append('Blade Super harness failed: expected the 114-frame Crescent Storm (charge 18, strikes 4/3/8/5 8/3/10/5 10/4/14/0, recovery 22, 10 active frames, stun 210, visual 1.9 s), 20/24/30 independent damage, piercing, lane lock, and Noto timing')
             stage1_bg = page.evaluate(STAGE1_BG)
             print('panorama backdrops', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
             if not stage1_bg['pass']:
