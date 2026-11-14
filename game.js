@@ -35,6 +35,14 @@ const Depth = {
   SCALE_1V1_MIN: 0.88,
   SCALE_1V1_MAX: 1.0,
   HIT_PX: 14,
+  // Shared lane hit window (px of floor depth) for every mode. Non-player attackers keep HIT_PX.
+  // Player attacks get PLAYER_HIT_PX x average body size, floored at HIT_PX and capped at HIT_MAX_PX.
+  PLAYER_HIT_PX: 22,
+  HIT_MAX_PX: 36,
+  hitTolerance(isPlayer, sizeA = 1, sizeB = 1) {
+    if (!isPlayer) return Depth.HIT_PX;
+    return Math.min(Depth.HIT_MAX_PX, Math.max(Depth.HIT_PX, Depth.PLAYER_HIT_PX * ((sizeA || 1) + (sizeB || 1)) / 2));
+  },
   // Round start / Training Reset depth: front lane (scale 1.00), so 1v1 starts exactly like pre-lanes main.
   START: 1,
   // Effects may not draw within this many CSS px below the HUD/health-bar panels (1v1/practice only).
@@ -1735,7 +1743,10 @@ class Fighter {
     const targetFighter = target.f || target;
     const targetDepthY = Game.mode === 'beatemup' ? BeatEmUp.floorDepthPx(target.depth) : targetFighter.groundY();
     const laneGap = targetDepthY - hit.centerDepthY;
-    if (Math.abs(laneGap) > hit.depthTolerance) return false;
+    const tolerance = Game.mode === 'beatemup'
+      ? BeatEmUp.depthHitTolerance(BeatEmUp.entryFor(attacker), target.f ? target : BeatEmUp.entryFor(targetFighter))
+      : Depth.hitTolerance(attacker.playerControlled);
+    if (Math.abs(laneGap) > tolerance) return false;
     const dx = targetFighter.x - hit.centerX;
     return dx * dx + laneGap * laneGap <= hit.radius * hit.radius;
   }
@@ -3328,10 +3339,10 @@ class BladeSuper {
   }
   static fighter(target) { return target.f || target; }
   static laneMatches(sequence, target) {
-    if (Game.mode === 'beatemup') return BeatEmUp.depthClose(sequence.depth, target.depth);
+    if (Game.mode === 'beatemup') return BeatEmUp.depthClose(sequence.depth, target.depth, BeatEmUp.depthHitTolerance(BeatEmUp.entryFor(sequence.owner), target));
     const fighter = BladeSuper.fighter(target);
     const laneY = depth => Depth.toY(depth, Depth.BAND_1V1_TOP, Depth.BAND_1V1_BOT);
-    return Math.abs(laneY(sequence.depth) - laneY(fighter.depth)) <= Depth.HIT_PX;
+    return Math.abs(laneY(sequence.depth) - laneY(fighter.depth)) <= Depth.hitTolerance(sequence.owner.playerControlled);
   }
   static hit(sequence, target, wave) {
     const owner = sequence.owner, fighter = BladeSuper.fighter(target);
@@ -3467,10 +3478,7 @@ class BeatEmUp {
   static START_LIVES = 3;
   static BAND_TOP = 0.56;
   static BAND_BOT = 0.88;
-  static DEPTH_HIT_PX = 14;
-  // Player-attack lane window (px of floor depth), before body-size scaling; capped below.
-  static PLAYER_DEPTH_HIT_PX = 22;
-  static DEPTH_HIT_MAX_PX = 36;
+  static DEPTH_HIT_PX = Depth.HIT_PX;
   static cameraX = 0;
   static skyOffset = 0;
   static cast = [];
@@ -3583,16 +3591,12 @@ class BeatEmUp {
   static depthClose(a, b, tolPx = BeatEmUp.DEPTH_HIT_PX) {
     return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= tolPx;
   }
-  /**
-   * Melee lane window for attacker -> target. Enemies keep the 14px base (unchanged).
-   * The player gets PLAYER_DEPTH_HIT_PX scaled by the average body size of both
-   * fighters (bigger targets are thicker in depth), floored at the base and capped
-   * at DEPTH_HIT_MAX_PX so clearly separate lanes still miss.
-   */
+  /** Lane window for attacker -> target cast entries (shared Depth.hitTolerance). */
   static depthHitTolerance(attacker, target) {
-    if (!attacker || attacker.role !== 'player') return BeatEmUp.DEPTH_HIT_PX;
-    const size = ((attacker.scaleMul || 1) + (target?.scaleMul || 1)) / 2;
-    return Math.min(BeatEmUp.DEPTH_HIT_MAX_PX, Math.max(BeatEmUp.DEPTH_HIT_PX, BeatEmUp.PLAYER_DEPTH_HIT_PX * size));
+    return Depth.hitTolerance(attacker?.role === 'player', attacker?.scaleMul, target?.scaleMul);
+  }
+  static entryFor(fighter) {
+    return BeatEmUp.cast.find(e => e.f === fighter) || null;
   }
   /** Beat ’em up fighters may pass beneath the overlaid touch controls. */
   static horizontalScreenBounds() {
@@ -5338,7 +5342,7 @@ class Game {
       if (!box || foe.hp <= 0) continue;
       if (box.special && me.hitTargets.get(foe) === box.pulse) continue;
       if (box.special && (!foe.grounded || foe.dodgeT > 0)) continue;
-      if (!box.radial && Math.abs(me.groundY() - foe.groundY()) > Depth.HIT_PX + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
+      if (!box.radial && Math.abs(me.groundY() - foe.groundY()) > Depth.hitTolerance(me.playerControlled) + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
       if (box.radial ? !Fighter.staffRadialHits(box, me, foe) : !Game.hitTest(box, foe.hitbox)) continue;
       if (foe.playerControlled && foe.invincibleT > 0) continue;
       me.hitDone = 1;
