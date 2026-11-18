@@ -1,4 +1,4 @@
-// Karate body drawn on the live pose bones. Classic script so game.js can call it.
+// Karate body drawn on the live pose bones. Classic script so the modules can call it.
 var KarateSprite = (function () {
   var CLOTH = '#243049';
   var CLOTH_EDGE = '#0C1018';
