@@ -4397,6 +4397,10 @@ class Fighter {
     const invulnBlink = this.playerControlled && invulnTime > 0 && Math.floor(invulnTime * 14) % 2 === 0;
     const col = this.flash > 0 || invulnBlink ? '#FFFFFF' : this.color;
     const spriteStroke = Math.max(Game.lw, 8 / Game.scale);
+    const karateBody = this.classId === 'freehand' && typeof KarateSprite !== 'undefined' && KarateSprite.ready;
+    if (karateBody) {
+      KarateSprite.draw(ctx, this, b, col === '#FFFFFF');
+    } else {
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = spriteStroke;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const chain = (pts, width = 1) => {
@@ -4431,6 +4435,7 @@ class Fighter {
     ctx.fillStyle = 'rgba(255,255,255,.32)';
     ctx.beginPath(); ctx.ellipse(headX - headRadius * .3, headY - headRadius * .34, headRadius * .28, headRadius * .16, -.5, 0, Math.PI * 2); ctx.fill();
     if (b.profile?.headGear) ArchetypeEquipment[b.profile.headGear]?.(ctx, this, b, 'head', { stroke: spriteStroke, unit: b.unit }); // draw-only (e.g. Ranged hood)
+    }
     this.drawAccessory(ctx,b);
     this.drawWeapon(ctx,b);
     this.drawReadyLightning(ctx,b);
