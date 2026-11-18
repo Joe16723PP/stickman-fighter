@@ -1344,20 +1344,26 @@ STAGE1 = r"""
   r.stats = [A.brawler.health, A.brawler.speed, A.brawler.combo, A.rusher.health, A.rusher.speed, A.rusher.rush].join('/');
   const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(16); };
   r.moveHash = hash(JSON.stringify([A.brawler, A.rusher, EnemyCombos.jabCross, EnemyRushes.shoulder]));
-  // --- Attacker cap: 4 Stage-1 wave-3 enemies around the player; at most MAX_ATTACKERS (2) ever tell/attack at once
+  // --- Attacker cap follows difficulty: Easy 2, Normal 3, Hard 4. Four enemies, so the cap is the most that tell.
   BeatEmUp.stage = 1; Game.phase = 'fight'; Game.fighting = 1; Math.random = () => .01;
   const p = fighters[0]; p.reset(600, 1); player.f = p; player.depth = .5; p.hp = 1e4;
-  BeatEmUp.cast = [player, ...['brawler', 'rusher', 'brawler', 'rusher'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (50 + 10 * i), .5); e.ai.cool = 0; return e; })];
-  let maxAct = 0, sawTwo = false;
-  for (let i = 0; i < 300; i++) {
-    BeatEmUp.updateGroupAI(Game.STEP, player);
-    const act = BeatEmUp.cast.filter(e => e.role === 'enemy' && (e.ai.tellT > 0 || e.f.atk)).length;
-    maxAct = Math.max(maxAct, act); if (act === 2) sawTwo = true;
-    BeatEmUp.cast.forEach(e => { if (e.role === 'enemy' && e.ai.tellT <= 0) e.ai.cool = 0; });
+  const caps = {};
+  for (const level of ['easy', 'normal', 'hard']) {
+    Game.arcadeLevel = level;
+    BeatEmUp.cast = [player, ...['brawler', 'rusher', 'brawler', 'rusher'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (50 + 10 * i), .5); e.ai.cool = 0; return e; })];
+    let maxAct = 0;
+    for (let i = 0; i < 300; i++) {
+      BeatEmUp.updateGroupAI(Game.STEP, player);
+      const act = BeatEmUp.cast.filter(e => e.role === 'enemy' && (e.ai.tellT > 0 || e.f.atk)).length;
+      maxAct = Math.max(maxAct, act);
+      BeatEmUp.cast.forEach(e => { if (e.role === 'enemy' && e.ai.tellT <= 0) e.ai.cool = 0; });
+    }
+    caps[level] = maxAct;
   }
+  Game.arcadeLevel = 'normal';
   Math.random = prev.random;
-  r.attackers = { cap: BeatEmUp.MAX_ATTACKERS, maxAct, sawTwo };
-  r.capOk = BeatEmUp.MAX_ATTACKERS === 2 && maxAct === 2 && sawTwo;
+  r.attackers = caps;
+  r.capOk = caps.easy === 2 && caps.normal === 3 && caps.hard === 4;
   Object.assign(BeatEmUp, { stage: prev.stage, cast: prev.cast, cameraX: prev.cameraX, lockL: prev.lockL, lockR: prev.lockR, wave: prev.wave, waveSpawnQueue: prev.queue, waveSpawnTimer: prev.timer });
   Object.assign(Game, { arcadeLevel: prev.level, mode: prev.mode, phase: prev.phase, banner: prev.banner, bannerT: prev.bannerT, fighting: prev.fighting });
   r.pass = r.stage1Ok && r.stage1DefsOk && r.stage1SpawnedOk && r.fallbackOk && r.chainOk && r.stats === '110/0.95/jabCross/80/1.35/shoulder' && r.moveHash === '29a4f6df' && r.capOk;
@@ -1435,8 +1441,8 @@ STAGE2 = r"""
   const w3 = farG1(); w3[0].f.grabVictim = p;
   r.aiHold = run(200);
   w3[0].f.grabVictim = null; Math.random = prev.random;
-  r.aiOk = r.ai.maxAct === 2 && r.ai.maxGrab === 1 && r.ai.brawlerTell && r.aiControl.grabTells[1] > 0
-    && r.aiHold.maxAct <= 2 && !r.aiHold.grabTells[1] && r.aiHold.brawlerTell;
+  r.aiOk = r.ai.maxAct === 3 && r.ai.maxGrab === 1 && r.ai.brawlerTell && r.aiControl.grabTells[1] > 0
+    && r.aiHold.maxAct <= 3 && !r.aiHold.grabTells[1] && r.aiHold.brawlerTell;
   // --- No grace window: right after a release (noRegrab running, no heldBy) Brawlers are still eligible and can tell
   const w4 = wave3(); BeatEmUp.cast = [player, ...w4]; p.noRegrabT = 1.5; p.heldBy = null; Math.random = () => .01;
   r.afterRelease = run(60, () => { p.noRegrabT = Math.max(0, p.noRegrabT - Game.STEP); });
@@ -1468,9 +1474,9 @@ async () => {
   // draw window. Script only (no frames rendered). Stage 1 anchors are pinned to their PR #65 values.
   const prev = { W: Game.W, H: Game.H, stage: BeatEmUp.stage, wave: BeatEmUp.wave, mode: Game.mode, phase: Game.phase, banner: Game.banner, fighting: Game.fighting,
     locked: BeatEmUp.locked, showGo: BeatEmUp.showGo, travelT: BeatEmUp.waveTravelT, travelNext: BeatEmUp.waveTravelNext, cam: BeatEmUp.cameraX,
-    startCam: BeatEmUp.waveTravelStartCam, targetCam: BeatEmUp.waveTravelTargetCam, bg: [BeatEmUp.bgX, BeatEmUp.bgTravelFrom, BeatEmUp.bgTravelTo] };
+    startX: BeatEmUp.waveTravelStartX, targetX: BeatEmUp.waveTravelTargetX, bg: [BeatEmUp.bgX, BeatEmUp.bgTravelFrom, BeatEmUp.bgTravelTo] };
   const EPS = 1e-9, WS = [640, 960, 1169, 1555];
-  const PINNED_S1 = { 640: [0, 723, 1310.7, 2511.7, 859.3], 960: [0, 660.8, 881.1, 2082.1, 1288.9], 1169: [0, 450.4, 600.5, 1801.5, 1569.5], 1555: [0, 61.7, 82.3, 1283.3, 2087.7] };
+  const PINNED_S1 = { 640: [0, 723, 1310.7, 2511.7, 859.3], 960: [0, 660.8, 881.1, 2170, 1288.9], 1169: [0, 450.4, 600.5, 2170, 1569.5], 1555: [0, 61.7, 82.3, 2170, 2087.7] };
   const FILES = { 1: 'assets/backgrounds/stage-01-street-brawl.webp', 2: 'assets/backgrounds/stage-02-dockyard.webp' };
   const r = {};
   r.othersSame = BeatEmUp.backgrounds.slice(2).every((b, i) => b === ['stage-03-night-market','stage-04-ironworks','stage-05-undercity','stage-06-rooftop','stage-07-dojo','stage-08-skybridge','stage-09-broadcast-tower','stage-10-coliseum'].map(n => 'assets/backgrounds/' + n + '.webp')[i]);
@@ -1493,9 +1499,10 @@ async () => {
         const viewW = BeatEmUp.bgViewW(), max = P.w - viewW;
         const a = [1, 2, 3, 4].map(n => BeatEmUp.bgAnchor(n));
         out.anchors[W] = a.map(v => +v.toFixed(1)).concat([+viewW.toFixed(1)]);
-        anchorsOk = anchorsOk && a.every(v => v >= 0 && v <= max + EPS)
+        const bossLeft = Math.max(P.seam, max);
+        anchorsOk = anchorsOk && [a[0], a[1], a[2]].every(v => v >= 0 && v <= max + EPS)
           && a[0] === 0 && a[1] > a[0] && a[2] > a[1] && a[3] > a[2]           // strictly right every step
-          && Math.abs(a[3] + viewW - P.w) < 1e-6                              // boss shows the right end
+          && Math.abs(a[3] - bossLeft) < 1e-6                                 // boss starts at the join when the view is wider than the segment
           && a[2] + viewW <= P.seam + 1e-6                                     // wave 3 never shows the Boss segment
           && a[1] <= P.wave2 + EPS
           && out.anchors[W].join() === PINNED_S1[W].join();                    // Stage 1 unchanged; Stage 2 shares its geometry
@@ -1507,10 +1514,17 @@ async () => {
         for (let n = 1; n <= 3; n++) {
           BeatEmUp.wave = n; BeatEmUp.bgSet(n);
           const start = BeatEmUp.bgX;
-          BeatEmUp.bgFollow(-50); followOk = followOk && BeatEmUp.bgX === start;                // never left
-          BeatEmUp.bgFollow(W * .1); followOk = followOk && BeatEmUp.bgX > start;
-          for (let k = 0; k < 200; k++) BeatEmUp.bgFollow(W * .05);
-          followOk = followOk && Math.abs(BeatEmUp.bgX - a[n]) < 1e-9;                          // capped at the next anchor
+          const range = BeatEmUp.bgScrollRange();
+          if (start > range.left + 1) {
+            BeatEmUp.bgFollow(-50); followOk = followOk && BeatEmUp.bgX < start && BeatEmUp.bgX >= range.left - EPS;
+          }
+          BeatEmUp.bgX = range.left; BeatEmUp.bgFollow(-50); followOk = followOk && BeatEmUp.bgX === range.left;
+          BeatEmUp.bgX = start;
+          if (start < range.right - 1) {
+            BeatEmUp.bgFollow(W * .1); followOk = followOk && BeatEmUp.bgX > start && BeatEmUp.bgX <= range.right + EPS;
+          }
+          for (let k = 0; k < 400; k++) BeatEmUp.bgFollow(W * .05);
+          followOk = followOk && Math.abs(BeatEmUp.bgX - range.right) < 1e-6;                  // capped at this wave's plate
           BeatEmUp.bgSet(n); BeatEmUp.bgFollow(W * .3);                                         // typical partial walk
           const from = BeatEmUp.bgX;
           BeatEmUp.cameraX = 0; BeatEmUp.worldMax = W * 4.2;
@@ -1541,10 +1555,17 @@ async () => {
         // draw: this stage uses the window
         BeatEmUp.backgroundCache.set(src, fake);
         const calls = [], ctx = { save() {}, restore() {}, drawImage(...args) { calls.push(args.slice(1)); } };
-        for (const n of [1, 2, 3, 4]) { BeatEmUp.bgSet(n); BeatEmUp.stage = stage; BeatEmUp.drawStageBackdrop(ctx); }
-        BeatEmUp.bgX = -100; BeatEmUp.drawStageBackdrop(ctx); BeatEmUp.bgX = 99999; BeatEmUp.drawStageBackdrop(ctx);
-        const ok1 = calls.length === 6 && calls.every(c => c.length === 8 && c[1] === 0 && Math.abs(c[2] - viewW) < 1e-9 && c[3] === P.h && c[4] === 0 && c[5] === 0 && c[6] === W && c[7] === 540)
-          && [0, 1, 2, 3].every(i => Math.abs(calls[i][0] - a[i]) < 1e-9) && calls[4][0] === 0 && Math.abs(calls[5][0] - max) < 1e-9;
+        Game.phase = 'fight'; BeatEmUp.waveTravelNext = 0;
+        for (const n of [1, 2, 3, 4]) { BeatEmUp.wave = n; BeatEmUp.bgSet(n); BeatEmUp.stage = stage; BeatEmUp.drawStageBackdrop(ctx); }
+        BeatEmUp.wave = 1; BeatEmUp.bgX = -100; BeatEmUp.drawStageBackdrop(ctx); BeatEmUp.bgX = 99999; BeatEmUp.drawStageBackdrop(ctx);
+        const streetEnd = Math.max(0, P.seam - viewW);
+        const fit = (c, x, w) => c && c.length === 8 && c[1] === 0 && Math.abs(c[0] - x) < 1e-6 && Math.abs(c[2] - w) < 1e-6 && c[3] === P.h && c[4] === 0 && c[5] === 0 && c[6] === W && c[7] === 540;
+        const segW = P.w - P.seam;
+        const boss = calls[3];
+        const bossOk = viewW <= segW + 1e-6
+          ? fit(boss, a[3], Math.min(viewW, P.w - a[3]))
+          : boss && Math.abs(boss[0] - P.seam) < 1e-4 && Math.abs(boss[2] - segW) < 1e-4 && Math.abs(boss[3] - segW * 540 / W) < 1e-4 && Math.abs(boss[1] - (P.h - boss[3]) / 2) < 1e-4 && boss[6] === W && boss[7] === 540;
+        const ok1 = calls.length === 6 && [0, 1, 2].every(i => fit(calls[i], a[i], viewW)) && bossOk && fit(calls[4], 0, viewW) && fit(calls[5], streetEnd, viewW);
         // stages 3-10 keep the stretched draw (checked on stage 3)
         const s3src = BeatEmUp.backgrounds[2];
         BeatEmUp.backgroundCache.set(s3src, { complete: true, naturalWidth: 1983, naturalHeight: 793 });
@@ -1566,7 +1587,7 @@ async () => {
     BeatEmUp.backgroundCache.clear(); cachedAll.forEach((v, k) => BeatEmUp.backgroundCache.set(k, v));
     Game.W = prev.W; Game.H = prev.H; BeatEmUp.stage = prev.stage; BeatEmUp.wave = prev.wave; Game.mode = prev.mode; Game.phase = prev.phase; Game.banner = prev.banner;
     Game.fighting = prev.fighting; BeatEmUp.locked = prev.locked; BeatEmUp.showGo = prev.showGo; BeatEmUp.waveTravelT = prev.travelT; BeatEmUp.waveTravelNext = prev.travelNext;
-    BeatEmUp.cameraX = prev.cam; BeatEmUp.waveTravelStartCam = prev.startCam; BeatEmUp.waveTravelTargetCam = prev.targetCam;
+    BeatEmUp.cameraX = prev.cam; BeatEmUp.waveTravelStartX = prev.startX; BeatEmUp.waveTravelTargetX = prev.targetX;
     [BeatEmUp.bgX, BeatEmUp.bgTravelFrom, BeatEmUp.bgTravelTo] = prev.bg;
   }
   r.pass = !!(stageOk[1] && stageOk[2] && r.othersSame && r.panoStages === '1,2' && r.noPanoElsewhere && r.resetOk);
@@ -1982,7 +2003,7 @@ def main():
             stage1_bg = page.evaluate(STAGE1_BG)
             print('panorama backdrops', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
             if not stage1_bg['pass']:
-                failures.append('Panorama backdrop failed: expected backgrounds[0] = stage-01-street-brawl.webp and backgrounds[1] = stage-02-dockyard.webp decoding at 3371x725 (stages 3-10 unchanged, no panorama config there), for both stages anchors W1=0 < W2 <= 723 < W3 (right edge at the 2170 join) < Boss (right end) in range for W=640/960/1169/1555 and equal to the pinned Stage 1 values, glide eased with the camera smoothstep/duration and monotonic with no frame jump above the eased step, unlocked follow never left and capped at the next anchor, resets to the wave anchor, aspect-kept source window for stages 1-2 and the stretched draw for stage 3')
+                failures.append('Panorama backdrop failed: expected backgrounds[0] = stage-01-street-brawl.webp and backgrounds[1] = stage-02-dockyard.webp decoding at 3371x725 (stages 3-10 unchanged, no panorama config there), for both stages anchors W1=0 < W2 <= 723 < W3 (right edge at the 2170 join) < Boss (right end) in range for W=640/960/1169/1555 and equal to the pinned Stage 1 values, glide eased with the camera smoothstep/duration and monotonic with no frame jump above the eased step, unlocked follow moves both ways and is capped at the panorama, resets to the wave anchor, aspect-kept source window for stages 1-2 and the stretched draw for stage 3')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)

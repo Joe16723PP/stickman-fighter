@@ -7,9 +7,9 @@ const Diff = {
 };
 
 const ArcadeDiff = {
-  easy:   { damage: .7, health: .8, extraEnemies: -1, details: 'DAMAGE 70% · ENEMY HP 80% · 4 PER WAVE' },
-  normal: { damage: 1, health: 1, extraEnemies: 0, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
-  hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
+  easy:   { damage: .7, health: .8, extraEnemies: -1, attackers: 2, details: 'DAMAGE 70% · ENEMY HP 80% · 4 PER WAVE' },
+  normal: { damage: 1, health: 1, extraEnemies: 0, attackers: 3, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
+  hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, attackers: 4, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
 };
 
 /* Beat 'em up boss hardness: boss threat (HP x damage per second) multiplier.
@@ -5264,7 +5264,6 @@ class BeatEmUp {
   };
   static PANO = BeatEmUp.PANOS[1];
   static pano(stage = BeatEmUp.stage) { return BeatEmUp.PANOS[stage] || null; }
-  static PANO_FOLLOW = .25; // source px per camera px while walking unlocked (capped at the next anchor, never left)
   static bgX = 0;
   static bgTravelFrom = 0;
   static bgTravelTo = 0;
@@ -5280,17 +5279,76 @@ class BeatEmUp {
     if (n <= 1) return 0;
     if (n === 2) return Math.min(clamp(P.wave2), w3 * .75);
     if (n === 3) return w3;
-    return max;
+    // Boss stays on the segment right of the join. A wide screen cannot also show the street side.
+    return Math.max(P.seam, max);
   }
   static bgSet(n) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom = BeatEmUp.bgTravelTo = BeatEmUp.bgAnchor(n); }
-  /** Unlocked walk: drift right with the camera, never left, never past the next anchor. */
+  /** Share of the screen kept clear on each side. Inside the middle, the camera stays put. */
+  static CAMERA_MARGIN = 0.18;
+  /** How far the picture may scroll on this wave. Street waves stop on the next plate; the boss stays past the join. */
+  static bgScrollRange() {
+    const P = BeatEmUp.pano();
+    if (!P) return { left: 0, right: 0 };
+    const viewW = BeatEmUp.bgViewW();
+    const imageMax = Math.max(0, P.w - viewW);
+    const wave = BeatEmUp.wave || 1;
+    if (wave >= 4) {
+      const right = Math.max(P.seam, imageMax);
+      return { left: Math.min(P.seam, right), right };
+    }
+    const streetEnd = Math.max(0, Math.min(imageMax, P.seam - viewW));
+    const right = wave >= 3 ? streetEnd : Math.min(streetEnd, BeatEmUp.bgAnchor(wave + 1));
+    return { left: 0, right };
+  }
+  /** Panorama tracks the camera in both directions and stays inside this wave's picture.
+      0.6 of the draw scale: the street moves with the walk, about 40% slower than the fighter. */
   static bgFollow(dx) {
-    if (!(dx > 0)) return;
-    const cap = Math.max(BeatEmUp.bgX, BeatEmUp.bgAnchor(Math.min(4, BeatEmUp.wave + 1)));
-    BeatEmUp.bgX = Math.min(cap, BeatEmUp.bgX + dx * BeatEmUp.PANO_FOLLOW);
+    if (!dx || !BeatEmUp.pano()) return;
+    const P = BeatEmUp.pano();
+    const range = BeatEmUp.bgScrollRange();
+    const follow = P.h / Game.H * 0.6;
+    BeatEmUp.bgX = Math.max(range.left, Math.min(range.right, BeatEmUp.bgX + dx * follow));
+  }
+  /** Right edge of the camera. Picture waves stop when the plate runs out; other stages stop at the stage end.
+      The wave walk eases the picture itself, so it may carry the camera on to the next plate. */
+  static cameraMax(limitToPicture = true) {
+    const minCam = Math.max(0, BeatEmUp.lockL);
+    const stageMax = Math.max(minCam, BeatEmUp.worldMax - Game.W);
+    if (!limitToPicture || !BeatEmUp.pano()) return stageMax;
+    const range = BeatEmUp.bgScrollRange();
+    const follow = BeatEmUp.pano().h / Game.H * 0.6;
+    const room = range.right - BeatEmUp.bgX;
+    if (!(room > 0) || !(follow > 0)) return Math.min(stageMax, BeatEmUp.cameraX);
+    return Math.min(stageMax, BeatEmUp.cameraX + room / follow);
+  }
+  /** Hold the camera while the player is in the middle. Shift it only when they enter an edge band,
+      and only enough to set them back on the inner edge of that band. */
+  static followPlayer(player = BeatEmUp.playerEntry(), trackBackground = true) {
+    if (!player) return;
+    const minCam = Math.max(0, BeatEmUp.lockL);
+    const travelToBoss = Game.phase === 'waveTransition' && BeatEmUp.waveTravelNext === 4;
+    const maxCam = Math.max(minCam, BeatEmUp.cameraMax(Game.phase !== 'waveTransition' || travelToBoss));
+    const margin = Game.W * BeatEmUp.CAMERA_MARGIN;
+    const prev = BeatEmUp.cameraX;
+    let cam = prev;
+    if (player.f.x < cam + margin) cam = player.f.x - margin;
+    else if (player.f.x > cam + Game.W - margin) cam = player.f.x - (Game.W - margin);
+    cam = Math.max(minCam, Math.min(maxCam, cam));
+    BeatEmUp.cameraX = cam;
+    const dx = cam - prev;
+    if (!dx) return;
+    BeatEmUp.skyOffset += dx * 0.5;
+    if (trackBackground) BeatEmUp.bgFollow(dx);
   }
   /** Wave travel: same smoothstep progress as the camera glide. */
   static bgGlide(eased) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom + (BeatEmUp.bgTravelTo - BeatEmUp.bgTravelFrom) * eased; }
+  /** Ease the view during a wave walk so the player finishes on the left of the new plate. */
+  static easeTravelCamera(eased) {
+    const cam = BeatEmUp.waveTravelStartCam + (BeatEmUp.waveTravelTargetCam - BeatEmUp.waveTravelStartCam) * eased;
+    const dx = cam - BeatEmUp.cameraX;
+    BeatEmUp.cameraX = cam;
+    if (dx) BeatEmUp.skyOffset += dx * 0.5;
+  }
   /** Load a stage background on first use (index is 0-based). */
   static background(index) {
     const src = BeatEmUp.backgrounds[index];
@@ -5308,7 +5366,7 @@ class BeatEmUp {
   static waveTotal = 3;
   static waveSpawnQueue = [];
   static waveSpawnTimer = 0;
-  static MAX_ATTACKERS = 2; // at most two regular enemies attack at once (a ranged attacker takes one slot)
+  static get MAX_ATTACKERS() { return BeatEmUp.difficulty.attackers || 2; } // Easy 2, Normal 3, Hard 4 walk in. A ranged attacker takes one slot.
   /** Grappler is an active attacker: holding a victim, mid-grab, or telling its GRAB. */
   static grapplerActive(e) { return !!(e.f.enemyGrab && (e.f.grabVictim || e.f.atk?.grab || (e.ai?.tellT > 0 && e.ai.tellMove === 'punch'))); }
   /** Nearest-first melee attackers with at most one Grappler (Stage 2). An active Grappler (holding, mid-grab or telling)
@@ -5341,10 +5399,15 @@ class BeatEmUp {
   static stageTransitionStage = 0;
   static stageTransitionSwitched = 0;
   static waveTravelT = 0;
-  static waveTravelDuration = 0.72;
+  static waveTravelDuration = 1.05;
+  static waveTravelStartX = 0;
+  static waveTravelTargetX = 0;
   static waveTravelStartCam = 0;
   static waveTravelTargetCam = 0;
+  static waveTravelEase = 0;
   static waveTravelNext = 0;
+  /** Where the player stands on screen when a new wave opens, measured from the left. */
+  static WAVE_ARRIVE = 0.30;
   static downPending = 0;
   static downTimer = 0;
   static downX = 0;
@@ -5630,9 +5693,9 @@ class BeatEmUp {
     return wave.enemyFocus.map((kind, index) => ({ kind, ...BeatEmUp.spawnFor(chapter, wave, n, index) }));
   }
 
-  static startWave(n, retry = false, chapterIntro = false) {
+  static startWave(n, retry = false, chapterIntro = false, keepBackdrop = false) {
     BeatEmUp.wave = n;
-    BeatEmUp.bgSet(n);
+    if (!keepBackdrop) BeatEmUp.bgSet(n);
     BeatEmUp.stageIntroT = !retry && chapterIntro ? 5 : 0;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
     const wave = chapter.waves[n - 1];
@@ -5695,10 +5758,10 @@ class BeatEmUp {
     if (!BeatEmUp.waveSpawnQueue.length) BeatEmUp.waveSpawnTimer = 0;
   }
 
-  static startBoss(retry = false) {
+  static startBoss(retry = false, keepBackdrop = false) {
     BeatEmUp.stageIntroT = 0;
     BeatEmUp.wave = 4;
-    BeatEmUp.bgSet(4);
+    if (!keepBackdrop) BeatEmUp.bgSet(4);
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
     BeatEmUp.lockL = BeatEmUp.cameraX;
@@ -5732,9 +5795,17 @@ class BeatEmUp {
 
   static travelToWave(nextWave) {
     if (BeatEmUp.waveTravelT > 0) return;
+    const player = BeatEmUp.playerEntry();
+    const startX = player ? player.f.x : BeatEmUp.cameraX + Game.W * 0.35;
     BeatEmUp.waveTravelT = BeatEmUp.waveTravelDuration;
+    BeatEmUp.waveTravelStartX = startX;
+    BeatEmUp.waveTravelTargetX = Math.min(BeatEmUp.worldMax - Game.W * 0.35, startX + Game.W * 0.62);
     BeatEmUp.waveTravelStartCam = BeatEmUp.cameraX;
-    BeatEmUp.waveTravelTargetCam = Math.min(BeatEmUp.worldMax - Game.W, BeatEmUp.cameraX + Game.W * .22);
+    BeatEmUp.waveTravelTargetCam = Math.max(0, Math.min(
+      Math.max(0, BeatEmUp.worldMax - Game.W),
+      BeatEmUp.waveTravelTargetX - Game.W * BeatEmUp.WAVE_ARRIVE
+    ));
+    BeatEmUp.waveTravelEase = 0;
     BeatEmUp.waveTravelNext = nextWave;
     BeatEmUp.bgTravelFrom = BeatEmUp.bgX;
     BeatEmUp.bgTravelTo = Math.max(BeatEmUp.bgX, BeatEmUp.bgAnchor(nextWave));
@@ -5902,7 +5973,7 @@ class BeatEmUp {
     const player = BeatEmUp.playerEntry();
     if (!player) return;
     if (BeatEmUp.downPending) {
-      BeatEmUp.withDepth(player, () => { player.f.updateRagdoll(dt); BeatEmUp.clampFighterBones(player); });
+      BeatEmUp.withDepth(player, () => { player.f.updateRagdoll(dt); BeatEmUp.followPlayer(player); BeatEmUp.clampFighterBones(player); });
       BeatEmUp.downTimer -= dt;
       if (BeatEmUp.downTimer <= 0) { BeatEmUp.downPending = 0; BeatEmUp.respawnPlayer(); }
       return;
@@ -5913,23 +5984,6 @@ class BeatEmUp {
     if (BeatEmUp.comboT <= 0) BeatEmUp.combo = 0;
     BeatEmUp.eventT = Math.max(0, BeatEmUp.eventT - dt);
     BeatEmUp.visualCueT = Math.max(0, BeatEmUp.visualCueT - dt);
-
-    // Camera follow player (only unlock scroll when GO)
-    const targetCam = Math.max(0, Math.min(BeatEmUp.worldMax - Game.W, player.f.x - Game.W * 0.35));
-    if (!BeatEmUp.locked) {
-      const prev = BeatEmUp.cameraX;
-      BeatEmUp.cameraX += (targetCam - BeatEmUp.cameraX) * Math.min(1, 6 * dt);
-      if (BeatEmUp.cameraX < prev) BeatEmUp.cameraX = prev; // only right
-      const dx = BeatEmUp.cameraX - prev;
-      BeatEmUp.skyOffset += dx * 0.5;
-      BeatEmUp.bgFollow(dx);
-    } else {
-      // Soft clamp camera to lock window
-      BeatEmUp.cameraX = Math.max(BeatEmUp.lockL, Math.min(BeatEmUp.lockR - Game.W * 0.85, Math.max(BeatEmUp.lockL, player.f.x - Game.W * 0.35)));
-      BeatEmUp.cameraX = Math.max(BeatEmUp.lockL, Math.min(BeatEmUp.cameraX, BeatEmUp.lockL));
-      // keep camera at lockL while locked
-      BeatEmUp.cameraX = BeatEmUp.lockL;
-    }
 
     // Depth movement for player
     let dy = 0;
@@ -5953,6 +6007,7 @@ class BeatEmUp {
       Game.minX = BeatEmUp.softMinX(player);
       Game.maxX = BeatEmUp.softMaxX(player);
       player.f.update(dt, faceOther, 0);
+      BeatEmUp.followPlayer(player);
       BeatEmUp.clampFighterBones(player);
     });
 
@@ -6063,16 +6118,29 @@ class BeatEmUp {
       // Rusher spacing budget refills whenever it is out of the attack slot or already at rush range.
       if (e.f.enemyRush && (!attackers.has(e) || dist >= EnemyRushes[e.f.enemyRush].minRange)) ai.backoffT = 0;
       if (!attackers.has(e)) {
-        // Circle: orbit around player at preferred depth
-        ai.mode = 'circle';
-        ai.orbit += dt * 1.2;
-        const tx = player.f.x + Math.cos(ai.orbit) * 140;
-        const td = Math.max(0, Math.min(1, player.depth + Math.sin(ai.orbit * 0.7) * 0.35));
-        if (e.f.x < tx - 8) Input.pad[1].right = 1;
-        else if (e.f.x > tx + 8) Input.pad[1].left = 1;
-        if (e.depth < td - 0.04) e.depth = Math.min(1, e.depth + 0.7 * dt);
-        else if (e.depth > td + 0.04) e.depth = Math.max(0, e.depth - 0.7 * dt);
-        // Apply pad then clear for next enemy — must update this enemy with its pad
+        // Hold outside special range. Only the attacker slots walk in, so a corner special cannot catch the wave.
+        ai.mode = 'hold';
+        const waiters = alive.filter(o => !attackers.has(o) && o.kind !== 'ranged');
+        const slot = Math.max(0, waiters.indexOf(e));
+        const hold = 280 + (slot % 3) * 74;
+        const room = side => {
+          const edge = side > 0 ? BeatEmUp.softMaxX(e) : BeatEmUp.softMinX(e);
+          return (edge - player.f.x) * side;
+        };
+        let side = e.f.x >= player.f.x ? 1 : -1;
+        if (room(side) < hold * 0.75 && room(-side) > room(side)) side = -side;
+        const tx = player.f.x + side * hold;
+        const td = slot % 2 ? 0.14 : 0.86;
+        const crossed = (e.f.x - player.f.x) * side < 0;
+        if (crossed && Math.abs(e.depth - player.depth) < 0.3) {
+          if (e.depth < td) e.depth = Math.min(1, e.depth + 0.9 * dt);
+          else e.depth = Math.max(0, e.depth - 0.9 * dt);
+        } else {
+          if (e.f.x < tx - 10) Input.pad[1].right = 1;
+          else if (e.f.x > tx + 10) Input.pad[1].left = 1;
+          if (e.depth < td - 0.04) e.depth = Math.min(1, e.depth + 0.55 * dt);
+          else if (e.depth > td + 0.04) e.depth = Math.max(0, e.depth - 0.55 * dt);
+        }
         BeatEmUp._driveEnemyPad(e, player, dt);
         continue;
       }
@@ -6358,11 +6426,67 @@ class BeatEmUp {
     if (!image?.complete || !image.naturalWidth) return;
     ctx.save();
     if (BeatEmUp.pano()) {
-      // Panorama: aspect kept at full height; source window bgX..bgX+viewW, clamped to the image.
+      // Panorama keeps its real aspect. The walk into the boss fades from the last street
+      // frame into the boss plate. A wide boss plate is cropped evenly instead of stretched.
+      const P = BeatEmUp.pano();
       const iw = image.naturalWidth, ih = image.naturalHeight;
       const viewW = Math.min(iw, Game.W * ih / Game.H);
-      const sx = Math.max(0, Math.min(iw - viewW, BeatEmUp.bgX));
-      ctx.drawImage(image, sx, 0, viewW, ih, 0, 0, Game.W, Game.H);
+      const seam = P.seam || 0;
+      const travelToBoss = Game.phase === 'waveTransition' && BeatEmUp.waveTravelNext === 4;
+      if (travelToBoss && seam) {
+        const fade = Math.max(0, Math.min(1, BeatEmUp.waveTravelEase || 0));
+        const streetW = Math.min(viewW, seam);
+        const street = { sx: Math.max(0, seam - streetW), sy: 0, srcW: streetW, sh: ih, destX: 0, destW: Game.W };
+        if (street.srcW + 0.5 < viewW) {
+          street.destW = street.srcW * Game.H / ih;
+          street.destX = (Game.W - street.destW) / 2;
+        }
+        const segW = Math.max(1, iw - seam);
+        let boss;
+        if (viewW <= segW) {
+          const srcW = Math.min(viewW, segW);
+          boss = { sx: Math.max(seam, Math.min(iw - srcW, BeatEmUp.bgAnchor(4))), sy: 0, srcW, sh: ih, destX: 0, destW: Game.W };
+        } else {
+          const sh = segW * Game.H / Game.W;
+          boss = { sx: seam, sy: (ih - sh) / 2, srcW: segW, sh, destX: 0, destW: Game.W };
+        }
+        const blit = (rect, alpha) => {
+          if (alpha <= 0) return;
+          ctx.globalAlpha = alpha;
+          ctx.drawImage(image, rect.sx, rect.sy, rect.srcW, rect.sh, rect.destX, 0, rect.destW, Game.H);
+        };
+        blit(street, 1 - fade);
+        blit(boss, fade);
+        ctx.restore();
+        return;
+      }
+      let sx = Math.max(0, BeatEmUp.bgX);
+      let sy = 0, srcW = viewW, sh = ih;
+      let destX = 0, destW = Game.W;
+      if (BeatEmUp.wave >= 4 && seam) {
+        const segW = Math.max(1, iw - seam);
+        if (viewW <= segW) {
+          srcW = Math.min(viewW, segW);
+          sx = Math.max(seam, Math.min(sx, iw - srcW));
+        } else {
+          srcW = segW;
+          sh = segW * Game.H / Game.W;
+          sy = (ih - sh) / 2;
+          sx = seam;
+        }
+      } else if (seam) {
+        sx = Math.max(0, Math.min(Math.max(0, seam - srcW), sx));
+      } else {
+        sx = Math.max(0, Math.min(Math.max(0, iw - srcW), sx));
+      }
+      srcW = Math.max(1, Math.min(srcW, iw - sx));
+      sh = Math.max(1, Math.min(sh, ih - sy));
+      if (seam && BeatEmUp.wave < 4 && sx + srcW > seam + 0.5) {
+        srcW = Math.max(1, seam - sx);
+        destW = srcW * Game.H / ih;
+        destX = (Game.W - destW) / 2;
+      }
+      ctx.drawImage(image, sx, sy, srcW, sh, destX, 0, destW, Game.H);
     } else ctx.drawImage(image, 0, 0, Game.W, Game.H);
     ctx.restore();
   }
@@ -7459,19 +7583,36 @@ class Game {
           }
         }
       } else if (Game.phase === 'waveTransition') {
+        const player = BeatEmUp.playerEntry();
         const progress = 1 - BeatEmUp.waveTravelT / BeatEmUp.waveTravelDuration;
         const eased = progress * progress * (3 - 2 * progress);
-        const prevCamera = BeatEmUp.cameraX;
-        BeatEmUp.cameraX = BeatEmUp.waveTravelStartCam + (BeatEmUp.waveTravelTargetCam - BeatEmUp.waveTravelStartCam) * eased;
-        BeatEmUp.skyOffset += (BeatEmUp.cameraX - prevCamera) * .5;
-        BeatEmUp.bgGlide(eased);
+        BeatEmUp.waveTravelEase = eased;
+        if (player) {
+          player.f.x = BeatEmUp.waveTravelStartX + (BeatEmUp.waveTravelTargetX - BeatEmUp.waveTravelStartX) * eased;
+          player.f.y = 0; player.f.vx = 0; player.f.vy = 0; player.f.grounded = true;
+          player.f.face = 1; player.f.state = 'walk';
+          player.f.walkT += step;
+          player.f.pose = Pose.walk(player.f.walkT, 1, player.f.classProfile);
+        }
+        BeatEmUp.easeTravelCamera(eased);
+        if (player) BeatEmUp.clampFighterBones(player);
+        if (BeatEmUp.pano()) BeatEmUp.bgGlide(eased);
         BeatEmUp.waveTravelT = Math.max(0, BeatEmUp.waveTravelT - step);
         if (BeatEmUp.waveTravelT <= 0) {
-          BeatEmUp.cameraX = BeatEmUp.waveTravelTargetCam;
+          if (player) {
+            player.f.x = BeatEmUp.waveTravelTargetX;
+            player.f.state = 'idle';
+            player.f.vx = 0;
+            player.f.pose = Pose.idle(player.f.classProfile);
+          }
+          BeatEmUp.waveTravelEase = 1;
+          BeatEmUp.easeTravelCamera(1);
+          if (player) BeatEmUp.clampFighterBones(player);
+          if (BeatEmUp.pano()) BeatEmUp.bgGlide(1);
           const next = BeatEmUp.waveTravelNext;
           BeatEmUp.waveTravelNext = 0;
-          if (next === 4) BeatEmUp.startBoss();
-          else BeatEmUp.startWave(next);
+          if (next === 4) BeatEmUp.startBoss(false, true);
+          else BeatEmUp.startWave(next, false, false, true);
         }
       } else if (Game.phase === 'matchEnd') {
         if (Game.mode === 'beatemup') {
