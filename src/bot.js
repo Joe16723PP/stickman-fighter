@@ -98,16 +98,14 @@ export class Bot {
     const dist = Bot.observe(dt, me, foe);
     const dx = foe.x - me.x, dir = Math.sign(dx) || 1;
 
-    if (Bot.blockT > 0) { p.block = 1; return; }
-
     // Deliberate mistake: freeze briefly
     if (Math.random() < cfg.mistake * dt * 0.35) { Bot.wait = .12 + Math.random() * .2; }
 
     // Reaction queue flush
     if (Bot.pending && Bot.pendingT <= 0) {
       const act = Bot.pending; Bot.pending = null;
-      if (act === 'block') { Bot.blockT = .3 + Math.random() * .35; p.block = 1; return; }
-      if (act !== 'block' && Math.random() > cfg.aggro) {
+      if (act === 'block') { Bot.pending = null; return; }
+      if (Math.random() > cfg.aggro) {
         Bot.cool = cfg.cool * (.5 + Math.random() * .5); return;
       }
       p[act] = 1; Bot.cool = cfg.cool * (.7 + Math.random() * .8);
@@ -116,22 +114,9 @@ export class Bot {
       return;
     }
     if (Bot.react > 0 || Bot.pending) return;
-    if (Bot.plan === 'block') { Bot.blockT = .3 + Math.random() * .35; Bot.plan = ''; return; }
+    if (Bot.plan === 'block') Bot.plan = '';
     if (Bot.plan) { p[Bot.plan] = 1; Bot.plan = ''; Bot.cool = cfg.cool * (.7 + Math.random() * .8); return; }
     if (Bot.wait > 0) return;
-
-    // Visible-state block read (startup only), boosted after 2-in-a-row
-    if (Bot.inStartup(foe) && dist < 150) {
-      let chance = cfg.block;
-      if (Bot.atkStreak >= 2) chance = Math.min(1, chance + .25);
-      if (foe.state === 'special') chance = Math.min(1, chance + .15);
-      if (Math.random() < chance) {
-        Bot.queue('block');
-        if (foe.state === 'special') Bot.lastBlockKind = 'special';
-        else Bot.lastBlockKind = foe.state;
-        return;
-      }
-    }
 
     // Special: meter full AND (in range OR foe in recovery)
     if (me.meter >= 100 && Bot.cool <= 0) {

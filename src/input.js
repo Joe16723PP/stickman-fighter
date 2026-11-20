@@ -10,10 +10,10 @@ export class Input {
   /** Touch presses seen since the last sim step, so a tap shorter than one frame still fires. */
   static tapped = [{}, {}];
   // acts list byte-identical to main (AC2). Depth keys read via depthHeld() in beat/1v1/practice.
-  static acts = ['left','right','jump','punch','kick','block','roll','special'];
+  static acts = ['left','right','jump','punch','kick','roll','special'];
   static keyMap = [
-    {left:['a','A','ArrowLeft'], right:['d','D','ArrowRight'], jump:[], punch:['j','J'], kick:['k','K'], block:['l','L'], roll:['Shift'], special:['i','I']},
-    {left:[], right:[], jump:[], punch:[], kick:[], block:[], roll:[], special:[]},
+    {left:['a','A','ArrowLeft'], right:['d','D','ArrowRight'], jump:[], punch:['j','J'], kick:['k','K'], roll:['Shift'], special:['i','I']},
+    {left:[], right:[], jump:[], punch:[], kick:[], roll:[], special:[]},
   ];
   static depthKeys = { up:['w','W','ArrowUp'], down:['s','S','ArrowDown'] };
   // Local 2P depth keys (not wired to any current mode; kept for future split-screen): T = back, G = near.

@@ -95,33 +95,33 @@ export class Fx {
       const back = (16 + Fx.random() * 24) * s;
       const life = .133 + Fx.random() * .067;
       if (!Fx.allowed(x, y)) continue;
-      Fx.list.push({kind:'windLine', x:x - face * 4 * s, y:y + off, x2:x - face * (4 * s + back), y2:y + off + (Fx.random() - .5) * 10 * s, life, max:life, color:wind, alpha:.4 + Fx.random() * .2, width:(2 + Fx.random() * 1.5) / sc});
+      Fx.list.push({kind:'windLine', x:x - face * 4 * s, y:y + off, x2:x - face * (4 * s + back), y2:y + off + (Fx.random() - .5) * 10 * s, life, max:life, color:wind, alpha:.55 + Fx.random() * .25, width:(2.4 + Fx.random() * 1.2) / sc, streak:true, front:true});
     }
     for (let i = 0; i < 2; i++) {
       const life = .14 + Fx.random() * .06;
       if (!Fx.allowed(x, y)) break;
-      Fx.list.push({kind:'windRing', x, y, r0:(4 + i * 7) / sc, r1:(26 + i * 16) / sc, life, max:life, color:wind, alpha:.5 + Fx.random() * .2, width:2 / sc});
+      Fx.list.push({kind:'windRing', x, y, r0:(4 + i * 7) / sc, r1:(26 + i * 16) / sc, life, max:life, color:wind, alpha:.55 + Fx.random() * .2, width:2 / sc, streak:true, front:true});
     }
   }
   static karateSuperKickMid(x, y, face, s) {
     const sc = Game.scale || 1, wind = '#BFE9FF';
     const life = .15 + Fx.random() * .05;
     if (Fx.allowed(x, y)) {
-      Fx.list.push({kind:'windArc', x, y, r0:8 / sc, r1:(30 * s) / sc, a0:-Math.PI * .5 * face, a1:Math.PI * .5 * face, life, max:life, color:wind, alpha:.5 + Fx.random() * .2, width:2.5 / sc});
+      Fx.list.push({kind:'windArc', x, y, r0:8 / sc, r1:(30 * s) / sc, a0:-Math.PI * .5 * face, a1:Math.PI * .5 * face, life, max:life, color:wind, alpha:.6 + Fx.random() * .2, width:3 / sc, streak:true, front:true});
     }
     for (let i = 0; i < 3; i++) {
       const off = (i - 1) * 8 * s;
       const len = (26 + Fx.random() * 20) * s;
       const glife = .133 + Fx.random() * .067;
       if (!Fx.allowed(x + face * (6 * s + len), y + off)) continue;
-      Fx.list.push({kind:'windLine', x:x + face * 6 * s, y:y + off, x2:x + face * (6 * s + len), y2:y + off + (Fx.random() - .5) * 6 * s, life:glife, max:glife, color:wind, alpha:.4 + Fx.random() * .2, width:(2 + Fx.random() * 1.5) / sc});
+      Fx.list.push({kind:'windLine', x:x + face * 6 * s, y:y + off, x2:x + face * (6 * s + len), y2:y + off + (Fx.random() - .5) * 6 * s, life:glife, max:glife, color:wind, alpha:.55 + Fx.random() * .25, width:(2.4 + Fx.random() * 1.2) / sc, streak:true, front:true});
     }
   }
   static karateSuperKickHigh(x, y, face, s, groundY = null) {
     const sc = Game.scale || 1, wind = '#BFE9FF', crack = '#FFF3C4', starC = '#FBBF24';
     const life = .16 + Fx.random() * .04;
     if (Fx.allowed(x, y)) {
-      Fx.list.push({kind:'windRing', x, y, r0:6 / sc, r1:(34 * s) / sc, life, max:life, color:wind, alpha:.55 + Fx.random() * .15, width:2.5 / sc});
+      Fx.list.push({kind:'windRing', x, y, r0:6 / sc, r1:(34 * s) / sc, life, max:life, color:wind, alpha:.65 + Fx.random() * .15, width:2.5 / sc, streak:true, front:true});
       const r = (11 * s) / sc, rot = Fx.random() * Math.PI;
       const pts = [];
       for (let i = 0; i < 8; i++) {
@@ -344,9 +344,40 @@ export class Fx {
     // Game.bars panel bottom = (12 + safeTop - 2 + 34) CSS px; +1 for its stroke, then the clearance.
     return (12 + Game.safeTop - 2 + 34 + 1 + Depth.HUD_CLEAR_PX) / sc - (Game.drawShakeY || 0);
   }
-  static draw(ctx) {
+  static tapered(ctx, x, y, x2, y2, width, color, alpha) {
+    const dx = x2 - x, dy = y2 - y, len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len * width / 2, ny = dx / len * width / 2;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x + nx, y + ny);
+    ctx.lineTo(x - nx, y - ny);
+    ctx.lineTo(x2, y2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  /** Soft gold chest glow used while a Karate super is winding up. */
+  static chargeAura(ctx, x, y, radius) {
+    if (!Fx.allowed(x, y) || radius <= 0) return;
+    const glow = ctx.createRadialGradient(x, y, radius * .08, x, y, radius);
+    glow.addColorStop(0, '#FFFFFF');
+    glow.addColorStop(.32, '#FBBF24');
+    glow.addColorStop(1, 'rgba(251,191,36,0)');
+    ctx.save();
+    ctx.globalAlpha = .78;
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = .95;
+    ctx.strokeStyle = '#FFF6D0';
+    ctx.lineWidth = Math.max(1.25, radius * .07);
+    ctx.beginPath(); ctx.arc(x, y, radius * .9, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+  static draw(ctx, pass = 'all') {
     const sc = Game.scale;
     for (const e of Fx.list) {
+      if (pass === 'back' && e.front) continue;
+      if (pass === 'front' && !e.front) continue;
       const t = 1 - e.life / e.max;
       if (e.kind === 'spark') {
         const fade = e.life / e.max;
@@ -407,24 +438,54 @@ export class Fx {
         ctx.fillStyle = '#3A3F52';
         ctx.beginPath(); ctx.arc(e.x, e.y, r, 0, Math.PI * 2); ctx.fill();
       } else if (e.kind === 'windLine') {
-        if (!Fx.allowed(e.x, e.y) && !Fx.allowed(e.x2, e.y2)) continue;
-        ctx.globalAlpha = e.alpha * (e.life / e.max);
-        ctx.strokeStyle = e.color; ctx.lineWidth = e.width; ctx.lineCap = 'round';
-        const hudLine = Fx.hudClipY(), clipLine = hudLine !== null && Math.min(e.y, e.y2) - e.width < hudLine;
+        const grow = e.streak ? .28 + .72 * t : 1;
+        const x2 = e.x + (e.x2 - e.x) * grow, y2 = e.y + (e.y2 - e.y) * grow;
+        if (!Fx.allowed(e.x, e.y) && !Fx.allowed(x2, y2)) continue;
+        const fade = e.alpha * (e.life / e.max);
+        const hudLine = Fx.hudClipY(), clipLine = hudLine !== null && Math.min(e.y, y2) - e.width < hudLine;
         if (clipLine) { ctx.save(); ctx.beginPath(); ctx.rect(-Game.W, hudLine, Game.W * 3, Game.H * 2); ctx.clip(); }
-        ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x2, e.y2); ctx.stroke();
+        if (e.streak) {
+          Fx.tapered(ctx, e.x, e.y, x2, y2, e.width * 2.6, e.color, fade);
+          Fx.tapered(ctx, e.x, e.y, x2, y2, e.width * .85, '#F7FBFF', fade);
+        } else {
+          ctx.globalAlpha = fade;
+          ctx.strokeStyle = e.color; ctx.lineWidth = e.width; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(x2, y2); ctx.stroke();
+        }
         if (clipLine) ctx.restore();
       } else if (e.kind === 'windArc' || e.kind === 'windRing') {
         if (!Fx.allowed(e.x, e.y)) continue;
-        ctx.globalAlpha = e.alpha * (e.life / e.max);
-        ctx.strokeStyle = e.color; ctx.lineWidth = e.width; ctx.lineCap = 'round';
+        const fade = e.alpha * (e.life / e.max);
+        ctx.lineCap = 'round';
         const ringR = e.r0 + (e.r1 - e.r0) * t, hudLimit = Fx.hudClipY();
         const clipRing = hudLimit !== null && e.y - ringR - e.width / 2 < hudLimit;
         if (clipRing) { ctx.save(); ctx.beginPath(); ctx.rect(-Game.W, hudLimit, Game.W * 3, Game.H * 2); ctx.clip(); }
-        ctx.beginPath();
-        if (e.kind === 'windArc') ctx.arc(e.x, e.y, ringR, e.a0, e.a1);
-        else ctx.arc(e.x, e.y, ringR, 0, Math.PI * 2);
-        ctx.stroke();
+        if (e.streak && e.kind === 'windRing') {
+          const glow = ctx.createRadialGradient(e.x, e.y, ringR * .12, e.x, e.y, ringR);
+          glow.addColorStop(0, '#FFFFFF');
+          glow.addColorStop(.4, e.color);
+          glow.addColorStop(1, 'rgba(191,233,255,0)');
+          ctx.globalAlpha = fade * .8;
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.arc(e.x, e.y, ringR, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = fade;
+          ctx.strokeStyle = '#F7FBFF'; ctx.lineWidth = Math.max(1, e.width * .7);
+          ctx.beginPath(); ctx.arc(e.x, e.y, ringR * .92, 0, Math.PI * 2); ctx.stroke();
+        } else if (e.streak) {
+          const sweep = e.a0 + (e.a1 - e.a0) * (.2 + .8 * t);
+          ctx.globalAlpha = fade;
+          ctx.strokeStyle = e.color; ctx.lineWidth = e.width * 1.8;
+          ctx.beginPath(); ctx.arc(e.x, e.y, ringR, e.a0, sweep); ctx.stroke();
+          ctx.strokeStyle = '#F7FBFF'; ctx.lineWidth = Math.max(1, e.width * .65);
+          ctx.beginPath(); ctx.arc(e.x, e.y, ringR, e.a0, sweep); ctx.stroke();
+        } else {
+          ctx.globalAlpha = fade;
+          ctx.strokeStyle = e.color; ctx.lineWidth = e.width;
+          ctx.beginPath();
+          if (e.kind === 'windArc') ctx.arc(e.x, e.y, ringR, e.a0, e.a1);
+          else ctx.arc(e.x, e.y, ringR, 0, Math.PI * 2);
+          ctx.stroke();
+        }
         if (clipRing) ctx.restore();
       } else if (e.kind === 'star') {
         if (!Fx.allowed(e.x, e.y)) continue;

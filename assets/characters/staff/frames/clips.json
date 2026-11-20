@@ -1,0 +1,58 @@
+{
+  "frameW": 170,
+  "frameH": 228,
+  "baseline": 212,
+  "body": 188,
+  "fps": 12,
+  "clips": {
+    "idle": 6,
+    "walk": 8,
+    "roll": 8,
+    "fall": 8,
+    "punch": 6,
+    "kick": 8,
+    "special": 12
+  },
+  "idle": {
+    "frameW": 170,
+    "frameH": 228,
+    "baseline": 212,
+    "anchor": 82
+  },
+  "walk": {
+    "frameW": 184,
+    "frameH": 222,
+    "baseline": 206,
+    "anchor": 89
+  },
+  "roll": {
+    "frameW": 184,
+    "frameH": 220,
+    "baseline": 204,
+    "anchor": 90
+  },
+  "fall": {
+    "frameW": 218,
+    "frameH": 220,
+    "baseline": 204,
+    "anchor": 105
+  },
+  "punch": {
+    "frameW": 258,
+    "frameH": 220,
+    "baseline": 204,
+    "anchor": 106
+  },
+  "kick": {
+    "frameW": 236,
+    "frameH": 220,
+    "baseline": 204,
+    "anchor": 95
+  },
+  "special": {
+    "frameW": 244,
+    "frameH": 234,
+    "baseline": 218,
+    "anchor": 99
+  }
+}

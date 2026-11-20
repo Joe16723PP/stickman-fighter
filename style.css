@@ -37,7 +37,6 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 .cluster{position:absolute;inset:0;pointer-events:none}
 .cluster .punch{width:92px;height:92px;right:0;bottom:0;background:rgba(43,111,222,.96);font-size:15px}
 .cluster .kick{width:76px;height:76px;left:53px;bottom:60px;background:rgba(201,89,58,.94)}
-.cluster .block{width:55px;height:55px;left:12px;top:0;font-size:10px}
 .cluster .roll{width:58px;height:58px;left:0;top:60px;background:rgba(36,139,156,.94);font-size:10px}
 .cluster .roll:not(.ready){opacity:.52}
 .cluster .roll.ready{box-shadow:0 0 12px 2px rgba(69,220,235,.48);opacity:1}
@@ -51,7 +50,6 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 .arcade-controls .stick-knob{width:calc(var(--ui-control-size) * .83);height:calc(var(--ui-control-size) * .83)}
 .arcade-controls .actions{transform:scale(.68);transform-origin:bottom right;--action-gap:5px}
 .arcade-controls .pad{bottom:calc(20px + env(safe-area-inset-bottom,0px))}
-.arcade-controls .cluster .block{width:73px;height:73px;left:0;top:62px;background:rgba(38,51,72,.96)}
 .arcade-controls .cluster .roll{width:73px;height:73px;left:76px;top:38px;background:rgba(36,139,156,.94)}
 .arcade-controls .cluster .special{width:78px;height:78px;left:152px;top:14px;background:rgba(105,82,155,.94)}
 .arcade-controls .cluster .kick{width:80px;height:80px;left:42px;bottom:2px;background:rgba(201,89,58,.94)}
@@ -63,10 +61,10 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
    The 1v1 lane is fixed by constants in Game.fit (MOVE_W/PAD_W), not by these sizes. To keep
    ~22px fighter clearance, anything whose top sits above the ground line (~y=276 at 375px tall)
    must stay within ~218px of .actions' right edge and the stick's right edge <=~169px; the
-   low row (block: top below the ground line) may extend further left. */
-#controls{--tc-stick:150px;--tc-knob:68px;--tc-main:96px;--tc-mid:80px;--tc-btn:64px;--tc-block:72px;--tc-actions-w:276px;--tc-actions-h:174px;
+   low row may extend further left. */
+#controls{--tc-stick:150px;--tc-knob:68px;--tc-main:96px;--tc-mid:80px;--tc-btn:64px;--tc-actions-w:276px;--tc-actions-h:174px;
 --tc-punch-r:0px;--tc-punch-b:0px;--tc-kick-r:110px;--tc-kick-b:0px;--tc-special-r:16px;--tc-special-b:110px;
---tc-roll-r:98px;--tc-roll-b:92px;--tc-block-r:204px;--tc-block-b:8px}
+--tc-roll-r:98px;--tc-roll-b:92px}
 #controls .pad{bottom:calc(10px + env(safe-area-inset-bottom,0px))}
 #controls .pad.left{left:calc(18px + env(safe-area-inset-left,0px))}
 #controls .pad.right{right:calc(20px + env(safe-area-inset-right,0px))}
@@ -79,7 +77,6 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 #controls .actions .kick{width:var(--tc-mid);height:var(--tc-mid);right:var(--tc-kick-r);bottom:var(--tc-kick-b)}
 #controls .actions .special{width:var(--tc-btn);height:var(--tc-btn);right:var(--tc-special-r);bottom:var(--tc-special-b)}
 #controls .actions .roll{width:var(--tc-btn);height:var(--tc-btn);right:var(--tc-roll-r);bottom:var(--tc-roll-b)}
-#controls .actions .block{width:var(--tc-block);height:var(--tc-block);right:var(--tc-block-r);bottom:var(--tc-block-b)}
 }
 @media (orientation:portrait){
 #rotate{display:flex}

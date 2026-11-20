@@ -83,6 +83,8 @@ export class BeatEmUp {
   static bgSet(n) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom = BeatEmUp.bgTravelTo = BeatEmUp.bgAnchor(n); }
   /** Share of the screen kept clear on each side. Inside the middle, the camera stays put. */
   static CAMERA_MARGIN = 0.18;
+  /** Player walk and lane change, relative to the old speed. */
+  static PACE = 0.68;
   /** How far the picture may scroll on this wave. Street waves stop on the next plate; the boss stays past the join. */
   static bgScrollRange() {
     const P = BeatEmUp.pano();
@@ -111,7 +113,7 @@ export class BeatEmUp {
       The wave walk eases the picture itself, so it may carry the camera on to the next plate. */
   static cameraMax(limitToPicture = true) {
     const minCam = Math.max(0, BeatEmUp.lockL);
-    const stageMax = Math.max(minCam, BeatEmUp.worldMax - Game.W);
+    const stageMax = Math.max(minCam, BeatEmUp.worldMax - BeatEmUp.viewWidth());
     if (!limitToPicture || !BeatEmUp.pano()) return stageMax;
     const range = BeatEmUp.bgScrollRange();
     const follow = BeatEmUp.pano().h / Game.H * 0.6;
@@ -126,11 +128,12 @@ export class BeatEmUp {
     const minCam = Math.max(0, BeatEmUp.lockL);
     const travelToBoss = Game.phase === 'waveTransition' && BeatEmUp.waveTravelNext === 4;
     const maxCam = Math.max(minCam, BeatEmUp.cameraMax(Game.phase !== 'waveTransition' || travelToBoss));
-    const margin = Game.W * BeatEmUp.CAMERA_MARGIN;
+    const view = BeatEmUp.viewWidth();
+    const margin = view * BeatEmUp.CAMERA_MARGIN;
     const prev = BeatEmUp.cameraX;
     let cam = prev;
     if (player.f.x < cam + margin) cam = player.f.x - margin;
-    else if (player.f.x > cam + Game.W - margin) cam = player.f.x - (Game.W - margin);
+    else if (player.f.x > cam + view - margin) cam = player.f.x - (view - margin);
     cam = Math.max(minCam, Math.min(maxCam, cam));
     BeatEmUp.cameraX = cam;
     const dx = cam - prev;
@@ -251,8 +254,16 @@ export class BeatEmUp {
     return BeatEmUp.cast.find(e => e.f === fighter) || null;
   }
   /** Beat ’em up fighters may pass beneath the overlaid touch controls. */
+  /** Logical width actually on the canvas. Game.W can be wider than the picture. */
+  static viewWidth() {
+    const scale = Game.scale || 1;
+    const dpr = Game.fitDpr || 1;
+    const canvasW = Game.canvas?.width || 0;
+    const visible = canvasW > 0 ? canvasW / (dpr * scale) : Game.W;
+    return Math.max(1, Math.min(Game.W || visible, visible));
+  }
   static horizontalScreenBounds() {
-    const ox = Game.ox || 0, width = Game.W * (Game.scale || 1);
+    const ox = Game.ox || 0, width = BeatEmUp.viewWidth() * (Game.scale || 1);
     return { left: ox + width * .02, right: ox + width * .98 };
   }
   /** Pull fighter left so bones().x1 stays inside the active screen bound. */
@@ -297,7 +308,8 @@ export class BeatEmUp {
     const scDepth = BeatEmUp.depthToScale(entry.depth) * (entry.scaleMul || 1);
     const arcadeSize = BeatEmUp.baseS / savedS;
     const actorSize = arcadeSize * (entry.scaleMul || 1);
-    Game.GROUND = BeatEmUp.depthToY(entry.depth);
+    entry.f.depth = entry.depth;
+    Game.GROUND = entry.f.groundY();
     Fighter.S = BeatEmUp.baseS * scDepth;
     Fighter.ARM = savedArm * actorSize;
     Fighter.LEG = savedLeg * actorSize;
@@ -305,7 +317,7 @@ export class BeatEmUp {
     Fighter.NECK = savedNeck * actorSize;
     Game.hr = savedHr * scDepth * arcadeSize;
     Game.lw = Math.max(3.5, savedLw * scDepth * arcadeSize);
-    if (entry.speedMul) Fighter.RUN_SPEED = 220 * entry.speedMul;
+    if (entry.speedMul) Fighter.RUN_SPEED = 220 * entry.speedMul * (entry.role === 'player' ? BeatEmUp.PACE : 1);
     try { return fn(); }
     finally {
       Game.GROUND = savedGround;
@@ -787,9 +799,7 @@ export class BeatEmUp {
     let dy = 0;
     if (Input.depthHeld('up')) dy -= 1;
     if (Input.depthHeld('down')) dy += 1;
-    if (dy && !player.f.heldBy) { // no lane change while held by a Grappler
-      player.depth = Math.max(0, Math.min(1, player.depth + dy * 0.9 * dt));
-    }
+    if (dy && !player.f.heldBy) player.depth = Depth.step(player.depth, dy, dt * BeatEmUp.PACE);
 
     // Face nearest living enemy in x
     const foes = BeatEmUp.enemiesAlive();
@@ -986,7 +996,6 @@ export class BeatEmUp {
             move = 'special';
             label = profile.signature.label;
             tell = Math.max(profile.signature.tellMin, profile.signature.tellBase * (ai.phase === 3 ? profile.signature.phase3TellMul : 1) / BossHardness.rate);
-            if (profile.weapon === 'shieldBaton') Input.pad[1].block = 1;
           } else {
             const useN1 = Math.random() < .55;
             move = useN1 ? profile.normal1.state : profile.normal2.state;
@@ -1112,6 +1121,7 @@ export class BeatEmUp {
         if (!th || (hit.radial
           ? !Fighter.staffRadialHits(hit, attacker.f, target)
           : !Game.hitTest(hit, th))) continue;
+        if (target.f.dodgeT > 0) continue;
         if (target.f.playerControlled && target.f.invincibleT > 0) continue;
         attacker.f.hitDone = 1;
         if (hit.special) attacker.f.hitTargets.set(target, hit.pulse);
@@ -1131,30 +1141,21 @@ export class BeatEmUp {
         if (hit.special) attacker.f.specialMeterTargets.add(target);
         const cx = hit.radial ? th.x + th.w / 2 : hit.x + hit.w / 2;
         const cy = hit.radial ? th.y + th.h / 2 : hit.y + hit.h / 2;
-        if (attacker.role === 'player') Game.tryComboStun(
-          attacker.f, target.f, hit, kind, confirmed, cx - BeatEmUp.cameraX, cy - 58
-        );
         const criticalHit = !!hit.critical && kind !== 'block';
         const isKarateSuper = hit.special && attacker.f.classProfile?.style === 'ward';
-        let comboText = '';
-        if (attacker.role === 'player') {
-          if (hit.comboFinisher && specialFirst) comboText = Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits);
-          else if (confirmed && attacker.f.comboHits >= 2) comboText = Fighter.comboMessage(hit, attacker.f.state, attacker.f.comboHits);
-          if (comboText && !isKarateSuper) Fx.combo(cx - BeatEmUp.cameraX, cy - 34, comboText, attacker.f.classProfile);
-        }
         if (isKarateSuper) {
           const ba = BeatEmUp.withDepth(attacker, () => attacker.f.bones()), bt = BeatEmUp.withDepth(target, () => target.f.bones());
           const slot = Fx.karateSuperSlot(ba, bt);
-          Fx.karateSuperText(attacker.f, attacker.f.atk, slot.x - BeatEmUp.cameraX, slot.y, damage, criticalHit, comboText, attacker.f.classProfile);
+          Fx.karateSuperText(attacker.f, attacker.f.atk, slot.x - BeatEmUp.cameraX, slot.y, damage, criticalHit, '', attacker.f.classProfile);
         } else {
           Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block' || kind === 'parry', criticalHit);
         }
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && attacker.f.classProfile?.style === 'ward') {
           const camX = cx - BeatEmUp.cameraX, k = BeatEmUp.withDepth(attacker, () => attacker.f.drawS() / 1.2);
-          if (hit.pulse === 0) { Fx.karateSuperPunch(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-          else if (hit.pulse === 1) { Fx.karateSuperKickMid(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-          else if (hit.pulse === 2) { Fx.karateSuperKickHigh(camX, cy, attacker.f.face, k, BeatEmUp.withDepth(target, () => target.f.groundY())); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
+          if (hit.pulse <= 1) { Fx.karateSuperPunch(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
+          else if (hit.pulse === 2) { Fx.karateSuperKickMid(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
+          else { Fx.karateSuperKickHigh(camX, cy, attacker.f.face, k, BeatEmUp.withDepth(target, () => target.f.groundY())); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
         } else if (hit.special && attacker.f.classProfile?.weapon === 'staff') {
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
@@ -1177,9 +1178,7 @@ export class BeatEmUp {
           Sfx.play(attacker.f.state === 'kick' ? 'player-heavy-hit' : 'player-normal-hit', attacker.f.classProfile);
         if (kind === 'hit') target.f.vy = -100;
         if (attacker.role === 'player') {
-          BeatEmUp.combo = BeatEmUp.comboT > 0 ? BeatEmUp.combo + 1 : 1;
-          BeatEmUp.comboT = 2.4;
-          BeatEmUp.awardScore(damage * (kind === 'block' ? 35 : 100) + BeatEmUp.combo * 25 + (specialFirst ? 300 : 0));
+          BeatEmUp.awardScore(damage * (kind === 'block' ? 35 : 100) + (specialFirst ? 300 : 0));
           if (hpBefore > 0 && target.f.hp <= 0) {
             BeatEmUp.awardScore(target.kind === 'boss' ? 2500 : 300);
             BeatEmUp.dropItem(target);
@@ -1475,7 +1474,7 @@ export class BeatEmUp {
       } else {
         entry.f.weaponFlashT = 0;
       }
-      entry.f.draw(ctx);
+      if (!Game.spriteBodies) entry.f.draw(ctx);
       entry.f.tag = drawTag;
       if (entry.ai && entry.ai.tellT > 0) {
         const head = entry.f.bones().head;
@@ -1569,11 +1568,6 @@ export class BeatEmUp {
     Game.drawHudPanel(ctx, Game.W - 91 / sc, panelY, 79 / sc, panelH, '#F6C453');
     ctx.textAlign = 'center'; ctx.fillStyle = '#FFE6A7'; ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace';
     ctx.fillText('LIVES ×' + BeatEmUp.lives, Game.W - 51.5 / sc, top + 17 / sc);
-    if (BeatEmUp.combo > 1 && BeatEmUp.comboT > 0) {
-      Game.drawHudPanel(ctx, Game.W / 2 - 56 / sc, infoY - 7 / sc, 112 / sc, 16 / sc, '#F6C453');
-      ctx.textAlign = 'center'; ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
-      ctx.fillText(BeatEmUp.combo + ' HIT COMBO', Game.W / 2, infoY + 1 / sc);
-    }
     if (BeatEmUp.boss && BeatEmUp.boss.f.hp > 0) {
       const bw = Math.min(Game.W * .36, 360 / sc), bh = 14 / sc, bx = (Game.W - bw) / 2, by = infoY + 10 / sc;
       Game.drawHudPanel(ctx, bx, by, bw, bh, '#FF5D67');
@@ -1590,7 +1584,7 @@ export class BeatEmUp {
     if (BeatEmUp.stageOver) {
       const corpses = BeatEmUp.cast.filter(e => e.f.ragdollKO && e.f.ragdollElapsed < 2).slice().sort((a, b) => a.depth - b.depth);
       for (const e of corpses) BeatEmUp.drawFighter(ctx, e);
-      Fx.draw(ctx);
+      Fx.draw(ctx, 'back');
       BeatEmUp.drawResults(ctx);
       return;
     }
@@ -1603,7 +1597,7 @@ export class BeatEmUp {
     BossFields.draw(ctx);
     EnemyProjectile.draw(ctx);
     BladeSuper.draw(ctx, BeatEmUp.cameraX);
-    Fx.draw(ctx);
+    Fx.draw(ctx, 'back');
     BeatEmUp.bars(ctx);
     if (BeatEmUp.showGo) {
       const sc = Game.scale;

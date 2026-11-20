@@ -7,6 +7,7 @@ import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Input } from './input.js';
 import { Pose } from './pose.js';
+import { startPhaser } from './phaser-host.js';
 
 export let fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
@@ -35,8 +36,15 @@ export class Game {
   static practiceComboDamage = 0;
   static practiceComboT = 0;
   static practiceLastMove = '';
+  static ready = false;
+  static usingPhaser = false;
+  static spriteBodies = false;
+  static paintPhaser = null;
+  static drawShakeX = 0;
+  static drawShakeY = 0;
   static init() {
-    Game.canvas = document.getElementById('game'); Game.ctx = Game.canvas.getContext('2d');
+    Game.canvas = document.getElementById('game');
+    if (!startPhaser(Game.canvas)) Game.ctx = Game.canvas.getContext('2d');
     try {
       const saved = localStorage.getItem('stickman-level');
       if (saved && Diff[saved]) Game.level = saved;
@@ -47,10 +55,12 @@ export class Game {
       if (FighterClasses[savedClass]) Game.selectedClass = savedClass;
       else if (FighterClasses[legacyClass]) Game.selectedClass = legacyClass;
     } catch (e) {}
-    Input.bind(); Game.mode = '1v1'; Input.syncMode(); Game.goTitle(); Game.fit(); addEventListener('resize', () => Game.fit());
-    Game.last = performance.now(); requestAnimationFrame(Game.frame);
+    Input.bind(); Game.mode = 'practice'; Input.syncMode(); Game.goTitle(); Game.fit(); addEventListener('resize', () => Game.fit());
+    Game.last = performance.now();
+    Game.ready = true;
+    if (!Game.usingPhaser) requestAnimationFrame(Game.frame);
   }
-  static mode = '1v1';
+  static mode = 'practice';
   static goTitle() {
     Game.closeActionMenu();
     Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
@@ -86,6 +96,7 @@ export class Game {
     try { localStorage.setItem('stickman-beatemup-level', id); } catch (e) {}
   }
   static selectMode(mode) {
+    if (mode !== 'practice' && mode !== 'beatemup') mode = 'practice';
     Game.mode = mode; Input.syncMode();
     fighters[0].setClass(Game.selectedClass);
     fighters[0].color = FighterClasses[Game.selectedClass].color;
@@ -168,7 +179,7 @@ export class Game {
   }
   static syncControls() {
     const el = document.getElementById('controls');
-    if (el) el.classList.toggle('arcade-controls', Game.mode === 'beatemup');
+    if (el) el.classList.toggle('arcade-controls', Game.mode === 'beatemup' || Game.mode === 'practice');
     if (el) el.style.display = Game.paused || Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
     const menu = document.getElementById('main-menu-button');
     if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
@@ -315,13 +326,12 @@ export class Game {
     const sc = Game.scale;
     const compact = sc < 1.5;
     const tw = 140 / sc, th = 44 / sc, tgap = 10 / sc;
-    const tTotal = 3 * tw + 2 * tgap;
+    const tTotal = 2 * tw + tgap;
     const tx0 = (Game.W - tTotal) / 2;
     const ty = Game.H * (compact ? .25 : .38) - th / 2;
     return [
-      { id: '1v1', label: '1v1', x: tx0, y: ty, w: tw, h: th },
-      { id: 'practice', label: 'Practice', x: tx0 + tw + tgap, y: ty, w: tw, h: th },
-      { id: 'beatemup', label: "Beat 'em up", x: tx0 + 2 * (tw + tgap), y: ty, w: tw, h: th },
+      { id: 'practice', label: 'Practice', x: tx0, y: ty, w: tw, h: th },
+      { id: 'beatemup', label: "Beat 'em up", x: tx0 + tw + tgap, y: ty, w: tw, h: th },
     ];
   }
   static difficultyButtonHeight(sc = Game.scale) { return (sc < 1.5 ? 38 : 40) / sc; }
@@ -340,7 +350,7 @@ export class Game {
       if (start && gx >= start.x && gx <= start.x + start.w && gy >= start.y && gy <= start.y + start.h) Game.startMatch();
       return;
     }
-    if (Game.mode === '1v1' || Game.mode === 'practice') {
+    if (Game.mode === 'practice') {
       const card = (layout.classes || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
       if (card) { Game.selectClass(card.id); return; }
       const hit = (layout.levels || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
@@ -351,22 +361,29 @@ export class Game {
   }
   static tryTitleKey(key) {
     if (key === 'Tab') {
-      const modes = ['1v1','practice','beatemup'];
+      const modes = ['practice','beatemup'];
       Game.selectMode(modes[(modes.indexOf(Game.mode) + 1) % modes.length]);
       return;
     }
     if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
-      if (Game.mode !== '1v1') { const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass); Game.selectClass(ids[(i + ids.length - 1) % ids.length]); return; }
-      const i = Game.levels.indexOf(Game.level);
-      Game.level = Game.levels[Math.max(0, i - 1)]; return;
+      if (Game.mode === 'beatemup') {
+        const i = Game.levels.indexOf(Game.arcadeLevel);
+        Game.selectArcadeLevel(Game.levels[Math.max(0, i - 1)]);
+        return;
+      }
+      const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass);
+      Game.selectClass(ids[(i + ids.length - 1) % ids.length]);
+      return;
     }
     if (key === 'ArrowRight' || key === 'd' || key === 'D') {
-      if (Game.mode === '1v1' && Game.level === Game.levels[Game.levels.length - 1]) {
-        Game.selectMode('beatemup'); return;
+      if (Game.mode === 'beatemup') {
+        const i = Game.levels.indexOf(Game.arcadeLevel);
+        Game.selectArcadeLevel(Game.levels[Math.min(Game.levels.length - 1, i + 1)]);
+        return;
       }
-      if (Game.mode !== '1v1') { const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass); Game.selectClass(ids[(i + 1) % ids.length]); return; }
-      const i = Game.levels.indexOf(Game.level);
-      Game.level = Game.levels[Math.min(Game.levels.length - 1, i + 1)]; return;
+      const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass);
+      Game.selectClass(ids[(i + 1) % ids.length]);
+      return;
     }
     if (Game.mode === 'beatemup' && (key === 'ArrowUp' || key === 'ArrowDown')) {
       const i = Game.levels.indexOf(Game.arcadeLevel), step = key === 'ArrowUp' ? -1 : 1;
@@ -447,8 +464,8 @@ export class Game {
     const el = document.getElementById('controls');
     const fallback = { leftEdge: 16 + Game.safeL + 132, rightEdge: innerWidth - 16 - Game.safeR - 200 };
     if (!el) return fallback;
-    const prev = { display: el.style.display, visibility: el.style.visibility, arcade: el.classList.contains('arcade-controls') };
-    el.style.visibility = 'hidden'; el.style.display = ''; el.classList.remove('arcade-controls');
+    const prev = { display: el.style.display, visibility: el.style.visibility };
+    el.style.visibility = 'hidden'; el.style.display = '';
     let leftEdge = 0, rightEdge = innerWidth;
     for (const node of el.querySelectorAll('#move-stick, .pad.left button')) {
       const r = node.getBoundingClientRect(); if (r.width > 0) leftEdge = Math.max(leftEdge, r.right);
@@ -457,7 +474,6 @@ export class Game {
       const r = node.getBoundingClientRect(); if (r.width > 0) rightEdge = Math.min(rightEdge, r.left);
     }
     el.style.display = prev.display; el.style.visibility = prev.visibility;
-    if (prev.arcade) el.classList.add('arcade-controls');
     return leftEdge > 0 && rightEdge < innerWidth ? { leftEdge, rightEdge } : fallback;
   }
   static hitTest(a, b) {
@@ -490,6 +506,7 @@ export class Game {
       // Player Special lanes are checked above; compare the hurtbox in the attacker's lane so off-lane targets get the same reach.
       const foeBox = specialLane != null ? { x:foe.hitbox.x, y:foe.hitbox.y + laneShift, w:foe.hitbox.w, h:foe.hitbox.h } : foe.hitbox;
       if (box.radial ? !Fighter.staffRadialHits(box, me, foe) : !Game.hitTest(box, foeBox)) continue;
+      if (foe.dodgeT > 0) continue;
       if (foe.playerControlled && foe.invincibleT > 0) continue;
       me.hitDone = 1;
       if (box.special) me.hitTargets.set(foe, box.pulse);
@@ -503,38 +520,27 @@ export class Game {
         Game.practiceComboHits++;
         Game.practiceComboDamage += damage;
         Game.practiceComboT = 1.25;
-        const chain = me.atk?.chain || 0;
-        Game.practiceLastMove = box.comboFinisher ? 'COMBO SUPER FINISHER'
-          : me.state === 'punch' ? (me.classProfile?.style === 'ward' ? ['JAB', 'CROSS', 'HOOK', 'RISING PALM'][chain] : ['STRAIGHT', 'HOOK', 'RISING FINISHER'][chain])
-          : me.state === 'kick' ? 'HEAVY STRIKE' : me.state.toUpperCase();
+        Game.practiceLastMove = me.state === 'kick' ? 'HEAVY STRIKE' : me.state === 'punch' ? 'PUNCH' : me.state.toUpperCase();
       }
       me.gainMeter(box.special ? 0 : box.dmg * 2.5);
       if (!box.special || !me.specialMeterTargets.has(foe)) foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
       if (box.special) me.specialMeterTargets.add(foe);
       const cx = box.radial ? foe.hitbox.x + foe.hitbox.w / 2 : box.x + box.w / 2;
       const cy = box.radial ? foe.hitbox.y + foe.hitbox.h / 2 : box.y + box.h / 2;
-      const comboStunned = i === 0 && Game.tryComboStun(me, foe, box, kind, confirmed, cx, cy - 58);
-      if (comboStunned && Game.mode === 'practice') Game.practiceLastMove += ' · STUN';
       const criticalHit = !!box.critical && kind !== 'block';
       const isKarateSuper = box.special && me.classProfile?.style === 'ward';
-      let comboText = '';
-      if (i === 0) {
-        if (box.comboFinisher && box.special && !me.specialEffectDone) comboText = Fighter.comboMessage(box, me.state, me.comboHits);
-        else if (confirmed && me.comboHits >= 2) comboText = Fighter.comboMessage(box, me.state, me.comboHits);
-        if (comboText && !isKarateSuper) Fx.combo(cx, cy - 34, comboText, me.classProfile);
-      }
       if (isKarateSuper) {
         const slot = Fx.karateSuperSlot(me.bones(), foe.bones());
-        Fx.karateSuperText(me, me.atk, slot.x, slot.y, damage, criticalHit, comboText, me.classProfile);
+        Fx.karateSuperText(me, me.atk, slot.x, slot.y, damage, criticalHit, '', me.classProfile);
       } else {
         Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
       }
       if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
       if (box.special && me.classProfile?.style === 'ward') {
         const k = me.drawS() / 1.2;
-        if (box.pulse === 0) { Fx.karateSuperPunch(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-        else if (box.pulse === 1) { Fx.karateSuperKickMid(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-        else if (box.pulse === 2) { Fx.karateSuperKickHigh(cx, cy, me.face, k, foe.groundY()); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
+        if (box.pulse <= 1) { Fx.karateSuperPunch(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
+        else if (box.pulse === 2) { Fx.karateSuperKickMid(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
+        else { Fx.karateSuperKickHigh(cx, cy, me.face, k, foe.groundY()); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
       } else if (box.special && me.classProfile?.weapon === 'staff') {
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
@@ -606,12 +612,22 @@ export class Game {
       ? `Dodge roll cooling down (${cooldown.toFixed(1)} seconds)` : 'Dodge roll available when fight starts';
     if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
   }
+  static present() {
+    if (Game.usingPhaser) {
+      if (Game.spriteBodies && Game.paintPhaser) Game.paintPhaser();
+      else Game.draw();
+      return;
+    }
+    Game.draw();
+    requestAnimationFrame(Game.frame);
+  }
   static frame(now) {
+    if (!Game.ready) return;
     let dt = (now - Game.last) / 1000; Game.last = now; if (dt > .05) dt = .05;
-    if (Game.paused) { Game.acc = 0; Game.draw(); requestAnimationFrame(Game.frame); return; }
+    if (Game.paused) { Game.acc = 0; Game.present(); return; }
     if (Game.shake > 0) Game.shake -= dt;
     Fx.update(dt);
-    if (Game.stop > 0) { Game.stop -= dt; Game.draw(); requestAnimationFrame(Game.frame); return; }
+    if (Game.stop > 0) { Game.stop -= dt; Game.present(); return; }
     Game.acc += dt;
     while (Game.acc >= Game.STEP) {
       const step = Game.STEP;
@@ -693,7 +709,9 @@ export class Game {
         const eased = progress * progress * (3 - 2 * progress);
         BeatEmUp.waveTravelEase = eased;
         if (player) {
-          player.f.x = BeatEmUp.waveTravelStartX + (BeatEmUp.waveTravelTargetX - BeatEmUp.waveTravelStartX) * eased;
+          const nextX = BeatEmUp.waveTravelStartX + (BeatEmUp.waveTravelTargetX - BeatEmUp.waveTravelStartX) * eased;
+          player.f.walkPx = (player.f.walkPx || 0) + Math.abs(nextX - player.f.x);
+          player.f.x = nextX;
           player.f.y = 0; player.f.vx = 0; player.f.vy = 0; player.f.grounded = true;
           player.f.face = 1; player.f.state = 'walk';
           player.f.walkT += step;
@@ -733,7 +751,7 @@ export class Game {
       Game.acc -= step;
     }
     if (Game.phase !== 'title') { Game.syncSpecialBtn(); Game.syncDodgeBtn(); }
-    Game.draw(); requestAnimationFrame(Game.frame);
+    Game.present();
   }
   static bars(ctx) {
     const sc = Game.scale, safe = Game.safeTop;
@@ -804,16 +822,6 @@ export class Game {
     ctx.strokeStyle = 'rgba(190,210,235,.42)'; ctx.lineWidth = 1 / (Game.scale || 1);
     ctx.strokeRect(x, y, w, h);
   }
-  static tryComboStun(attacker, target, hit, kind, confirmed, x, y) {
-    if (!confirmed || kind !== 'hit' || !target || target.hp <= 0 || attacker.comboHits < 2) return false;
-    const chance = hit.comboFinisher ? .40 : hit.comboLink ? .25 : 0;
-    if (!chance || Math.random() >= chance) return false;
-    target.stun = Math.min(72, Math.max(0, target.stun) + 18);
-    target.comboStunEffectT = .45;
-    target.flash = Math.max(target.flash, .16);
-    Fx.stun(x, y, chance);
-    return true;
-  }
   static hudBarLayout(centerGapPx = 44) {
     const sc = Game.scale || 1, gap = centerGapPx / sc;
     const reservedLeft = Game.menuRight ? (Game.menuRight + 8) / sc : 0;
@@ -822,23 +830,13 @@ export class Game {
     return {w:width,gap,x0,x1:x0 + width + gap};
   }
   static drawPracticeHud(ctx) {
-    const sc = Game.scale, w = Math.min(410 / sc, Game.W * .82), h = 96 / sc, x = (Game.W - w) / 2, y = Game.H * .17;
+    const sc = Game.scale, w = Math.min(320 / sc, Game.W * .7), h = 52 / sc, x = (Game.W - w) / 2, y = Game.H * .17;
     Game.drawHudPanel(ctx, x, y, w, h, '#F6C453');
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#6ECFFF';
-    ctx.fillText('COMBO TRAINING  //  ' + (Game.practiceComboHits ? 'LINK CONFIRMED' : 'LAND A HIT TO START'), Game.W / 2, y + 10 / sc);
-    ctx.font = 'bold ' + 17 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
-    ctx.fillText(String(Game.practiceComboHits).padStart(2, '0') + ' HITS   ·   ' + Game.practiceComboDamage.toFixed(1) + ' DMG', Game.W / 2, y + 30 / sc);
-    ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(Game.practiceLastMove || 'LAST LINK: —', Game.W / 2, y + 47 / sc);
-    ctx.font = 'bold ' + 7.5 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#B8C5D9';
-    const comboLine = fighters[0].classProfile?.weapon === 'staff' ? 'THRUST > OVERHEAD  ·  LOW SWEEP AT RANGE'
-      : fighters[0].classProfile?.style === 'ward' ? 'JAB > CROSS > HOOK > RISING PALM  ·  ROLL-CANCEL'
-      : 'NORMAL ×3  ·  NORMAL → HEAVY  ·  HEAVY → NORMAL ×2';
-    ctx.fillText(comboLine, Game.W / 2, y + 63 / sc);
-    ctx.fillText('2+ HITS → SUPER (+25%)', Game.W / 2, y + 75 / sc);
-    ctx.fillStyle = '#FFE16B';
-    ctx.fillText('LINK STUN 25%  ·  SUPER FINISHER STUN 40%', Game.W / 2, y + 87 / sc);
+    ctx.fillText('PRACTICE  //  PUNCH, KICK, AND SPECIAL ARE SINGLE MOVES', Game.W / 2, y + 16 / sc);
+    ctx.font = 'bold ' + 14 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
+    ctx.fillText(String(Game.practiceComboHits).padStart(2, '0') + ' HITS   ·   ' + Game.practiceComboDamage.toFixed(1) + ' DMG', Game.W / 2, y + 34 / sc);
     ctx.textBaseline = 'alphabetic';
   }
   static drawArena(ctx) {
@@ -857,24 +855,24 @@ export class Game {
       const x = bx / 960 * Game.W, w = bw / 960 * Game.W, h = Math.min(bh, gY - yTop);
       ctx.fillRect(x, gY - h, w, h);
     }
-    ctx.fillStyle = '#181A22'; ctx.fillRect(0, gY, Game.W, Game.H - gY);
-    ctx.fillStyle = '#3A3F52'; ctx.fillRect(0, gY, Game.W, 2 / sc);
-    // Faint lane guides for 1v1 / practice depth band.
+    const back = Depth.areaTop(), front = Depth.areaBot();
+    ctx.fillStyle = '#181A22'; ctx.fillRect(0, back, Game.W, Game.H - back);
+    ctx.fillStyle = '#3A3F52'; ctx.fillRect(0, back, Game.W, 2 / sc);
     ctx.save();
     ctx.globalAlpha = .10;
     ctx.strokeStyle = '#9AA5C2';
     ctx.lineWidth = 1 / sc;
-    const laneMid = (Depth.BAND_1V1_TOP + Depth.BAND_1V1_BOT) / 2;
-    for (const y of [Depth.BAND_1V1_TOP, laneMid, Depth.BAND_1V1_BOT]) {
+    for (const y of [back, (back + front) / 2, front]) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(Game.W, y); ctx.stroke();
     }
     ctx.restore();
   }
-  static drawTitle(ctx) {
+  static drawTitle(ctx, part = 'all') {
     const sc = Game.scale;
     const compact = sc < 1.5;
     const layout = Game.titleLayout();
     Game.titleBtns = layout.levels;
+    if (part !== 'chrome') {
     const bg = Game.titleBackground;
     if (bg.complete && bg.naturalWidth) {
       const cover = Math.max(Game.W / bg.naturalWidth, Game.H / bg.naturalHeight);
@@ -894,9 +892,10 @@ export class Game {
     const centerShade = ctx.createRadialGradient(Game.W / 2, Game.H * .51, Game.W * .08, Game.W / 2, Game.H * .51, Game.W * .63);
     centerShade.addColorStop(0, 'rgba(5,10,23,.10)'); centerShade.addColorStop(1, 'rgba(2,5,12,.52)');
     ctx.fillStyle = centerShade; ctx.fillRect(0, 0, Game.W, Game.H);
-
+    }
+    if (part === 'backdrop') return;
     // Keep the selected fighters visible behind the menu cards, as in the arcade mockup.
-    fighters.forEach(fighter => fighter.draw(ctx));
+    if (!Game.spriteBodies) fighters.forEach(fighter => fighter.draw(ctx));
 
     // Fine scanlines and clipped corner marks make the image read like an arcade display.
     ctx.save(); ctx.globalAlpha = .022; ctx.fillStyle = '#A8DFFF';
@@ -1033,18 +1032,54 @@ export class Game {
     }
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
-  static draw() {
+  static drawKarateCharge(ctx) {
+    const camera = Game.mode === 'beatemup' && Game.phase !== 'title' ? BeatEmUp.cameraX : 0;
+    const list = Game.mode === 'beatemup' && Game.phase !== 'title' && BeatEmUp.cast?.length
+      ? BeatEmUp.cast.map((entry) => entry.f)
+      : fighters;
+    for (const fighter of list) {
+      if (!fighter || fighter.classId !== 'freehand' || fighter.classProfile?.style !== 'ward' || fighter.classProfile?.weapon) continue;
+      if (fighter.state !== 'special' || !fighter.atk || fighter.hp <= 0 || fighter.atkT > fighter.atk.su) continue;
+      const progress = Math.min(1, fighter.atkT / Math.max(1, fighter.atk.su));
+      const breathe = .84 + .16 * Math.sin((fighter.animT || 0) * 16);
+      const scale = fighter.drawS() / 1.2;
+      const radius = (20 + progress * 18) * breathe * scale;
+      Fx.chargeAura(ctx, fighter.x - camera, fighter.groundY() + fighter.y - 62 * fighter.drawS(), radius);
+    }
+  }
+  static drawSpriteFx(ctx) {
+    const list = Game.mode === 'beatemup' && Game.phase !== 'title' && BeatEmUp.cast?.length
+      ? BeatEmUp.cast.map((entry) => entry.f)
+      : fighters;
+    for (const fighter of list) {
+      if (!fighter || fighter.classId !== 'freehand') continue;
+      fighter._phaserBody = true;
+      fighter.draw(ctx);
+      fighter._phaserBody = false;
+    }
+  }
+  static draw(layer = 'all') {
     const ctx = Game.ctx;
-    if (Math.max(1, devicePixelRatio || 1) !== Game.fitDpr || innerWidth !== Game.fitW || innerHeight !== Game.fitH) Game.fit();
-    // Clear the whole backing store in device pixels, independent of the game transform.
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, Game.canvas.width, Game.canvas.height);
-    ctx.setTransform(Game.fitDpr * Game.scale, 0, 0, Game.fitDpr * Game.scale, 0, 0);
-    let sx = 0, sy = 0;
-    if (Game.shake > 0) { const m = Game.shMag * (Game.shake / .12); sx = (Math.random() - .5) * 2 * m; sy = (Math.random() - .5) * 2 * m; }
+    if (!ctx) return;
+    const overlay = layer === 'overlay';
+    if (!overlay && (Math.max(1, devicePixelRatio || 1) !== Game.fitDpr || innerWidth !== Game.fitW || innerHeight !== Game.fitH)) Game.fit();
+    if (!overlay) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
+    const pixel = Game.paintScale > 0 ? Game.paintScale : Game.fitDpr * Game.scale;
+    ctx.setTransform(pixel, 0, 0, pixel, 0, 0);
+    let sx = Game.drawShakeX || 0, sy = Game.drawShakeY || 0;
+    if (!overlay) {
+      sx = 0; sy = 0;
+      if (Game.shake > 0) { const m = Game.shMag * (Game.shake / .12); sx = (Math.random() - .5) * 2 * m; sy = (Math.random() - .5) * 2 * m; }
+      Game.drawShakeX = sx; Game.drawShakeY = sy;
+    }
     Game.drawShakeY = sy;
     ctx.save(); ctx.translate(sx, sy);
-    if (Game.mode === 'beatemup' && Game.phase !== 'title') {
+    if (!overlay) {
+    if (Game.phase === 'title') Game.drawTitle(ctx, 'backdrop');
+    else if (Game.mode === 'beatemup') {
     BeatEmUp.draw(ctx);
     if (BeatEmUp.stageTransitionT > 0) {
       const progress = 1 - BeatEmUp.stageTransitionT / BeatEmUp.stageTransitionDuration;
@@ -1075,12 +1110,28 @@ export class Game {
         ctx.fill();
         ctx.restore();
       }
-      for (const f of fighters.slice().sort((a, b) => a.depth - b.depth)) f.draw(ctx);
+      for (const f of fighters.slice().sort((a, b) => a.depth - b.depth)) {
+        if (!Game.spriteBodies) f.draw(ctx);
+      }
+      if (!Game.spriteBodies) {
+        BladeSuper.draw(ctx);
+        Fx.draw(ctx);
+      }
+    }
+    }
+    if (layer === 'world') {
+      if (Game.spriteBodies) Game.drawSpriteFx(ctx);
+      ctx.restore();
+      return;
+    }
+    if (Game.phase === 'title') { Game.drawTitle(ctx, 'chrome'); ctx.restore(); return; }
+    if (Game.spriteBodies && Game.phase !== 'title') Game.drawKarateCharge(ctx);
+    if (Game.spriteBodies && Game.mode !== 'beatemup') {
       BladeSuper.draw(ctx);
       Fx.draw(ctx);
+    } else if (Game.spriteBodies && Game.mode === 'beatemup') {
+      Fx.draw(ctx, 'front');
     }
-    ctx.restore();
-    if (Game.phase === 'title') { Game.drawTitle(ctx); return; }
     if (Game.mode !== 'beatemup') Game.bars(ctx);
     if (Game.mode === 'practice') Game.drawPracticeHud(ctx);
     const arcadeIntroPanelActive = Game.mode === 'beatemup' && Game.phase === 'intro' && BeatEmUp.eventT > 0;
@@ -1108,5 +1159,6 @@ export class Game {
       ctx.fillText('OPEN THE TOP-LEFT MENU TO RESUME', Game.W / 2, Game.H / 2 + 18 / sc);
       ctx.textBaseline = 'alphabetic';
     }
+    ctx.restore();
   }
 }
