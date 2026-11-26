@@ -10,7 +10,7 @@
     "roll": 8,
     "fall": 8,
     "punch": 6,
-    "kick": 8,
+    "kick": 6,
     "special": 12
   },
   "idle": {
@@ -44,10 +44,10 @@
     "anchor": 90
   },
   "kick": {
-    "frameW": 216,
-    "frameH": 222,
-    "baseline": 206,
-    "anchor": 80
+    "frameW": 316,
+    "frameH": 266,
+    "baseline": 250,
+    "anchor": 115
   },
   "special": {
     "frameW": 258,
