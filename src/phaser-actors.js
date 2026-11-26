@@ -1,5 +1,6 @@
 import { Game, fighters } from './game.js';
 import { BeatEmUp } from './beatemup.js';
+import { BladeSuper } from './blade.js';
 
 const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, combo: 18, roll: 8, special: 24 };
 const FRAME_W = 174;
@@ -42,6 +43,16 @@ const STAFF_KICK_ANCHOR = 95;
 const STAFF_SPECIAL_COUNT = 12;
 const STAFF_SPECIAL_BOX = { w: 244, h: 234, baseline: 218 };
 const STAFF_SPECIAL_ANCHOR = 99;
+// Per-clip boxes from assets/characters/blade/frames/clips.json. Body height matches Staff (188).
+const BLADE = {
+  idle: { count: 6, box: { w: 156, h: 224, baseline: 208 }, anchor: 76 },
+  walk: { count: 8, box: { w: 158, h: 224, baseline: 208 }, anchor: 76 },
+  roll: { count: 8, box: { w: 222, h: 220, baseline: 204 }, anchor: 102 },
+  fall: { count: 8, box: { w: 236, h: 220, baseline: 204 }, anchor: 125 },
+  punch: { count: 6, box: { w: 274, h: 224, baseline: 208 }, anchor: 90 },
+  kick: { count: 8, box: { w: 216, h: 222, baseline: 206 }, anchor: 80 },
+  special: { count: 12, box: { w: 258, h: 250, baseline: 234 }, anchor: 88 },
+};
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
@@ -251,6 +262,80 @@ function staffFrame(fighter, name) {
   return Math.floor((fighter.animT || 0) * 12) % STAFF_IDLE_COUNT;
 }
 
+function bladeClip(fighter) {
+  if (fighter.classId !== 'blade') return null;
+  if (fighter.ragdollActive || fighter.hp <= 0 || fighter.state === 'ko' || fighter.state === 'hit') return 'fall';
+  if (fighter.state === 'special') return 'special';
+  if (fighter.state === 'kick') return 'kick';
+  if (fighter.state === 'punch') return 'punch';
+  if (fighter.atk) return null;
+  if (fighter.state === 'roll') return 'roll';
+  if (fighter.state === 'walk') return 'walk';
+  return 'idle';
+}
+
+// 12 special frames across the 60-frame Crescent Storm. The travelling Blade Wave and
+// slash/noto FX stay on the existing Fx / BladeSuper draw path, beside this clip.
+//   0-1 charge (1-12) · 2 wind-up (13-20) · 3 active slash (21-24, wave leaves on 21)
+//   4-6 hold (25-36) · 7 chiburi (37-50) · 8-11 sheath (51-60)
+function bladeSpecialFrame(fighter) {
+  const t = fighter.atkT || 0;
+  const phase = BladeSuper.phaseAt(t).part;
+  if (phase === 'charge') return t <= BladeSuper.CHARGE_FRAMES * 0.5 ? 0 : 1;
+  if (phase === 'windup') return 2;
+  if (phase === 'active') return 3;
+  if (phase === 'hold' || phase === 'gap') {
+    const strike = BladeSuper.STRIKES[0];
+    const start = BladeSuper.strikeStart(0) + strike.windup + strike.active;
+    const off = Math.max(0, t - start);
+    return 4 + Math.min(2, Math.floor(off * 3 / Math.max(1, strike.hold)));
+  }
+  if (phase === 'recovery') return 7;
+  const off = Math.max(0, t - BladeSuper.SHEATH_START);
+  return 8 + Math.min(3, Math.floor(off * 4 / Math.max(1, BladeSuper.SHEATH_FRAMES)));
+}
+
+function bladeAttackFrame(fighter, name, wind, strike) {
+  const count = BLADE[name].count;
+  const attack = fighter.atk;
+  const su = attack ? attack.su : (name === 'kick' ? 10 : 7);
+  const ac = attack ? attack.ac : (name === 'kick' ? 4 : 3);
+  const re = attack ? attack.re : (name === 'kick' ? 16 : 12);
+  const t = fighter.atkT || 0;
+  const recover = count - wind - strike;
+  let index;
+  if (t <= su) index = Math.min(wind - 1, Math.floor((su ? t / su : 1) * wind));
+  else if (t <= su + ac) index = wind + Math.min(strike - 1, Math.floor((ac ? (t - su) / ac : 1) * strike));
+  else index = wind + strike + Math.min(recover - 1, Math.floor((re ? Math.min(1, (t - su - ac) / re) : 1) * recover));
+  return Math.max(0, Math.min(count - 1, index));
+}
+
+function bladeFrame(fighter, name) {
+  if (fighter._bladeClip !== name) {
+    fighter._bladeClip = name;
+    fighter._bladeClipStart = fighter.animT || 0;
+  }
+  const count = BLADE[name].count;
+  if (name === 'fall') {
+    return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._bladeClipStart) * 12)));
+  }
+  // Quick Draw: sheathed grip, then the draw, then the two slash frames on the active window.
+  if (name === 'punch') return bladeAttackFrame(fighter, name, 2, 2);
+  // Scabbard kick: chamber in startup, extended leg on the active frames, then the leg comes down.
+  if (name === 'kick') return bladeAttackFrame(fighter, name, 3, 2);
+  if (name === 'special') return bladeSpecialFrame(fighter);
+  if (name === 'walk') {
+    const cyclePx = 148;
+    return Math.floor((fighter.walkPx || 0) / (cyclePx / count)) % count;
+  }
+  if (name === 'roll') {
+    const duration = 0.48;
+    const elapsed = Math.max(0, duration - (fighter.dodgeT || 0));
+    return Math.max(0, Math.min(count - 1, Math.floor(elapsed / duration * count)));
+  }
+  return Math.floor((fighter.animT || 0) * 12) % count;
+}
+
 export function loadKarate(scene) {
   for (let i = 0; i < STAFF_IDLE_COUNT; i++) {
     const file = String(i).padStart(2, '0');
@@ -279,6 +364,12 @@ export function loadKarate(scene) {
   for (let i = 0; i < STAFF_FALL_COUNT; i++) {
     const file = String(i).padStart(2, '0');
     scene.load.image('staff-fall-' + i, 'assets/characters/staff/frames/clips/fall/' + file + '.png?v=1');
+  }
+  for (const [name, meta] of Object.entries(BLADE)) {
+    for (let i = 0; i < meta.count; i++) {
+      const file = String(i).padStart(2, '0');
+      scene.load.image('blade-' + name + '-' + i, 'assets/characters/blade/frames/clips/' + name + '/' + file + '.png?v=1');
+    }
   }
   for (const [name, count] of Object.entries(CLIPS)) {
     for (let i = 0; i < count; i++) {
@@ -395,6 +486,7 @@ function paint(scene) {
     if (!view) { view = {}; views.set(fighter, view); }
     const karate = fighter.classId === 'freehand';
     const staffName = staffClip(fighter);
+    const bladeName = bladeClip(fighter);
     if (karate) {
       const name = clipOf(fighter);
       const texture = key(name, frameOf(fighter, name));
@@ -428,8 +520,25 @@ function paint(scene) {
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
+    } else if (bladeName) {
+      const index = bladeFrame(fighter, bladeName);
+      const texture = 'blade-' + bladeName + '-' + index;
+      if (!view.body) view.body = scene.add.image(0, 0, texture);
+      if (view.body.texture.key !== texture) view.body.setTexture(texture);
+      const meta = BLADE[bladeName];
+      const box = meta.box;
+      const foot = meta.anchor - box.w / 2;
+      view.body.setFlipX(fighter.face < 0);
+      view.body.setRotation(0);
+      view.body.setScale(((96 * fighter.drawS()) / BODY) * screen);
+      if (fighter.flash > 0) view.body.setTintFill(0xffffff);
+      else view.body.clearTint();
+      const blink = bladeName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
+      view.body.setAlpha(blink ? 0.35 : 1);
+      place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
+      if (view.plate) view.plate.setVisible(false);
     } else if (view.body) view.body.setVisible(false);
-    if (!karate && !staffName) {
+    if (!karate && !staffName && !bladeName) {
       const plate = paintPlate(scene, view, fighter, false);
       plate.setScale(screen);
       plate.setRotation(0);
