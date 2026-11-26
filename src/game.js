@@ -719,7 +719,7 @@ export class Game {
         }
         BeatEmUp.easeTravelCamera(eased);
         if (player) BeatEmUp.clampFighterBones(player);
-        if (BeatEmUp.pano()) BeatEmUp.bgGlide(eased);
+        if (BeatEmUp.pano() && !BeatEmUp.tiledReady()) BeatEmUp.bgGlide(eased);
         BeatEmUp.waveTravelT = Math.max(0, BeatEmUp.waveTravelT - step);
         if (BeatEmUp.waveTravelT <= 0) {
           if (player) {
@@ -731,7 +731,7 @@ export class Game {
           BeatEmUp.waveTravelEase = 1;
           BeatEmUp.easeTravelCamera(1);
           if (player) BeatEmUp.clampFighterBones(player);
-          if (BeatEmUp.pano()) BeatEmUp.bgGlide(1);
+          if (BeatEmUp.pano() && !BeatEmUp.tiledReady()) BeatEmUp.bgGlide(1);
           const next = BeatEmUp.waveTravelNext;
           BeatEmUp.waveTravelNext = 0;
           if (next === 4) BeatEmUp.startBoss(false, true);
