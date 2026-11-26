@@ -62,6 +62,28 @@ export class BeatEmUp {
   };
   static PANO = BeatEmUp.PANOS[1];
   static pano(stage = BeatEmUp.stage) { return BeatEmUp.PANOS[stage] || null; }
+  /** Seamless street tiles. Waves 1–3 scroll 1:1 with cameraX. Wave 4 crossfades to a standalone boss plate.
+      A later stage opts in by adding one entry; Stage 2's panorama and Stages 3–10's stretched plates stay put. */
+  static TILED_STAGES = {
+    1: {
+      tile: 'assets/backgrounds/stage-01-street-tile.webp',
+      boss: 'assets/backgrounds/stage-01-boss-arena.webp',
+      w: 1280,
+      h: 720,
+    },
+  };
+  /** Boss plate fade, seconds. Finishes during the wave-3 → wave-4 glide (1.05s) and also covers a direct boss entry. */
+  static BOSS_FADE = 0.7;
+  static bossAlpha = 0;
+  static bossFadeStart = 0;
+  static tiled(stage = BeatEmUp.stage) { return BeatEmUp.TILED_STAGES[stage] || null; }
+  /** True once the street tile has decoded. Until then the panorama (or stretched plate) stays in charge. */
+  static tiledReady(stage = BeatEmUp.stage) {
+    const spec = BeatEmUp.tiled(stage);
+    if (!spec) return false;
+    const image = BeatEmUp.backgroundCache.get(spec.tile);
+    return !!(image && image.complete && image.naturalWidth);
+  }
   static bgX = 0;
   static bgTravelFrom = 0;
   static bgTravelTo = 0;
@@ -114,6 +136,8 @@ export class BeatEmUp {
   static cameraMax(limitToPicture = true) {
     const minCam = Math.max(0, BeatEmUp.lockL);
     const stageMax = Math.max(minCam, BeatEmUp.worldMax - BeatEmUp.viewWidth());
+    // A looping street has no plate wall. Stopping at the panorama length would freeze the walk.
+    if (BeatEmUp.tiledReady()) return stageMax;
     if (!limitToPicture || !BeatEmUp.pano()) return stageMax;
     const range = BeatEmUp.bgScrollRange();
     const follow = BeatEmUp.pano().h / Game.H * 0.6;
@@ -139,7 +163,8 @@ export class BeatEmUp {
     const dx = cam - prev;
     if (!dx) return;
     BeatEmUp.skyOffset += dx * 0.5;
-    if (trackBackground) BeatEmUp.bgFollow(dx);
+    // Tiled streets sample cameraX directly. The panorama's slower bgFollow would lurch against that 1:1 scroll.
+    if (trackBackground && !BeatEmUp.tiledReady()) BeatEmUp.bgFollow(dx);
   }
   /** Wave travel: same smoothstep progress as the camera glide. */
   static bgGlide(eased) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom + (BeatEmUp.bgTravelTo - BeatEmUp.bgTravelFrom) * eased; }
@@ -150,18 +175,68 @@ export class BeatEmUp {
     BeatEmUp.cameraX = cam;
     if (dx) BeatEmUp.skyOffset += dx * 0.5;
   }
-  /** Load a stage background on first use (index is 0-based). */
-  static background(index) {
-    const src = BeatEmUp.backgrounds[index];
+  static loadImage(src) {
     if (!src) return null;
     let image = BeatEmUp.backgroundCache.get(src);
     if (!image) { image = new Image(); image.decoding = 'async'; image.src = src; BeatEmUp.backgroundCache.set(src, image); }
     return image;
   }
-  /** Current stage now, next stage in the background. */
+  /** Decoded image, or null while the request is still in flight (callers fall back). */
+  static readyImage(src) {
+    const image = BeatEmUp.loadImage(src);
+    return image?.complete && image.naturalWidth ? image : null;
+  }
+  /** Load a stage background on first use (index is 0-based). */
+  static background(index) {
+    return BeatEmUp.loadImage(BeatEmUp.backgrounds[index]);
+  }
+  /** Current stage now, next stage in the background. Tiled stages also preload their street tile and boss plate. */
   static loadStageBackgrounds(stage) {
     BeatEmUp.background(stage - 1);
     BeatEmUp.background(stage);
+    for (const n of [stage, stage + 1]) {
+      const spec = BeatEmUp.tiled(n);
+      if (!spec) continue;
+      BeatEmUp.loadImage(spec.tile);
+      BeatEmUp.loadImage(spec.boss);
+    }
+  }
+  static resetBossFade() {
+    BeatEmUp.bossAlpha = 0;
+    BeatEmUp.bossFadeStart = 0;
+  }
+  static bossFadeCurve(u) {
+    const t = Math.max(0, Math.min(1, u || 0));
+    return t * t * (3 - 2 * t);
+  }
+  /** Latch the plate fade when the boss fight starts. The glide path has already run most of it. */
+  static armBossFade(keepBackdrop) {
+    if (!BeatEmUp.tiled()) return;
+    if (keepBackdrop) {
+      const elapsed = Math.max(0, BeatEmUp.waveTravelDuration - (BeatEmUp.waveTravelT || 0));
+      BeatEmUp.bossAlpha = BeatEmUp.bossFadeCurve(elapsed / BeatEmUp.BOSS_FADE);
+      BeatEmUp.bossFadeStart = BeatEmUp.bossAlpha >= 1 ? 0 : performance.now() - elapsed * 1000;
+    } else {
+      BeatEmUp.bossAlpha = 0;
+      BeatEmUp.bossFadeStart = performance.now();
+    }
+  }
+  /** 0 on the street, rising to 1 across the wave-3 → boss glide (or over BOSS_FADE if the glide was skipped). */
+  static presentedBossAlpha() {
+    if (!BeatEmUp.tiled()) return 0;
+    if (Game.phase === 'waveTransition' && BeatEmUp.waveTravelNext === 4) {
+      const elapsed = Math.max(0, BeatEmUp.waveTravelDuration - (BeatEmUp.waveTravelT || 0));
+      BeatEmUp.bossAlpha = BeatEmUp.bossFadeCurve(elapsed / BeatEmUp.BOSS_FADE);
+      return BeatEmUp.bossAlpha;
+    }
+    if (BeatEmUp.wave >= 4 && BeatEmUp.bossFadeStart) {
+      const elapsed = (performance.now() - BeatEmUp.bossFadeStart) / 1000;
+      BeatEmUp.bossAlpha = BeatEmUp.bossFadeCurve(elapsed / BeatEmUp.BOSS_FADE);
+      if (BeatEmUp.bossAlpha >= 1) BeatEmUp.bossFadeStart = 0;
+      return BeatEmUp.bossAlpha;
+    }
+    if (BeatEmUp.wave >= 4) return BeatEmUp.bossAlpha;
+    return 0;
   }
   static wave = 0;
   static waveTotal = 3;
@@ -341,6 +416,7 @@ export class BeatEmUp {
     BeatEmUp.cameraX = 0;
     BeatEmUp.skyOffset = 0;
     BeatEmUp.bgX = BeatEmUp.bgTravelFrom = BeatEmUp.bgTravelTo = 0;
+    BeatEmUp.resetBossFade();
     BeatEmUp.stage = 1;
     BeatEmUp.loadStageBackgrounds(1);
     BeatEmUp.wave = 0;
@@ -392,6 +468,7 @@ export class BeatEmUp {
     BeatEmUp.stage = Math.max(1, Math.min(BeatEmUp.stageTotal, stage));
     BeatEmUp.loadStageBackgrounds(BeatEmUp.stage);
     BeatEmUp.cameraX = 0; BeatEmUp.skyOffset = 0; BeatEmUp.bgSet(1);
+    BeatEmUp.resetBossFade();
     BeatEmUp.lockL = 0; BeatEmUp.lockR = Game.W * .95;
     BeatEmUp.spawnX = Game.W * .7; BeatEmUp.worldMax = Game.W * 4.2;
     BeatEmUp.locked = 1; BeatEmUp.showGo = 0; BeatEmUp.goArmed = 0;
@@ -506,6 +583,7 @@ export class BeatEmUp {
   static startWave(n, retry = false, chapterIntro = false, keepBackdrop = false) {
     BeatEmUp.wave = n;
     if (!keepBackdrop) BeatEmUp.bgSet(n);
+    if (n < 4) BeatEmUp.resetBossFade();
     BeatEmUp.stageIntroT = !retry && chapterIntro ? 5 : 0;
     const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1];
     const wave = chapter.waves[n - 1];
@@ -572,6 +650,7 @@ export class BeatEmUp {
     BeatEmUp.stageIntroT = 0;
     BeatEmUp.wave = 4;
     if (!keepBackdrop) BeatEmUp.bgSet(4);
+    BeatEmUp.armBossFade(keepBackdrop);
     BeatEmUp.locked = 1;
     BeatEmUp.showGo = 0;
     BeatEmUp.lockL = BeatEmUp.cameraX;
@@ -1218,7 +1297,41 @@ export class BeatEmUp {
     }
   }
 
+  /** Width of one street tile scaled to the full screen height, aspect kept. */
+  static tileDrawW(spec, H = Game.H) {
+    return spec.w * (H / spec.h);
+  }
+  /** Horizontally wrapped street, then the boss plate on top. False while the tile is still decoding. */
+  static drawTiledBackdrop(ctx) {
+    const spec = BeatEmUp.tiled();
+    if (!spec) return false;
+    const tile = BeatEmUp.readyImage(spec.tile);
+    if (!tile) return false;
+    const H = Game.H, W = Game.W;
+    const drawW = BeatEmUp.tileDrawW(spec, H);
+    if (!(drawW > 0) || !Number.isFinite(drawW)) return false;
+    const offset = -(((BeatEmUp.cameraX % drawW) + drawW) % drawW);
+    ctx.save();
+    const iw = tile.naturalWidth, ih = tile.naturalHeight;
+    // One extra pixel of width so neighbouring copies overlap instead of leaving a seam.
+    for (let x = offset; x < W; x += drawW) ctx.drawImage(tile, 0, 0, iw, ih, x, 0, drawW + 1, H);
+    const alpha = BeatEmUp.presentedBossAlpha();
+    const boss = alpha > 0 ? BeatEmUp.readyImage(spec.boss) : null;
+    if (boss) {
+      const bw = boss.naturalWidth, bh = boss.naturalHeight;
+      // Same height-fit as the street when the screen is 16:9 or narrower (destY = 0, curb stays put).
+      // A wider screen covers by scaling up and shifting around the shared 56.7% curb so the join doesn't jump.
+      const scale = Math.max(W / bw, H / bh);
+      const destW = bw * scale, destH = bh * scale;
+      const curb = 0.567;
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(boss, 0, 0, bw, bh, (W - destW) / 2, curb * (H - destH), destW, destH);
+    }
+    ctx.restore();
+    return true;
+  }
   static drawStageBackdrop(ctx) {
+    if (BeatEmUp.drawTiledBackdrop(ctx)) return;
     const image = BeatEmUp.background(BeatEmUp.stage - 1);
     if (!image?.complete || !image.naturalWidth) return;
     ctx.save();
