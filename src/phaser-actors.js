@@ -53,6 +53,21 @@ const BLADE = {
   kick: { count: 8, box: { w: 216, h: 222, baseline: 206 }, anchor: 80 },
   special: { count: 12, box: { w: 258, h: 250, baseline: 234 }, anchor: 88 },
 };
+// Per-clip boxes from assets/characters/brawler/frames/clips.json and rusher/frames/clips.json.
+// Body height matches Staff and Blade (188). Stage 1 enemies only; other archetypes stay on the vector plate.
+const BRAWLER = {
+  idle: { count: 6, box: { w: 152, h: 224, baseline: 208 }, anchor: 84 },
+  walk: { count: 8, box: { w: 156, h: 222, baseline: 206 }, anchor: 83 },
+  'jab-cross': { count: 8, box: { w: 270, h: 222, baseline: 206 }, anchor: 107 },
+  fall: { count: 8, box: { w: 258, h: 220, baseline: 204 }, anchor: 143 },
+};
+const RUSHER = {
+  idle: { count: 6, box: { w: 152, h: 222, baseline: 206 }, anchor: 80 },
+  walk: { count: 8, box: { w: 198, h: 222, baseline: 206 }, anchor: 89 },
+  rush: { count: 8, box: { w: 326, h: 248, baseline: 232 }, anchor: 150 },
+  fall: { count: 8, box: { w: 308, h: 220, baseline: 204 }, anchor: 159 },
+};
+const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER };
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
@@ -336,6 +351,147 @@ function bladeFrame(fighter, name) {
   return Math.floor((fighter.animT || 0) * 12) % count;
 }
 
+// Brawler / Rusher cast entries only. Kind lives on the beat 'em up entry, not classId.
+function stageEnemy(fighter) {
+  if (Game.mode !== 'beatemup' || Game.phase === 'title' || !BeatEmUp.cast?.length) return null;
+  const entry = BeatEmUp.entryFor(fighter);
+  if (!entry || entry.role !== 'enemy' || !ENEMY_CLIPS[entry.kind]) return null;
+  return entry;
+}
+
+// Same corpse window BeatEmUp.draw uses: a KO stays up for 2s, then leaves with its shadow.
+function enemyOnStage(entry) {
+  if (entry.f.hp > 0) return true;
+  return !!(entry.f.ragdollKO && entry.f.ragdollElapsed < 2);
+}
+
+// withDepth's Fighter.S: baseS * lane scale * archetype scale. That is the size the vector body
+// and the ground shadow already use. Paint runs outside withDepth, so drawS() alone would not.
+function enemyBodyScale(entry) {
+  const s = (BeatEmUp.baseS || 1) * BeatEmUp.depthToScale(entry.depth) * (entry.scaleMul || 1);
+  return (96 * s) / BODY;
+}
+
+// KO corpses dissolve over the last 0.6s of the 2s window instead of popping off.
+function deathAlpha(fighter) {
+  if (!fighter.ragdollKO) return 1;
+  const start = 1.4;
+  const t = fighter.ragdollElapsed || 0;
+  if (t <= start) return 1;
+  return Math.max(0, (2 - t) / (2 - start));
+}
+
+function phaseIndex(t, start, end, count) {
+  const span = Math.max(1, end - start);
+  const u = Math.max(0, Math.min(0.999, (t - start) / span));
+  return Math.min(count - 1, Math.floor(u * count));
+}
+
+// 8 jab-cross frames, four per hit: wind, wind, strike on the active window, recovery.
+function brawlerAttackFrame(fighter) {
+  const count = BRAWLER['jab-cross'].count;
+  const attack = fighter.atk;
+  const t = fighter.atkT || 0;
+  const windows = attack?.comboWindows;
+  if (!windows || !windows.length) {
+    const total = Math.max(1, attack ? attack.su + attack.ac + attack.re : count);
+    return Math.max(0, Math.min(count - 1, Math.floor(t / total * count)));
+  }
+  const per = Math.floor(count / windows.length);
+  const wind = Math.max(1, per - 2);
+  const strike = 1;
+  const recover = Math.max(1, per - wind - strike);
+  const endAll = attack.su + attack.ac + attack.re;
+  for (let i = 0; i < windows.length; i++) {
+    const w = windows[i];
+    const next = i + 1 < windows.length ? windows[i + 1].windStart : endAll;
+    if (t < next || i === windows.length - 1) {
+      const base = i * per;
+      let index;
+      if (t < w.activeStart) index = base + phaseIndex(t, w.windStart, w.activeStart, wind);
+      else if (t <= w.activeEnd) index = base + wind + phaseIndex(t, w.activeStart, w.activeEnd + 1, strike);
+      else index = base + wind + strike + phaseIndex(t, w.activeEnd + 1, Math.max(w.activeEnd + 2, next), recover);
+      return Math.max(0, Math.min(count - 1, index));
+    }
+  }
+  return count - 1;
+}
+
+// 8 rush frames: crouch, approach, the live shoulder, then the whiff stumble / hit recovery.
+function rusherAttackFrame(fighter) {
+  const count = RUSHER.rush.count;
+  const attack = fighter.atk;
+  const spec = attack?.rush;
+  const t = fighter.atkT || 0;
+  if (!spec) {
+    const total = Math.max(1, attack ? attack.su + attack.ac + attack.re : count);
+    return Math.max(0, Math.min(count - 1, Math.floor(t / total * count)));
+  }
+  const dashStart = spec.crouch + 1;
+  const su = spec.crouch + spec.dash - spec.active;
+  const strikeEnd = su + spec.active;
+  const total = Math.max(strikeEnd + 1, attack.su + attack.ac + attack.re);
+  let index;
+  if (t < dashStart) index = phaseIndex(t, 0, dashStart, 2);
+  else if (t <= su) index = 2 + phaseIndex(t, dashStart, su + 1, 2);
+  else if (t <= strikeEnd) index = 4 + phaseIndex(t, su + 1, strikeEnd + 1, 2);
+  else index = 6 + phaseIndex(t, strikeEnd + 1, total, 2);
+  return Math.max(0, Math.min(count - 1, index));
+}
+
+// Standing hitstun uses the fall clip's on-feet recoil (flinch). A missing texture falls back to the vector plate.
+function enemyClip(entry, fighter) {
+  const down = fighter.ragdollActive || fighter.hp <= 0 || fighter.state === 'ko' || fighter.state === 'knockdown';
+  if (down) return 'fall';
+  // Standing hitstun has no hurt clip. The first two fall frames are still on their feet;
+  // the white hit flash is applied on top, matching the vector flash.
+  if (fighter.state === 'hit') return 'flinch';
+  const attack = entry.kind === 'brawler' ? 'jab-cross' : 'rush';
+  if (fighter.state === 'punch' || fighter.state === 'kick' || fighter.state === 'special' || fighter.atk) return attack;
+  if (fighter.state === 'walk') return 'walk';
+  return 'idle';
+}
+
+function enemyFrame(fighter, name, count) {
+  if (fighter._posedClip !== name) {
+    fighter._posedClip = name;
+    fighter._posedClipStart = fighter.animT || 0;
+  }
+  if (name === 'flinch') return Math.floor((fighter.animT || 0) * 12) % 2;
+  if (name === 'fall') {
+    return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._posedClipStart) * 12)));
+  }
+  if (name === 'jab-cross') return brawlerAttackFrame(fighter);
+  if (name === 'rush') return rusherAttackFrame(fighter);
+  if (name === 'walk') {
+    return Math.floor((fighter.walkPx || 0) / (148 / count)) % count;
+  }
+  return Math.floor((fighter.animT || 0) * 12) % count;
+}
+
+function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
+  const table = ENEMY_CLIPS[entry.kind];
+  const clip = name === 'flinch' ? 'fall' : name;
+  const meta = table[clip];
+  if (!meta) return false;
+  const index = enemyFrame(fighter, name, meta.count);
+  const texture = entry.kind + '-' + clip + '-' + index;
+  if (!scene.textures.exists(texture)) return false;
+  if (!view.body) view.body = scene.add.image(0, 0, texture);
+  if (view.body.texture.key !== texture) view.body.setTexture(texture);
+  const box = meta.box;
+  const foot = meta.anchor - box.w / 2;
+  view.body.setFlipX(fighter.face < 0);
+  view.body.setRotation(0);
+  view.body.setScale(enemyBodyScale(entry) * screen);
+  if (fighter.flash > 0) view.body.setTintFill(0xffffff);
+  else view.body.clearTint();
+  view.body.setAlpha(deathAlpha(fighter));
+  place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
+  if (view.plate) view.plate.setVisible(false);
+  return true;
+}
+
 export function loadKarate(scene) {
   for (let i = 0; i < STAFF_IDLE_COUNT; i++) {
     const file = String(i).padStart(2, '0');
@@ -369,6 +525,14 @@ export function loadKarate(scene) {
     for (let i = 0; i < meta.count; i++) {
       const file = String(i).padStart(2, '0');
       scene.load.image('blade-' + name + '-' + i, 'assets/characters/blade/frames/clips/' + name + '/' + file + '.png?v=1');
+    }
+  }
+  for (const [kind, table] of Object.entries(ENEMY_CLIPS)) {
+    for (const [name, meta] of Object.entries(table)) {
+      for (let i = 0; i < meta.count; i++) {
+        const file = String(i).padStart(2, '0');
+        scene.load.image(kind + '-' + name + '-' + i, 'assets/characters/' + kind + '/frames/clips/' + name + '/' + file + '.png?v=1');
+      }
     }
   }
   for (const [name, count] of Object.entries(CLIPS)) {
@@ -484,9 +648,17 @@ function paint(scene) {
     live.add(fighter);
     let view = views.get(fighter);
     if (!view) { view = {}; views.set(fighter, view); }
+    const entry = stageEnemy(fighter);
+    if (entry && !enemyOnStage(entry)) {
+      if (view.body) view.body.setVisible(false);
+      if (view.plate) view.plate.setVisible(false);
+      continue;
+    }
     const karate = fighter.classId === 'freehand';
     const staffName = staffClip(fighter);
     const bladeName = bladeClip(fighter);
+    const enemyName = entry ? enemyClip(entry, fighter) : null;
+    let enemyPosed = false;
     if (karate) {
       const name = clipOf(fighter);
       const texture = key(name, frameOf(fighter, name));
@@ -537,8 +709,11 @@ function paint(scene) {
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
+    } else if (enemyName) {
+      enemyPosed = paintEnemy(scene, view, fighter, entry, screen, camera, enemyName);
+      if (!enemyPosed && view.body) view.body.setVisible(false);
     } else if (view.body) view.body.setVisible(false);
-    if (!karate && !staffName && !bladeName) {
+    if (!karate && !staffName && !bladeName && !enemyPosed) {
       const plate = paintPlate(scene, view, fighter, false);
       plate.setScale(screen);
       plate.setRotation(0);
