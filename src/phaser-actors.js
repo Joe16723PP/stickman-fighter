@@ -50,7 +50,7 @@ const BLADE = {
   roll: { count: 8, box: { w: 222, h: 220, baseline: 204 }, anchor: 102 },
   fall: { count: 8, box: { w: 236, h: 220, baseline: 204 }, anchor: 125 },
   punch: { count: 6, box: { w: 274, h: 224, baseline: 208 }, anchor: 90 },
-  kick: { count: 8, box: { w: 216, h: 222, baseline: 206 }, anchor: 80 },
+  kick: { count: 6, box: { w: 316, h: 266, baseline: 250 }, anchor: 115 },
   special: { count: 12, box: { w: 258, h: 250, baseline: 234 }, anchor: 88 },
 };
 // Per-clip boxes from assets/characters/brawler/frames/clips.json and rusher/frames/clips.json.
@@ -346,8 +346,9 @@ function bladeFrame(fighter, name) {
   }
   // Quick Draw: sheathed grip, then the draw, then the two slash frames on the active window.
   if (name === 'punch') return bladeAttackFrame(fighter, name, 2, 2);
-  // Scabbard kick: chamber in startup, extended leg on the active frames, then the leg comes down.
-  if (name === 'kick') return bladeAttackFrame(fighter, name, 3, 2);
+  // Crescent Cleave (6): overhead wind-up in startup, crescent slash across the active window, then recovery.
+  //   0-1 raise to overhead · 2-4 slash arc · 5 return
+  if (name === 'kick') return bladeAttackFrame(fighter, name, 2, 3);
   if (name === 'special') return bladeSpecialFrame(fighter);
   if (name === 'walk') {
     const cyclePx = 148;
@@ -598,7 +599,9 @@ export function loadKarate(scene) {
   for (const [name, meta] of Object.entries(BLADE)) {
     for (let i = 0; i < meta.count; i++) {
       const file = String(i).padStart(2, '0');
-      scene.load.image('blade-' + name + '-' + i, 'assets/characters/blade/frames/clips/' + name + '/' + file + '.png?v=1');
+      // Kick frames changed from the 8-frame scabbard kick to the 6-frame Crescent Cleave.
+      const stamp = name === 'kick' ? '2' : '1';
+      scene.load.image('blade-' + name + '-' + i, 'assets/characters/blade/frames/clips/' + name + '/' + file + '.png?v=' + stamp);
     }
   }
   for (const [kind, table] of Object.entries(ENEMY_CLIPS)) {
