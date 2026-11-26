@@ -67,7 +67,17 @@ const RUSHER = {
   rush: { count: 8, box: { w: 326, h: 248, baseline: 232 }, anchor: 150 },
   fall: { count: 8, box: { w: 308, h: 220, baseline: 204 }, anchor: 159 },
 };
-const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER };
+// Per-clip boxes from assets/characters/block-captain/frames/clips.json.
+// Body height stays 188, same as the other posed casts. His larger size is the existing
+// boss scaleMul (1.25, and the phase sizes the vector body already uses), not a taller clip.
+const BLOCK_CAPTAIN = {
+  idle: { count: 6, box: { w: 138, h: 220, baseline: 204 }, anchor: 79 },
+  walk: { count: 8, box: { w: 150, h: 222, baseline: 206 }, anchor: 76 },
+  'jab-hook': { count: 8, box: { w: 244, h: 222, baseline: 206 }, anchor: 94 },
+  special: { count: 12, box: { w: 294, h: 266, baseline: 250 }, anchor: 138 },
+  fall: { count: 8, box: { w: 260, h: 224, baseline: 208 }, anchor: 127 },
+};
+const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, 'block-captain': BLOCK_CAPTAIN };
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
@@ -351,11 +361,21 @@ function bladeFrame(fighter, name) {
   return Math.floor((fighter.animT || 0) * 12) % count;
 }
 
-// Brawler / Rusher cast entries only. Kind lives on the beat 'em up entry, not classId.
+// Posed-sprite id for a cast entry. Brawler and Rusher use their archetype kind.
+// Block Captain's kind is 'boss' (every stage boss is); his signature key is what picks him out.
+// Other bosses stay on the vector plate.
+function posedKind(entry) {
+  if (!entry || entry.role !== 'enemy') return null;
+  if (ENEMY_CLIPS[entry.kind]) return entry.kind;
+  if (entry.kind === 'boss' && entry.f?.bossProfile?.signature?.key === 'bossBlockParty') return 'block-captain';
+  return null;
+}
+
+// Brawler, Rusher, and the Stage 1 boss. Kind lives on the beat 'em up entry, not classId.
 function stageEnemy(fighter) {
   if (Game.mode !== 'beatemup' || Game.phase === 'title' || !BeatEmUp.cast?.length) return null;
   const entry = BeatEmUp.entryFor(fighter);
-  if (!entry || entry.role !== 'enemy' || !ENEMY_CLIPS[entry.kind]) return null;
+  if (!posedKind(entry)) return null;
   return entry;
 }
 
@@ -439,6 +459,50 @@ function rusherAttackFrame(fighter) {
   return Math.max(0, Math.min(count - 1, index));
 }
 
+// 8 jab-hook frames, four per normal. Jab is 0-3, hook is 4-7.
+// Each quartet is wind, wind, strike held on the active window, recovery.
+function blockCaptainNormalFrame(fighter) {
+  const count = BLOCK_CAPTAIN['jab-hook'].count;
+  const attack = fighter.atk;
+  const hook = attack?.kind === 'kick';
+  const base = hook ? 4 : 0;
+  const su = attack ? attack.su : (hook ? 12 : 8);
+  const ac = attack ? attack.ac : (hook ? 4 : 3);
+  const re = attack ? attack.re : (hook ? 17 : 13);
+  const t = fighter.atkT || 0;
+  const wind = 2;
+  const strike = 1;
+  const recover = 1;
+  let index;
+  if (t <= su) index = phaseIndex(t, 0, su + 1, wind);
+  else if (t <= su + ac) index = wind + phaseIndex(t, su + 1, su + ac + 1, strike);
+  else index = wind + strike + phaseIndex(t, su + ac + 1, su + ac + re + 1, recover);
+  return Math.max(0, Math.min(count - 1, base + index));
+}
+
+// 12 Block Party frames across the signature's startup, 3 live slots, and recovery.
+//   0-2 charge (startup)
+//   hit 1: 3 reach, 4 impact · hit 2: 5 reach, 6 impact · hit 3: 7-8 overhead, 9 guard-break
+//   10-11 recover, holding the guard. Hit timing stays on BossSignature.
+function blockCaptainSpecialFrame(fighter) {
+  const count = BLOCK_CAPTAIN.special.count;
+  const attack = fighter.atk;
+  const su = attack ? attack.su : 10;
+  const ac = attack ? attack.ac : 9;
+  const re = attack ? attack.re : 16;
+  const hits = Math.max(1, attack?.hitCount || 3);
+  const t = fighter.atkT || 0;
+  if (!attack) return Math.max(0, Math.min(count - 1, Math.floor(t / Math.max(1, su + ac + re) * count)));
+  if (t <= su) return phaseIndex(t, 0, su + 1, 3);
+  if (t > su + ac) return 10 + phaseIndex(t, su + ac + 1, su + ac + re + 1, 2);
+  const slotLen = Math.max(1, ac / hits);
+  const slot = Math.min(2, Math.floor((t - su - 1) / slotLen));
+  const slotStart = su + 1 + slot * slotLen;
+  const runs = [{ base: 3, n: 2 }, { base: 5, n: 2 }, { base: 7, n: 3 }];
+  const run = runs[slot] || runs[0];
+  return Math.max(0, Math.min(count - 1, run.base + phaseIndex(t, slotStart, slotStart + slotLen, run.n)));
+}
+
 // Standing hitstun uses the fall clip's on-feet recoil (flinch). A missing texture falls back to the vector plate.
 function enemyClip(entry, fighter) {
   const down = fighter.ragdollActive || fighter.hp <= 0 || fighter.state === 'ko' || fighter.state === 'knockdown';
@@ -446,7 +510,14 @@ function enemyClip(entry, fighter) {
   // Standing hitstun has no hurt clip. The first two fall frames are still on their feet;
   // the white hit flash is applied on top, matching the vector flash.
   if (fighter.state === 'hit') return 'flinch';
-  const attack = entry.kind === 'brawler' ? 'jab-cross' : 'rush';
+  const kind = posedKind(entry);
+  if (kind === 'block-captain') {
+    if (fighter.state === 'special') return 'special';
+    if (fighter.state === 'punch' || fighter.state === 'kick' || fighter.atk) return 'jab-hook';
+    if (fighter.state === 'walk') return 'walk';
+    return 'idle';
+  }
+  const attack = kind === 'brawler' ? 'jab-cross' : 'rush';
   if (fighter.state === 'punch' || fighter.state === 'kick' || fighter.state === 'special' || fighter.atk) return attack;
   if (fighter.state === 'walk') return 'walk';
   return 'idle';
@@ -463,6 +534,8 @@ function enemyFrame(fighter, name, count) {
   }
   if (name === 'jab-cross') return brawlerAttackFrame(fighter);
   if (name === 'rush') return rusherAttackFrame(fighter);
+  if (name === 'jab-hook') return blockCaptainNormalFrame(fighter);
+  if (name === 'special') return blockCaptainSpecialFrame(fighter);
   if (name === 'walk') {
     return Math.floor((fighter.walkPx || 0) / (148 / count)) % count;
   }
@@ -470,12 +543,13 @@ function enemyFrame(fighter, name, count) {
 }
 
 function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
-  const table = ENEMY_CLIPS[entry.kind];
+  const kind = posedKind(entry);
+  const table = ENEMY_CLIPS[kind];
   const clip = name === 'flinch' ? 'fall' : name;
-  const meta = table[clip];
+  const meta = table?.[clip];
   if (!meta) return false;
   const index = enemyFrame(fighter, name, meta.count);
-  const texture = entry.kind + '-' + clip + '-' + index;
+  const texture = kind + '-' + clip + '-' + index;
   if (!scene.textures.exists(texture)) return false;
   if (!view.body) view.body = scene.add.image(0, 0, texture);
   if (view.body.texture.key !== texture) view.body.setTexture(texture);
