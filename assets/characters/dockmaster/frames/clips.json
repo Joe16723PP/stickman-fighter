@@ -1,0 +1,51 @@
+{
+  "frameW": 164,
+  "frameH": 222,
+  "baseline": 206,
+  "body": 188,
+  "fps": 12,
+  "clips": {
+    "idle": 6,
+    "walk": 6,
+    "chain-lash": 6,
+    "low-swing": 6,
+    "special": 6,
+    "fall": 6
+  },
+  "idle": {
+    "frameW": 164,
+    "frameH": 222,
+    "baseline": 206,
+    "anchor": 84
+  },
+  "walk": {
+    "frameW": 160,
+    "frameH": 222,
+    "baseline": 206,
+    "anchor": 80
+  },
+  "chain-lash": {
+    "frameW": 238,
+    "frameH": 220,
+    "baseline": 204,
+    "anchor": 103
+  },
+  "low-swing": {
+    "frameW": 216,
+    "frameH": 202,
+    "baseline": 186,
+    "anchor": 102
+  },
+  "special": {
+    "frameW": 254,
+    "frameH": 212,
+    "baseline": 196,
+    "anchor": 106
+  },
+  "fall": {
+    "frameW": 208,
+    "frameH": 200,
+    "baseline": 184,
+    "anchor": 98
+  }
+}
