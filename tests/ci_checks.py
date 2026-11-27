@@ -740,7 +740,7 @@ GRAPPLER = r"""
   const missClean = grab(300);
   r.miss = { frames: missClean.frames, travel: missClean.travel, strikes: missClean.strikes, phases: missClean.phases.join(','), punish: missPunish, coolT: gp.f.grabCoolT };
   // AI: tells 'GRAB' only when allowed; holds off during its cooldown / the player's no-regrab window.
-  const aiTell = (prep) => { setup(x0 - 60); gp.ai.cool = 0; gp.ai.tellT = 0; gp.ai.tellKind = ''; prep(); BeatEmUp.updateGroupAI(Game.STEP, pEntry); return gp.ai.tellT > 0 ? gp.ai.tellKind : ''; };
+  const aiTell = (prep) => { setup(x0 - 50); gp.ai.cool = 0; gp.ai.tellT = 0; gp.ai.tellKind = ''; prep(); BeatEmUp.updateGroupAI(Game.STEP, pEntry); return gp.ai.tellT > 0 ? gp.ai.tellKind : ''; };
   r.ai = { free: aiTell(() => {}), cooling: aiTell(() => { gp.f.grabCoolT = 1; }), noRegrab: aiTell(() => { player.noRegrabT = 1; }), behind: aiTell(() => { player.x = x0 + 60; }) };
   BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode;
   Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
@@ -1197,7 +1197,7 @@ BOSS_B2A = r"""
     o.tele = e.f.sigTeleported; o.after = BeatEmUp.bossFields.some(z => z.kind === 'afterimage') || o.tele != null; o.depth = e.depth;
     return o;
   };
-  r.shadowFaceRight = shadow(1); r.shadowFaceLeft = shadow(-1); r.shadowLane = shadow(1, 15);
+  r.shadowFaceRight = shadow(1); r.shadowFaceLeft = shadow(-1); r.shadowLane = shadow(1, BeatEmUp.ENEMY_DEPTH_HIT_PX + 1);
   const sr = r.shadowFaceRight, sl = r.shadowFaceLeft, expCut = +(16 * BH * DIFF).toFixed(6);
   r.shadowOk = sr.su === 30 && sr.tele && sr.tele.x === 610 && sl.tele.x === 790 && sr.hits.length === 1 && sr.hits[0].dmg === expCut && sl.hits.length === 1
     && sr.hits[0].frame >= 32 && sr.tip && sr.tip.match && sr.tip.reach === 200 && r.shadowLane.hits.length === 0 && r.shadowLane.tele.depth === .5;
@@ -1223,7 +1223,7 @@ BOSS_B2A = r"""
     && cp.parryFrame > 0 && cp.parryFrame <= 48 && cp.bossDmg === 0 && cp.hits.length === 1 && cp.hits[0].dmg === expRip && cp.hits[0].frame === cp.parryFrame + 7;
   // AI: only a boss with a counter rolls for it (Math.random pinned low so the roll passes).
   const aiPick = stage => {
-    setup(stage, 900, 820); e.f.meter = 0; e.ai.cool = 0; e.ai.mode = 'attack'; Math.random = () => .1;
+    setup(stage, 900, 830); e.f.meter = 0; e.ai.cool = 0; e.ai.mode = 'attack'; Math.random = () => .1;
     BeatEmUp.updateGroupAI(STEP, pEntry); const label = e.ai.tellKind, queued = !!e.ai.counterQueued;
     for (let i = 0; i < 60 && e.ai.tellT > 0; i++) BeatEmUp.updateGroupAI(STEP, pEntry);
     Math.random = prev.random; return { label, queued, armed: !!e.f.bossCounterQueued };
@@ -1275,7 +1275,7 @@ BOSS_B2A = r"""
   r.tellOk = r.tells.laser >= 30 && r.tells.shadow >= 30 && r.tells.road >= 30 && r.tells.laserP3 >= 24 && r.tells.aiBossTell >= .5;
   BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; Game.phase = prev.phase; BeatEmUp.bossProjectiles = []; BossFields.clear(); BeatEmUp.lockL = prev.lockL; BeatEmUp.lockR = prev.lockR; Math.random = prev.random;
   Game.minX = prev.minX; Game.maxX = prev.maxX; Game.GROUND = prev.ground; pads0(); player.reset(200, 1);
-  r.pass = r.profiles.join(' ') === 'crossbow/100/100/1.25/0.92/bossLaserLock/ naginata/200/200/1.28/0.92/bossShadowStep/kage girder/210/210/1.4/0.7/bossRoadblock/'
+  r.pass = r.profiles.join(' ') === 'crossbow/74/100/1.25/0.92/bossLaserLock/ naginata/76/200/1.28/0.92/bossShadowStep/kage girder/74/210/1.4/0.7/bossRoadblock/'
     && r.normalsPaced && r.normalDmg === '8,10,10,12,18,10' && r.normalsOk && r.laserOk && r.phase3Ok && r.shadowOk && r.counterOk && r.aiOk && r.roadOk && r.tellOk && r.drawOk;
   return r;
 }
@@ -1350,7 +1350,7 @@ STAGE1 = r"""
   const caps = {};
   for (const level of ['easy', 'normal', 'hard']) {
     Game.arcadeLevel = level;
-    BeatEmUp.cast = [player, ...['brawler', 'rusher', 'brawler', 'rusher'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (50 + 10 * i), .5); e.ai.cool = 0; return e; })];
+    BeatEmUp.cast = [player, ...['brawler', 'rusher', 'brawler', 'rusher'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (40 + 4 * i), .5); e.ai.cool = 0; return e; })];
     let maxAct = 0;
     for (let i = 0; i < 300; i++) {
       BeatEmUp.updateGroupAI(Game.STEP, player);
@@ -1385,7 +1385,7 @@ STAGE2 = r"""
     && c2.boss.name === 'DOCKMASTER' && c2.boss.profile.signature.key === 'bossDockHaulIn' && c2.boss.profile.weapon === 'anchorChain'
     && c2.waves.every(w => /grappler/i.test(w.title + ' ' + w.storyBeat + ' ' + w.visualCue) || /brawler/i.test(w.storyBeat))
     && !c2.waves.some(w => /rusher|heav|bruiser/i.test(w.storyBeat + ' ' + w.visualCue)) && !/rusher|bruiser/i.test(c2.storyIntro);
-  // --- Other stages' settings and the Dockmaster are byte-identical to before
+  // --- Other stages' settings and the Dockmaster, including tightened AI reach
   r.othersHash = hash(JSON.stringify([window.ARCADE_STAGE_SETTINGS.filter((_, i) => i !== 1), c2.boss]));
   // --- Spawns read from settings and actually spawned there
   const S2 = [[[.55, .5], [.92, .15]], [[.6, .5], [.3, .2], [.85, .82]], [[.55, .3], [.88, .8], [.7, .6], [.95, .12]]];
@@ -1419,7 +1419,7 @@ STAGE2 = r"""
   // --- Scripted Wave 3 AI: 2 Grapplers + 2 Brawlers around the player; count telling/attacking each frame
   BeatEmUp.stage = 2; Game.phase = 'fight'; Game.fighting = 1; Math.random = () => .01;
   const p = fighters[0]; p.reset(600, 1); player.f = p; player.depth = .5; p.hp = 1e4;
-  const wave3 = () => ['grappler', 'grappler', 'brawler', 'brawler'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (40 + 12 * i), .5); e.f.face = i % 2 ? -1 : 1; e.ai.cool = 0; return e; });
+  const wave3 = () => ['grappler', 'grappler', 'brawler', 'brawler'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (30 + 6 * i), .5); e.f.face = i % 2 ? -1 : 1; e.ai.cool = 0; return e; });
   const run = (frames, hook) => {
     const o = { maxAct: 0, maxGrab: 0, grabTells: {}, brawlerTell: false };
     for (let i = 0; i < frames; i++) {
@@ -1462,8 +1462,8 @@ STAGE2 = r"""
   Object.assign(BeatEmUp, { stage: prev.stage, cast: prev.cast, cameraX: prev.cameraX, lockL: prev.lockL, lockR: prev.lockR, wave: prev.wave, waveSpawnQueue: prev.queue, waveSpawnTimer: prev.timer });
   Object.assign(Game, { arcadeLevel: prev.level, mode: prev.mode, phase: prev.phase, banner: prev.banner, bannerT: prev.bannerT, fighting: prev.fighting });
   p.reset(200, 1);
-  r.pass = r.lineupOk && r.othersHash === 'e384ae8d' && r.spawnOk && r.pickOk && r.sliceSame && r.aiOk && r.noGraceOk && r.regrabOk
-    && r.stats === '115/0.9/clinch/110/0.95/jabCross' && r.moveHash === '21164058';
+  r.pass = r.lineupOk && r.othersHash === '648e1b7d' && r.spawnOk && r.pickOk && r.sliceSame && r.aiOk && r.noGraceOk && r.regrabOk
+    && r.stats === '115/0.9/clinch/110/0.95/jabCross' && r.moveHash === '527657bc';
   return r;
 }
 """
@@ -1767,7 +1767,7 @@ BOSS_B2B = r"""
   } catch (err) { r.drawOk = false; r.drawErr = String(err); }
   BeatEmUp.stage = prev.stage; BeatEmUp.cast = []; Game.mode = prev.mode; Game.phase = prev.phase; BeatEmUp.bossProjectiles = []; BossFields.clear(); BeatEmUp.lockL = prev.lockL; BeatEmUp.lockR = prev.lockR; Math.random = prev.random;
   Game.minX = prev.minX; Game.maxX = prev.maxX; Game.GROUND = prev.ground; BeatEmUp.bossMaxHp = prev.bossMaxHp; BeatEmUp.BOSS_CUE = prev.cue; pads0(); player.reset(200, 1);
-  r.pass = r.profiles.join(' ') === 'shockBaton/115/115/1.3/0.92/bossLiveBroadcast/shockBaton twinBlades/110/110/1.35/0.92/bossColiseumFinale/twinBlades'
+  r.pass = r.profiles.join(' ') === 'shockBaton/74/115/1.3/0.92/bossLiveBroadcast/shockBaton twinBlades/95/110/1.35/0.92/bossColiseumFinale/twinBlades'
     && r.normalsPaced && r.normalDmg === '8,10,9,11,16,12,8,12' && r.normalsOk && r.stunOk && r.broadcastOk && r.phaseOk && r.replayOk && r.replayRunsOk && r.finaleOk && r.tellOk && r.cueOk && r.drawOk;
   return r;
 }
