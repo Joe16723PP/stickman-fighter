@@ -1,6 +1,7 @@
 import { Game, fighters } from './game.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
+import { BossSignatures } from './config.js';
 
 const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, combo: 18, roll: 8, special: 24 };
 const FRAME_W = 174;
@@ -77,7 +78,18 @@ const BLOCK_CAPTAIN = {
   special: { count: 12, box: { w: 294, h: 266, baseline: 250 }, anchor: 138 },
   fall: { count: 8, box: { w: 260, h: 224, baseline: 208 }, anchor: 127 },
 };
-const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, 'block-captain': BLOCK_CAPTAIN };
+// Per-clip boxes from assets/characters/dockmaster/frames/clips.json.
+// Body height stays 188, same as the other posed casts. His larger size is the existing
+// boss scaleMul (1.28, and the phase sizes the vector body already uses), not a taller clip.
+const DOCKMASTER = {
+  idle: { count: 6, box: { w: 164, h: 222, baseline: 206 }, anchor: 84 },
+  walk: { count: 6, box: { w: 160, h: 222, baseline: 206 }, anchor: 80 },
+  'chain-lash': { count: 6, box: { w: 238, h: 220, baseline: 204 }, anchor: 103 },
+  'low-swing': { count: 6, box: { w: 216, h: 202, baseline: 186 }, anchor: 102 },
+  special: { count: 6, box: { w: 254, h: 212, baseline: 196 }, anchor: 106 },
+  fall: { count: 6, box: { w: 208, h: 200, baseline: 184 }, anchor: 98 },
+};
+const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, 'block-captain': BLOCK_CAPTAIN, dockmaster: DOCKMASTER };
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
@@ -363,16 +375,17 @@ function bladeFrame(fighter, name) {
 }
 
 // Posed-sprite id for a cast entry. Brawler and Rusher use their archetype kind.
-// Block Captain's kind is 'boss' (every stage boss is); his signature key is what picks him out.
+// Block Captain and Dockmaster are kind 'boss' (every stage boss is); the signature key picks them out.
 // Other bosses stay on the vector plate.
 function posedKind(entry) {
   if (!entry || entry.role !== 'enemy') return null;
   if (ENEMY_CLIPS[entry.kind]) return entry.kind;
   if (entry.kind === 'boss' && entry.f?.bossProfile?.signature?.key === 'bossBlockParty') return 'block-captain';
+  if (entry.kind === 'boss' && entry.f?.bossProfile?.signature?.key === 'bossDockHaulIn') return 'dockmaster';
   return null;
 }
 
-// Brawler, Rusher, and the Stage 1 boss. Kind lives on the beat 'em up entry, not classId.
+// Brawler, Rusher, Block Captain, and Dockmaster. Kind lives on the beat 'em up entry, not classId.
 function stageEnemy(fighter) {
   if (Game.mode !== 'beatemup' || Game.phase === 'title' || !BeatEmUp.cast?.length) return null;
   const entry = BeatEmUp.entryFor(fighter);
@@ -504,14 +517,69 @@ function blockCaptainSpecialFrame(fighter) {
   return Math.max(0, Math.min(count - 1, run.base + phaseIndex(t, slotStart, slotStart + slotLen, run.n)));
 }
 
+// 6 chain-lash / low-swing frames: startup 0-1, the strike on the active window 2-3, recovery 4-5.
+// Chain Lash is the punch. Low Swing is the kick. Timing stays on fighter.atk.
+function dockmasterNormalFrame(fighter, name) {
+  const count = DOCKMASTER[name].count;
+  const attack = fighter.atk;
+  const swing = name === 'low-swing';
+  const su = attack ? attack.su : (swing ? 14 : 10);
+  const ac = attack ? attack.ac : (swing ? 5 : 4);
+  const re = attack ? attack.re : (swing ? 21 : 18);
+  const t = fighter.atkT || 0;
+  const wind = 2;
+  const strike = 2;
+  const recover = count - wind - strike;
+  let index;
+  if (t <= su) index = phaseIndex(t, 0, su + 1, wind);
+  else if (t <= su + ac) index = wind + phaseIndex(t, su + 1, su + ac + 1, strike);
+  else index = wind + strike + phaseIndex(t, su + ac + 1, su + ac + re + 1, recover);
+  return Math.max(0, Math.min(count - 1, index));
+}
+
+// 6 Haul In frames. Hit timing stays on BossSignature; this only picks a pose.
+//   0 amber charge tell     startup (t < su)
+//   1 horizontal chain cast start of active
+//   2 anchor flying out     the hookFrames window after that cast
+//   3 two-hand yank         pullFrames, the middle of active
+//   4 chain smash           activeFrame >= ac - 6, the same smash window as BossSignature.strike
+//   5 follow-through        recovery (t >= su + ac)
+function dockmasterSpecialFrame(fighter) {
+  const count = DOCKMASTER.special.count;
+  const attack = fighter.atk;
+  const su = attack ? attack.su : 14;
+  const ac = attack ? attack.ac : 24;
+  const re = attack ? attack.re : 16;
+  const t = fighter.atkT || 0;
+  if (!attack) return Math.max(0, Math.min(count - 1, Math.floor(t / Math.max(1, su + ac + re) * count)));
+  if (t >= su + ac) return Math.min(count - 1, 5);
+  if (t < su) return 0;
+  const { hookFrames, pullFrames } = BossSignatures.bossDockHaulIn;
+  const active = t - su;
+  if (active >= ac - 6) return 4;
+  if (active > hookFrames && active <= hookFrames + pullFrames) return 3;
+  if (active > hookFrames) return 3; // yank holds through any gap before the smash
+  if (active > 1) return 2;
+  return 1;
+}
+
 // Standing hitstun uses the fall clip's on-feet recoil (flinch). A missing texture falls back to the vector plate.
+// Dockmaster has no separate flinch: a hit plays the fall clip, same as a KO.
 function enemyClip(entry, fighter) {
   const down = fighter.ragdollActive || fighter.hp <= 0 || fighter.state === 'ko' || fighter.state === 'knockdown';
   if (down) return 'fall';
+  const kind = posedKind(entry);
+  if (kind === 'dockmaster') {
+    if (fighter.state === 'hit') return 'fall';
+    if (fighter.state === 'special') return 'special';
+    if (fighter.state === 'kick') return 'low-swing';
+    if (fighter.state === 'punch') return 'chain-lash';
+    if (fighter.state === 'walk') return 'walk';
+    return 'idle';
+  }
   // Standing hitstun has no hurt clip. The first two fall frames are still on their feet;
   // the white hit flash is applied on top, matching the vector flash.
   if (fighter.state === 'hit') return 'flinch';
-  const kind = posedKind(entry);
   if (kind === 'block-captain') {
     if (fighter.state === 'special') return 'special';
     if (fighter.state === 'punch' || fighter.state === 'kick' || fighter.atk) return 'jab-hook';
@@ -524,7 +592,7 @@ function enemyClip(entry, fighter) {
   return 'idle';
 }
 
-function enemyFrame(fighter, name, count) {
+function enemyFrame(fighter, name, count, kind) {
   if (fighter._posedClip !== name) {
     fighter._posedClip = name;
     fighter._posedClipStart = fighter.animT || 0;
@@ -536,7 +604,8 @@ function enemyFrame(fighter, name, count) {
   if (name === 'jab-cross') return brawlerAttackFrame(fighter);
   if (name === 'rush') return rusherAttackFrame(fighter);
   if (name === 'jab-hook') return blockCaptainNormalFrame(fighter);
-  if (name === 'special') return blockCaptainSpecialFrame(fighter);
+  if (name === 'chain-lash' || name === 'low-swing') return dockmasterNormalFrame(fighter, name);
+  if (name === 'special') return kind === 'dockmaster' ? dockmasterSpecialFrame(fighter) : blockCaptainSpecialFrame(fighter);
   if (name === 'walk') {
     return Math.floor((fighter.walkPx || 0) / (148 / count)) % count;
   }
@@ -549,7 +618,7 @@ function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
   const clip = name === 'flinch' ? 'fall' : name;
   const meta = table?.[clip];
   if (!meta) return false;
-  const index = enemyFrame(fighter, name, meta.count);
+  const index = enemyFrame(fighter, name, meta.count, kind);
   const texture = kind + '-' + clip + '-' + index;
   if (!scene.textures.exists(texture)) return false;
   if (!view.body) view.body = scene.add.image(0, 0, texture);
