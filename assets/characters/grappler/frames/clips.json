@@ -1,0 +1,37 @@
+{
+  "frameW": 182,
+  "frameH": 222,
+  "baseline": 206,
+  "body": 188,
+  "fps": 12,
+  "clips": {
+    "idle": 6,
+    "walk": 6,
+    "grab": 6,
+    "fall": 6
+  },
+  "idle": {
+    "frameW": 182,
+    "frameH": 222,
+    "baseline": 206,
+    "anchor": 86
+  },
+  "walk": {
+    "frameW": 180,
+    "frameH": 218,
+    "baseline": 202,
+    "anchor": 84
+  },
+  "grab": {
+    "frameW": 216,
+    "frameH": 234,
+    "baseline": 218,
+    "anchor": 106
+  },
+  "fall": {
+    "frameW": 212,
+    "frameH": 198,
+    "baseline": 182,
+    "anchor": 104
+  }
+}

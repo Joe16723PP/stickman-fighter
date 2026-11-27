@@ -54,7 +54,7 @@ const BLADE = {
   special: { count: 12, box: { w: 258, h: 250, baseline: 234 }, anchor: 88 },
 };
 // Per-clip boxes from assets/characters/brawler/frames/clips.json and rusher/frames/clips.json.
-// Body height matches Staff and Blade (188). Stage 1 enemies only; other archetypes stay on the vector plate.
+// Body height matches Staff and Blade (188).
 const BRAWLER = {
   idle: { count: 6, box: { w: 152, h: 224, baseline: 208 }, anchor: 84 },
   walk: { count: 8, box: { w: 156, h: 222, baseline: 206 }, anchor: 83 },
@@ -67,6 +67,13 @@ const RUSHER = {
   rush: { count: 8, box: { w: 326, h: 248, baseline: 232 }, anchor: 150 },
   fall: { count: 8, box: { w: 308, h: 220, baseline: 204 }, anchor: 159 },
 };
+// Per-clip boxes from assets/characters/grappler/frames/clips.json. Body height stays 188.
+const GRAPPLER = {
+  idle: { count: 6, box: { w: 182, h: 222, baseline: 206 }, anchor: 86 },
+  walk: { count: 6, box: { w: 180, h: 218, baseline: 202 }, anchor: 84 },
+  grab: { count: 6, box: { w: 216, h: 234, baseline: 218 }, anchor: 106 },
+  fall: { count: 6, box: { w: 212, h: 198, baseline: 182 }, anchor: 104 },
+};
 // Per-clip boxes from assets/characters/block-captain/frames/clips.json.
 // Body height stays 188, same as the other posed casts. His larger size is the existing
 // boss scaleMul (1.25, and the phase sizes the vector body already uses), not a taller clip.
@@ -77,7 +84,7 @@ const BLOCK_CAPTAIN = {
   special: { count: 12, box: { w: 294, h: 266, baseline: 250 }, anchor: 138 },
   fall: { count: 8, box: { w: 260, h: 224, baseline: 208 }, anchor: 127 },
 };
-const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, 'block-captain': BLOCK_CAPTAIN };
+const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, grappler: GRAPPLER, 'block-captain': BLOCK_CAPTAIN };
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
@@ -362,7 +369,7 @@ function bladeFrame(fighter, name) {
   return Math.floor((fighter.animT || 0) * 12) % count;
 }
 
-// Posed-sprite id for a cast entry. Brawler and Rusher use their archetype kind.
+// Posed-sprite id for a cast entry. Brawler, Rusher, and Grappler use their archetype kind.
 // Block Captain's kind is 'boss' (every stage boss is); his signature key is what picks him out.
 // Other bosses stay on the vector plate.
 function posedKind(entry) {
@@ -372,7 +379,7 @@ function posedKind(entry) {
   return null;
 }
 
-// Brawler, Rusher, and the Stage 1 boss. Kind lives on the beat 'em up entry, not classId.
+// Brawler, Rusher, Grappler, and the Stage 1 boss. Kind lives on the beat 'em up entry, not classId.
 function stageEnemy(fighter) {
   if (Game.mode !== 'beatemup' || Game.phase === 'title' || !BeatEmUp.cast?.length) return null;
   const entry = BeatEmUp.entryFor(fighter);
@@ -460,6 +467,49 @@ function rusherAttackFrame(fighter) {
   return Math.max(0, Math.min(count - 1, index));
 }
 
+// 6 grab frames for EnemyGrab clinch.
+//   0 open hands through windup and the active reach
+//   1 clenched hold while grabVictim is held, before headbuttWind
+//   2 head tilted back through headbuttWind, until headbuttAt
+//   3 headbutt at headbuttAt and the short follow (driveGrabPose holds buttPose for 8 frames)
+//   4 shove / whiff overcommit: first half of whiffRecovery, or of hitRecovery after the impact
+//   5 return to stance: second half of that recovery
+// A plain attack with no grab scrubs the clip across startup, active, and recovery.
+function grapplerAttackFrame(fighter) {
+  const count = GRAPPLER.grab.count;
+  const attack = fighter.atk;
+  const spec = attack?.grab;
+  const t = fighter.atkT || 0;
+  if (!spec) {
+    const total = Math.max(1, attack ? attack.su + attack.ac + attack.re : count);
+    return Math.max(0, Math.min(count - 1, Math.floor(t / total * count)));
+  }
+  const reachEnd = attack.su + attack.ac;
+  const total = Math.max(reachEnd + 1, attack.su + attack.ac + attack.re);
+  // `start` is the last frame of the previous phase. (start, end] splits in half: shove, then stance.
+  const recover = (now, start, end) => {
+    const span = Math.max(1, end - start);
+    return now <= start + Math.floor(span / 2) ? 4 : 5;
+  };
+  if (!attack.grabHit) {
+    if (t <= reachEnd) return 0;
+    return recover(t, reachEnd, total);
+  }
+  const age = t - (attack.holdStart || 0);
+  const at = spec.headbuttAt;
+  const wind = spec.headbuttWind || 0;
+  const held = !!(attack.grabVictim || fighter.grabVictim);
+  // headbutt() sets this as it releases the victim, so a landed butt still reads after grabVictim is cleared.
+  const butted = attack.headbuttKind != null;
+  if (held && age < at - wind) return 1;
+  if (held && age < at) return 2;
+  if (!held && !butted) return recover(age, 0, Math.max(1, total - (attack.holdStart || 0)));
+  const impactEnd = at + 8;
+  if (age < impactEnd) return 3;
+  const recoveryEnd = at + (spec.hitRecovery || 0);
+  return recover(age, impactEnd - 1, Math.max(impactEnd, recoveryEnd));
+}
+
 // 8 jab-hook frames, four per normal. Jab is 0-3, hook is 4-7.
 // Each quartet is wind, wind, strike held on the active window, recovery.
 function blockCaptainNormalFrame(fighter) {
@@ -518,6 +568,13 @@ function enemyClip(entry, fighter) {
     if (fighter.state === 'walk') return 'walk';
     return 'idle';
   }
+  // startEnemyGrab keeps state 'punch' and atk.grab set until the clinch ends, so wind-up, reach,
+  // hold, headbutt, whiff recovery, and hit recovery all play grab.
+  if (kind === 'grappler') {
+    if (fighter.state === 'punch' || fighter.state === 'kick' || fighter.state === 'special' || fighter.atk) return 'grab';
+    if (fighter.state === 'walk') return 'walk';
+    return 'idle';
+  }
   const attack = kind === 'brawler' ? 'jab-cross' : 'rush';
   if (fighter.state === 'punch' || fighter.state === 'kick' || fighter.state === 'special' || fighter.atk) return attack;
   if (fighter.state === 'walk') return 'walk';
@@ -535,6 +592,7 @@ function enemyFrame(fighter, name, count) {
   }
   if (name === 'jab-cross') return brawlerAttackFrame(fighter);
   if (name === 'rush') return rusherAttackFrame(fighter);
+  if (name === 'grab') return grapplerAttackFrame(fighter);
   if (name === 'jab-hook') return blockCaptainNormalFrame(fighter);
   if (name === 'special') return blockCaptainSpecialFrame(fighter);
   if (name === 'walk') {
