@@ -5,7 +5,6 @@ import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
 import { Input } from './input.js';
-import { Moves } from './moves.js';
 
 export class BeatEmUp {
   static RUN_SECONDS = 210;
@@ -13,6 +12,10 @@ export class BeatEmUp {
   static BAND_TOP = 0.56;
   static BAND_BOT = 0.88;
   static DEPTH_HIT_PX = Depth.HIT_PX;
+  /** Beat 'em up enemy lane window. Wider than 1v1's Depth.HIT_PX (14) and still under the player's 22–36. */
+  static ENEMY_DEPTH_HIT_PX = 19;
+  /** Regular / Brawler punch tell. Inside measured fist contact (61px back lane … 66px front) at runtime scale. */
+  static PUNCH_TRIGGER_PX = 60;
   static cameraX = 0;
   static skyOffset = 0;
   static cast = [];
@@ -321,9 +324,11 @@ export class BeatEmUp {
   static depthClose(a, b, tolPx = BeatEmUp.DEPTH_HIT_PX) {
     return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= tolPx;
   }
-  /** Lane window for attacker -> target cast entries (shared Depth.hitTolerance). */
+  /** Lane window for attacker -> target. Players keep Depth.hitTolerance (22–36px).
+   *  Beat 'em up enemies use ENEMY_DEPTH_HIT_PX. 1v1 never reads this; Depth.HIT_PX stays 14. */
   static depthHitTolerance(attacker, target) {
-    return Depth.hitTolerance(attacker?.role === 'player', attacker?.scaleMul, target?.scaleMul);
+    if (attacker?.role !== 'player') return BeatEmUp.ENEMY_DEPTH_HIT_PX;
+    return Depth.hitTolerance(true, attacker?.scaleMul, target?.scaleMul);
   }
   static entryFor(fighter) {
     return BeatEmUp.cast.find(e => e.f === fighter) || null;
@@ -970,7 +975,6 @@ export class BeatEmUp {
         if (e.f.bossProfile?.phases && !e.f.atk && e.f.bossPhase !== ai.phase) BossPhases.apply(e.f, ai.phase);
       }
       const dist = Math.abs(e.f.x - player.f.x);
-      const depthGap = Math.abs(e.depth - player.depth);
       Input.pad[1].left = 0; Input.pad[1].right = 0;
       Input.pad[1].punch = 0; Input.pad[1].kick = 0;
       Input.pad[1].block = 0; Input.pad[1].special = 0;
@@ -1045,7 +1049,9 @@ export class BeatEmUp {
       const deploy = !e.bossProfile && e.f.enemyDeploy ? EnemyDeploys[e.f.enemyDeploy] : null;
       // Disruptor holds off (no tell) during its cooldown or while its zone is still out.
       const deployBlocked = deploy && (e.f.deployCoolT > 0 || !!ShockZones.activeFor(e.f));
-      const reach = e.bossProfile ? e.bossProfile.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : grab ? grab.triggerRange : deploy ? deploy.triggerRange : Moves.punch.reach + 10;
+      // The loadout lives on the fighter. Phase tables (Syndicate Chief) carry their own reach.
+      const bossLoad = e.f.bossProfile ? (BossPhases.spec(e.f) || e.f.bossProfile) : null;
+      const reach = bossLoad ? bossLoad.reach : rush ? rush.triggerRange : slam ? slam.triggerRange : bash ? bash.triggerRange : grab ? grab.triggerRange : deploy ? deploy.triggerRange : BeatEmUp.PUNCH_TRIGGER_PX;
       if (deploy && !e.f.atk && dist < deploy.minRange) {
         // Too close: keep gadget spacing (side with room), never walks into melee.
         let side = e.f.x >= player.f.x ? 1 : -1;
@@ -1065,7 +1071,7 @@ export class BeatEmUp {
       } else if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
-      } else if (ai.cool <= 0 && depthGap < 0.2 && !grabBlocked && !deployBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
+      } else if (ai.cool <= 0 && BeatEmUp.depthClose(e.depth, player.depth, BeatEmUp.depthHitTolerance(e, player) * 0.9) && !grabBlocked && !deployBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
         let move, label, tell;
         if (e.bossProfile) {
           const profile = e.bossProfile;

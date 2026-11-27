@@ -780,7 +780,7 @@ export const EnemySlams = {
     windup: 30, active: 4, recovery: 48, followHold: 30,   // 0.5 s raise, 4 f swing, 0.8 s recovery
     dmg: 12, kb: 260, stun: 22,                            // before weapon/difficulty multipliers
     handle: 44, r: 9,                                      // hammer past the hands / collision radius (x Fighter.S)
-    triggerRange: 120,                                     // AI starts the tell inside this gap (px)
+    triggerRange: 85,                                      // AI tell inside measured slam contact (back lane hits through 100px)
     rest: -40, raised: -200, impact: -55,                  // hammer angle (deg, la/ra convention: -90 = forward, -180 = up)
     windPose:   {chest:12,neck:-4,head:-2,ll:30,lk:16,rl:-30,rk:22,hipBob:2,shPull:0},
     impactPose: {chest:-22,neck:6,head:6,ll:36,lk:20,rl:-34,rk:30,hipBob:10,shPull:0},
@@ -877,7 +877,7 @@ export const EnemyBashes = {
     label: 'BASH',
     windup: 14, active: 5, step: 28, whiffRecovery: 48, hitRecovery: 22, kb: 300, stun: 16,
     box: { front: 34, halfW: 16, y: 70, halfH: 34 },   // x Fighter.S: centre front*S ahead, y*S above ground
-    triggerRange: 100,
+    triggerRange: 81,                                      // inside back-lane bash contact (hits through 82px; mid 85, front 89)
     windPose:   {chest:12,neck:-3,head:3,la:-50,le:-100,ra:-40,re:-110,ll:26,lk:18,rl:-30,rk:24,hipBob:3,shPull:4},
     strikePose: {chest:-18,neck:4,head:4,la:-100,le:-20,ra:-30,re:-110,ll:38,lk:16,rl:-36,rk:26,hipBob:1,shPull:0},
     lowPose:    {chest:8,neck:2,head:4,la:-15,le:-20,ra:-10,re:-30,ll:24,lk:16,rl:-24,rk:20,hipBob:2,shPull:0},
@@ -921,7 +921,7 @@ export const EnemyGrabs = {
     holdGap: 34, maxHold: 40,                               // held player pinned holdGap x drawS ahead; hard cap in frames
     dmg: 9, kb: 300, stun: 22,                              // headbutt, before weapon (.85 freehand) and difficulty multipliers
     noRegrab: 1.5, cooldown: 2.5,                           // s: player grab immunity after release / Grappler grab cooldown from the catch
-    triggerRange: 80,                                       // AI starts the tell inside this gap (px)
+    triggerRange: 57,                                       // inside back-lane catch (reach x drawS + step = 57.5px; mid 60, front 64)
     guardPose:   {chest:-6,neck:2,head:2,la:-62,le:-28,ra:-48,re:-38},
     windPose:    {chest:10,neck:-4,head:2,la:-150,le:-10,ra:50,re:-20,ll:28,lk:20,rl:-30,rk:26,hipBob:4,shPull:6},
     reachPose:   {chest:-24,neck:8,head:6,la:-92,le:-4,ra:-86,re:-8,ll:38,lk:16,rl:-40,rk:28,hipBob:3,shPull:0},

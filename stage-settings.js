@@ -97,7 +97,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The captain drops a crest marked with the docks.",
       "profile": {
         "weapon": "knuckles",
-        "reach": 95,
+        "reach": 71,
         "scale": 1.25,
         "accessory": [
           "flatCap",
@@ -212,7 +212,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The shipment ledger points to the night market.",
       "profile": {
         "weapon": "anchorChain",
-        "reach": 230,
+        "reach": 80,
         "scale": 1.28,
         "accessory": [
           "peacoat",
@@ -285,7 +285,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The route map leads straight to the ironworks.",
       "profile": {
         "weapon": "cleavers",
-        "reach": 100,
+        "reach": 69,
         "scale": 1.3,
         "accessory": [
           "apron",
@@ -358,7 +358,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The foreman reveals a hideout beneath the city.",
       "profile": {
         "weapon": "sledgehammer",
-        "reach": 150,
+        "reach": 70,
         "scale": 1.35,
         "accessory": [
           "welderMask",
@@ -431,7 +431,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "A captured radio gives up the rooftop signal code.",
       "profile": {
         "weapon": "shieldBaton",
-        "reach": 110,
+        "reach": 72,
         "scale": 1.3,
         "accessory": [
           "helmet",
@@ -504,7 +504,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The signal names an old martial arts dojo.",
       "profile": {
         "weapon": "crossbow",
-        "reach": 100,
+        "reach": 74,
         "scale": 1.25,
         "accessory": [
           "hood",
@@ -577,7 +577,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "Kage joins the fight and points to the skybridge.",
       "profile": {
         "weapon": "naginata",
-        "reach": 200,
+        "reach": 76,
         "scale": 1.28,
         "accessory": [
           "gi",
@@ -652,7 +652,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The convoy carries an invite to the broadcast tower.",
       "profile": {
         "weapon": "girder",
-        "reach": 210,
+        "reach": 74,
         "scale": 1.4,
         "accessory": [
           "hardHat"
@@ -725,7 +725,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The leader is waiting at the coliseum. The whole city is watching.",
       "profile": {
         "weapon": "shockBaton",
-        "reach": 115,
+        "reach": 74,
         "scale": 1.3,
         "accessory": [
           "suit",
@@ -798,7 +798,7 @@ window.ARCADE_STAGE_SETTINGS = [
       "clear": "The streets are free again. The arcade district belongs to its people.",
       "profile": {
         "weapon": "twinBlades",
-        "reach": 110,
+        "reach": 95,
         "scale": 1.35,
         "accessory": [
           "suit",
@@ -817,7 +817,7 @@ window.ARCADE_STAGE_SETTINGS = [
         "phases": {
           "1": {
             "weapon": "twinBlades",
-            "reach": 110,
+            "reach": 95,
             "normal1": {
               "key": "bossChiefSlash",
               "state": "punch",
@@ -831,7 +831,7 @@ window.ARCADE_STAGE_SETTINGS = [
           },
           "2": {
             "weapon": "sledgehammer",
-            "reach": 150,
+            "reach": 70,
             "normal1": {
               "key": "bossChiefSmash",
               "state": "punch",
@@ -845,7 +845,7 @@ window.ARCADE_STAGE_SETTINGS = [
           },
           "3": {
             "weapon": "gauntlets",
-            "reach": 90,
+            "reach": 73,
             "normal1": {
               "key": "bossChiefJab",
               "state": "punch",
