@@ -1,5 +1,7 @@
 import { Game } from './game.js';
-import { loadKarate, prepareKarate } from './phaser-actors.js';
+import { queueBoot, prepareKarate, setLoadUi, startBackgroundLoads } from './phaser-actors.js';
+
+function onBootProgress(value) { setLoadUi(value, 'LOADING'); }
 
 /** Phaser owns the canvas, the loop, and the pictures. */
 export function startPhaser(canvas) {
@@ -16,10 +18,18 @@ export function startPhaser(canvas) {
     scale: { mode: Phaser.Scale.NONE },
     scene: {
       key: 'fight',
-      preload() { loadKarate(this); },
+      preload() {
+        setLoadUi(0, 'LOADING');
+        queueBoot(this);
+        this.load.on('progress', onBootProgress);
+      },
       create() {
+        this.load.off('progress', onBootProgress);
+        setLoadUi(null);
         Game.phaserScene = this;
         prepareKarate(this);
+        // Menu scene is this scene. Hero frames continue in the background.
+        startBackgroundLoads(this);
       },
       update(time) { if (Game.ready) Game.frame(time); },
     },

@@ -7,7 +7,7 @@ import { Fx } from './fx.js';
 import { Input } from './input.js';
 import { Pose } from './pose.js';
 import { startPhaser } from './phaser-host.js';
-import { classIdleSource, titleIdleSpec } from './phaser-actors.js';
+import { classIdleSource, holdForAssets, titleIdleSpec } from './phaser-actors.js';
 
 export let fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
@@ -29,7 +29,13 @@ export class Game {
   static selectedClass = 'freehand';
   static paused = false;
   static actionMenuOpen = false;
-  static titleBackground = (() => { const image = new Image(); image.src = 'assets/backgrounds/main-menu.webp'; return image; })();
+  static titleBackgroundImage() {
+    const scene = Game.phaserScene;
+    if (!scene || !scene.textures.exists('menu-bg')) return null;
+    const image = scene.textures.get('menu-bg').getSourceImage();
+    if (image && image.width > 0) return image;
+    return null;
+  }
   static practiceDummyX = 0;
   static practiceComboHits = 0;
   static practiceComboDamage = 0;
@@ -737,6 +743,9 @@ export class Game {
   }
   static frame(now) {
     if (!Game.ready) return;
+    // Stage entry (and practice, if the hero's frames are still arriving) waits
+    // here. The sim does not step, so a wave cannot start on missing textures.
+    if (holdForAssets()) { Game.last = now; Game.acc = 0; Game.present(); return; }
     let dt = (now - Game.last) / 1000; Game.last = now; if (dt > .05) dt = .05;
     if (Game.paused) { Game.acc = 0; Game.present(); return; }
     if (Game.shake > 0) Game.shake -= dt;
@@ -1118,10 +1127,11 @@ export class Game {
     const layout = Game.titleLayout();
     Game.titleBtns = layout.levels;
     if (part !== 'chrome') {
-    const bg = Game.titleBackground;
-    if (bg.complete && bg.naturalWidth) {
-      const cover = Math.max(Game.W / bg.naturalWidth, Game.H / bg.naturalHeight);
-      const drawW = bg.naturalWidth * cover, drawH = bg.naturalHeight * cover;
+    const bg = Game.titleBackgroundImage();
+    if (bg && bg.width) {
+      const srcW = bg.naturalWidth || bg.width, srcH = bg.naturalHeight || bg.height;
+      const cover = Math.max(Game.W / srcW, Game.H / srcH);
+      const drawW = srcW * cover, drawH = srcH * cover;
       ctx.save(); ctx.imageSmoothingEnabled = false;
       ctx.drawImage(bg, (Game.W - drawW) / 2, (Game.H - drawH) / 2, drawW, drawH);
       ctx.restore();
@@ -1285,7 +1295,18 @@ export class Game {
       ctx.restore();
       return;
     }
-    if (Game.phase === 'title') { Game.drawTitle(ctx, 'chrome'); ctx.restore(); return; }
+    if (Game.phase === 'title') {
+      Game.drawTitle(ctx, 'chrome');
+      ctx.restore();
+      const scene = Game.phaserScene;
+      if (!window.__menuShown && Game.spriteBodies && scene
+        && scene.textures.exists('menu-bg') && scene.textures.exists('karate-idle-0')
+        && scene.textures.exists('staff-idle-0') && scene.textures.exists('blade-idle-0')) {
+        window.__menuShown = true;
+        window.__menuShownAt = performance.now();
+      }
+      return;
+    }
     if (Game.spriteBodies && Game.phase !== 'title') Game.drawKarateCharge(ctx);
     if (Game.spriteBodies && Game.mode !== 'beatemup') {
       BladeSuper.draw(ctx);
