@@ -577,110 +577,124 @@ export class Game {
     if (Game.stop > 0) { Game.stop -= dt; Game.present(); return; }
     Game.acc += dt;
     while (Game.acc >= Game.STEP) {
-      const step = Game.STEP;
-      if (BeatEmUp.stageTransitionT > 0) {
-        BeatEmUp.stageTransitionT = Math.max(0, BeatEmUp.stageTransitionT - step);
-        if (!BeatEmUp.stageTransitionSwitched && BeatEmUp.stageTransitionT <= BeatEmUp.stageTransitionDuration / 2) {
-          BeatEmUp.stageTransitionSwitched = 1;
-          BeatEmUp.startCampaignStage(BeatEmUp.stageTransitionStage);
-        }
-        if (BeatEmUp.stageTransitionT === 0) {
-          BeatEmUp.stageTransitionStage = 0;
-          BeatEmUp.stageTransitionSwitched = 0;
-        }
-      }
-      if (Game.mode === 'beatemup' && BeatEmUp.stageIntroT > 0) {
-        BeatEmUp.stageIntroT = Math.max(0, BeatEmUp.stageIntroT - step);
-        BeatEmUp.eventT = Math.min(BeatEmUp.eventT, BeatEmUp.stageIntroT);
-      }
-      if (Game.mode === 'practice' && Game.practiceComboT > 0) {
-        Game.practiceComboT = Math.max(0, Game.practiceComboT - step);
-        if (Game.practiceComboT === 0) {
-          Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceLastMove = '';
-        }
-      }
-      if (Game.phase === 'title') {
-        fighters[0].face = 1; fighters[1].face = -1;
-        fighters[0].pose = Pose.idle(fighters[0].classProfile);
-        fighters[1].pose = Pose.idle(fighters[1].classProfile);
-        fighters[0].y = 0; fighters[1].y = 0;
-      } else if (Game.phase === 'intro') {
-        Game.bannerT -= step;
-        if (Game.bannerT <= 0) {
-          if (Game.mode === 'beatemup') {
-            if (Game.banner.startsWith('WAVE') || Game.banner === 'BOSS') { Game.banner = 'Fight!'; Game.bannerT = .7; }
-            else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
-          } else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
-        }
-        fighters.forEach(f => {
-          if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3);
-        });
-        if (Game.mode === 'beatemup') {
-          for (const e of BeatEmUp.cast) {
-            if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
-          }
-        }
-      } else if (Game.phase === 'fight') {
-        if (Game.mode === 'beatemup') {
-          Game.timer -= step;
-          if (Game.timer < 0) Game.timer = 0;
-          BeatEmUp.update(step);
-        } else if (Game.mode === 'practice') {
-          if (Input.pad[1].punch) Input.was[1].punch = 0;
-          if (Input.pad[1].kick) Input.was[1].kick = 0;
-          if (Input.pad[1].special) Input.was[1].special = 0;
-          fighters[0].update(step, fighters[1], 0);
-          fighters[1].update(step, fighters[0], 1);
-          fighters[1].x = Game.practiceDummyX;
-          fighters[1].vx = 0;
-          fighters[1].clamp();
-          Game.resolve();
-          BladeSuper.update(step);
-        }
-      } else if (Game.phase === 'waveTransition') {
-        const player = BeatEmUp.playerEntry();
-        const progress = 1 - BeatEmUp.waveTravelT / BeatEmUp.waveTravelDuration;
-        const eased = progress * progress * (3 - 2 * progress);
-        BeatEmUp.waveTravelEase = eased;
-        if (player) {
-          const nextX = BeatEmUp.waveTravelStartX + (BeatEmUp.waveTravelTargetX - BeatEmUp.waveTravelStartX) * eased;
-          player.f.walkPx = (player.f.walkPx || 0) + Math.abs(nextX - player.f.x);
-          player.f.x = nextX;
-          player.f.y = 0; player.f.vx = 0; player.f.vy = 0; player.f.grounded = true;
-          player.f.face = 1; player.f.state = 'walk';
-          player.f.walkT += step;
-          player.f.pose = Pose.walk(player.f.walkT, 1, player.f.classProfile);
-        }
-        BeatEmUp.easeTravelCamera(eased);
-        if (player) BeatEmUp.clampFighterBones(player);
-        if (BeatEmUp.pano() && !BeatEmUp.tiledReady()) BeatEmUp.bgGlide(eased);
-        BeatEmUp.waveTravelT = Math.max(0, BeatEmUp.waveTravelT - step);
-        if (BeatEmUp.waveTravelT <= 0) {
-          if (player) {
-            player.f.x = BeatEmUp.waveTravelTargetX;
-            player.f.state = 'idle';
-            player.f.vx = 0;
-            player.f.pose = Pose.idle(player.f.classProfile);
-          }
-          BeatEmUp.waveTravelEase = 1;
-          BeatEmUp.easeTravelCamera(1);
-          if (player) BeatEmUp.clampFighterBones(player);
-          if (BeatEmUp.pano() && !BeatEmUp.tiledReady()) BeatEmUp.bgGlide(1);
-          const next = BeatEmUp.waveTravelNext;
-          BeatEmUp.waveTravelNext = 0;
-          if (next === 4) BeatEmUp.startBoss(false, true);
-          else BeatEmUp.startWave(next, false, false, true);
-        }
-      } else if (Game.phase === 'matchEnd' && Game.mode === 'beatemup') {
-        for (const e of BeatEmUp.cast) {
-          if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
-          if (e.f.ragdollActive) BeatEmUp.withDepth(e, () => e.f.updateRagdoll(step));
-        }
-      }
-      Game.acc -= step;
+      Game.fixedStep();
+      Game.acc -= Game.STEP;
     }
     if (Game.phase !== 'title') { Game.syncSpecialBtn(); Game.syncDodgeBtn(); }
     Game.present();
+  }
+  /** One sim step. A stage-clear delay consumes the step and does not run gameplay. */
+  static fixedStep() {
+    const step = Game.STEP;
+    if (BeatEmUp.stageTransitionLeft > 0) {
+      BeatEmUp.tickStageTransition();
+      return;
+    }
+    if (Game.mode === 'beatemup' && BeatEmUp.stageIntroT > 0) {
+      BeatEmUp.stageIntroT = Math.max(0, BeatEmUp.stageIntroT - step);
+      BeatEmUp.eventT = Math.min(BeatEmUp.eventT, BeatEmUp.stageIntroT);
+    }
+    if (Game.mode === 'practice' && Game.practiceComboT > 0) {
+      Game.practiceComboT = Math.max(0, Game.practiceComboT - step);
+      if (Game.practiceComboT === 0) {
+        Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceLastMove = '';
+      }
+    }
+    if (Game.phase === 'title') {
+      fighters[0].face = 1; fighters[1].face = -1;
+      fighters[0].pose = Pose.idle(fighters[0].classProfile);
+      fighters[1].pose = Pose.idle(fighters[1].classProfile);
+      fighters[0].y = 0; fighters[1].y = 0;
+    } else if (Game.phase === 'intro') {
+      Game.bannerT -= step;
+      if (Game.bannerT <= 0) {
+        if (Game.mode === 'beatemup') {
+          if (Game.banner.startsWith('WAVE') || Game.banner === 'BOSS') { Game.banner = 'Fight!'; Game.bannerT = .7; }
+          else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
+        } else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
+      }
+      fighters.forEach(f => {
+        if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3);
+      });
+      if (Game.mode === 'beatemup') {
+        for (const e of BeatEmUp.cast) {
+          if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
+        }
+      }
+    } else if (Game.phase === 'fight') {
+      if (Game.mode === 'beatemup') {
+        Game.timer -= step;
+        if (Game.timer < 0) Game.timer = 0;
+        BeatEmUp.update(step);
+      } else if (Game.mode === 'practice') {
+        if (Input.pad[1].punch) Input.was[1].punch = 0;
+        if (Input.pad[1].kick) Input.was[1].kick = 0;
+        if (Input.pad[1].special) Input.was[1].special = 0;
+        fighters[0].update(step, fighters[1], 0);
+        fighters[1].update(step, fighters[0], 1);
+        fighters[1].x = Game.practiceDummyX;
+        fighters[1].vx = 0;
+        fighters[1].clamp();
+        Game.resolve();
+        BladeSuper.update(step);
+      }
+    } else if (Game.phase === 'waveTransition') {
+      const player = BeatEmUp.playerEntry();
+      const progress = 1 - BeatEmUp.waveTravelT / BeatEmUp.waveTravelDuration;
+      const eased = progress * progress * (3 - 2 * progress);
+      BeatEmUp.waveTravelEase = eased;
+      if (player) {
+        const nextX = BeatEmUp.waveTravelStartX + (BeatEmUp.waveTravelTargetX - BeatEmUp.waveTravelStartX) * eased;
+        player.f.walkPx = (player.f.walkPx || 0) + Math.abs(nextX - player.f.x);
+        player.f.x = nextX;
+        player.f.y = 0; player.f.vx = 0; player.f.vy = 0; player.f.grounded = true;
+        player.f.face = 1; player.f.state = 'walk';
+        player.f.walkT += step;
+        player.f.pose = Pose.walk(player.f.walkT, 1, player.f.classProfile);
+      }
+      BeatEmUp.easeTravelCamera(eased);
+      if (player) BeatEmUp.clampFighterBones(player);
+      if (BeatEmUp.pano() && !BeatEmUp.tiledReady()) BeatEmUp.bgGlide(eased);
+      BeatEmUp.waveTravelT = Math.max(0, BeatEmUp.waveTravelT - step);
+      if (BeatEmUp.waveTravelT <= 0) {
+        if (player) {
+          player.f.x = BeatEmUp.waveTravelTargetX;
+          player.f.state = 'idle';
+          player.f.vx = 0;
+          player.f.pose = Pose.idle(player.f.classProfile);
+        }
+        BeatEmUp.waveTravelEase = 1;
+        BeatEmUp.easeTravelCamera(1);
+        if (player) BeatEmUp.clampFighterBones(player);
+        if (BeatEmUp.pano() && !BeatEmUp.tiledReady()) BeatEmUp.bgGlide(1);
+        const next = BeatEmUp.waveTravelNext;
+        BeatEmUp.waveTravelNext = 0;
+        if (next === 4) BeatEmUp.startBoss(false, true);
+        else BeatEmUp.startWave(next, false, false, true);
+      }
+    } else if (Game.phase === 'matchEnd' && Game.mode === 'beatemup') {
+      for (const e of BeatEmUp.cast) {
+        if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
+        if (e.f.ragdollActive) BeatEmUp.withDepth(e, () => e.f.updateRagdoll(step));
+      }
+    }
+  }
+  static drawStageClearOverlay(ctx) {
+    const sc = Game.scale || 1;
+    const n = BeatEmUp.clearCountdownSeconds();
+    ctx.fillStyle = 'rgba(4,7,14,.62)';
+    ctx.fillRect(0, 0, Game.W, Game.H);
+    const w = Math.min(Game.W * .7, 300 / sc), h = 78 / sc;
+    const x = (Game.W - w) / 2, y = Game.H * .4 - h / 2;
+    Game.drawHudPanel(ctx, x, y, w, h, '#F6C453');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold ' + 18 / sc + 'px ui-monospace,monospace';
+    ctx.fillStyle = '#FFE06B';
+    ctx.fillText('STAGE CLEAR', Game.W / 2, y + 26 / sc);
+    ctx.font = 'bold ' + 13 / sc + 'px ui-monospace,monospace';
+    ctx.fillStyle = '#E7EAF2';
+    ctx.fillText('Next stage in ' + n, Game.W / 2, y + 52 / sc);
+    ctx.textBaseline = 'alphabetic';
   }
   static bars(ctx) {
     const sc = Game.scale, safe = Game.safeTop;
@@ -1001,23 +1015,7 @@ export class Game {
     if (Game.phase === 'title') Game.drawTitle(ctx, 'backdrop');
     else if (Game.mode === 'beatemup') {
     BeatEmUp.draw(ctx);
-    if (BeatEmUp.stageTransitionT > 0) {
-      const progress = 1 - BeatEmUp.stageTransitionT / BeatEmUp.stageTransitionDuration;
-      const alpha = progress < .5 ? progress * 2 : (1 - progress) * 2;
-      ctx.fillStyle = 'rgba(5,6,10,' + alpha + ')';
-      ctx.fillRect(0, 0, Game.W, Game.H);
-      if (alpha > .72) {
-        ctx.globalAlpha = Math.min(1, (alpha - .72) / .28);
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        const sc = Game.scale, panelW = 240 / sc, panelH = 62 / sc;
-        Game.drawHudPanel(ctx, Game.W / 2 - panelW / 2, Game.H / 2 - panelH / 2, panelW, panelH, '#F6C453');
-        ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0';
-        ctx.fillText('CAMPAIGN ROUTE', Game.W / 2, Game.H / 2 - 10 / sc);
-        ctx.font = 'bold ' + 22 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
-        ctx.fillText('STAGE ' + String(BeatEmUp.stageTransitionStage).padStart(2, '0'), Game.W / 2, Game.H / 2 + 14 / sc);
-        ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
-      }
-    }
+    if (BeatEmUp.stageTransitionLeft > 0) Game.drawStageClearOverlay(ctx);
     } else if (Game.phase !== 'title') {
       Game.drawArena(ctx);
       // Contact shadows (drawn before fighters, back to front).
@@ -1055,7 +1053,7 @@ export class Game {
     if (Game.mode === 'practice') Game.bars(ctx);
     if (Game.mode === 'practice') Game.drawPracticeHud(ctx);
     const arcadeIntroPanelActive = Game.mode === 'beatemup' && Game.phase === 'intro' && BeatEmUp.eventT > 0;
-    if (Game.banner && BeatEmUp.stageTransitionT <= 0 && !arcadeIntroPanelActive) {
+    if (Game.banner && !(BeatEmUp.stageTransitionLeft > 0) && !arcadeIntroPanelActive) {
       const sc = Game.scale, bannerY = Game.H * .42, bannerW = (Game.banner === 'Fight!' ? 210 : 260) / sc;
       const bannerH = Game.matchOver ? 74 / sc : 56 / sc;
       Game.drawHudPanel(ctx, Game.W / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, Game.matchOver ? '#F6C453' : '#6ECFFF');

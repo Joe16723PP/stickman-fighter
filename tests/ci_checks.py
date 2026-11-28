@@ -1816,6 +1816,92 @@ GUARD = r"""
 }
 """
 
+STAGE_CLEAR_DELAY = '''() => {
+  // Boss clear waits STAGE_TRANSITION_DELAY (5s, 300 fixed steps) before the next stage.
+  // During the wait the fight step does not run: no spawns, no damage, no timer drain.
+  const STEP = Game.STEP, delay = STAGE_TRANSITION_DELAY, frames = Math.round(delay / STEP);
+  const r = { delay, frames, step: STEP, elapsed: frames * STEP };
+  const park = () => {
+    Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.matchOver = 0;
+    Game.winner = ''; Game.banner = ''; Game.timer = 123.5; Game.stop = 0.05; Game.shake = 0;
+    BeatEmUp.stageOver = 0; BeatEmUp.stageTransitionT = 0; BeatEmUp.stageTransitionLeft = 0;
+    BeatEmUp.stageTransitionStage = 0; BeatEmUp.stageTransitionSwitched = 0;
+    BeatEmUp.waveSpawnQueue = []; BeatEmUp.enemyProjectiles = []; BeatEmUp.bossProjectiles = [];
+    BeatEmUp.downPending = 0; BeatEmUp.stageIntroT = 0; ShockZones.clear(); BossFields.clear();
+    const player = fighters[0];
+    player.reset(240, 1); player.hp = 80; player.chip = 80; player.playerControlled = true;
+    BeatEmUp.cast = [{ f: player, depth: 0.55, role: 'player', kind: 'player', scaleMul: 1, speedMul: 1, ai: null }];
+    return player;
+  };
+  // Final stage: victory screen, no delay, stage does not advance.
+  park();
+  BeatEmUp.stage = BeatEmUp.stageTotal; BeatEmUp.wave = 4;
+  BeatEmUp.checkWaveState();
+  r.final = { stage: BeatEmUp.stage, over: BeatEmUp.stageOver, left: BeatEmUp.stageTransitionLeft, winner: Game.winner, phase: Game.phase };
+  for (let i = 0; i < frames; i++) Game.fixedStep();
+  r.finalAfter = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, winner: Game.winner, phase: Game.phase };
+  // Game over does not arm the delay. Retry still restarts the same stage at once.
+  park();
+  BeatEmUp.stage = 4; BeatEmUp.wave = 2;
+  BeatEmUp.loseStage();
+  r.loss = { over: BeatEmUp.stageOver, left: BeatEmUp.stageTransitionLeft, stage: BeatEmUp.stage, phase: Game.phase };
+  BeatEmUp.retryOrTitle(true);
+  r.retry = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, over: BeatEmUp.stageOver, phase: Game.phase };
+  // Stage 2 boss clear arms exactly one 5.0s wait. Stage 3 begins on the 300th step.
+  const player = park();
+  BeatEmUp.stage = 2; BeatEmUp.wave = 4;
+  const timer0 = Game.timer, hp0 = player.hp;
+  BeatEmUp.checkWaveState();
+  const leftArmed = BeatEmUp.stageTransitionLeft;
+  BeatEmUp.checkWaveState();
+  const foe = new Fighter(250, '#ff4455', -1, 'THREAT');
+  foe.reset(250, -1); foe.hp = 100; foe.chip = 100;
+  BeatEmUp.cast.push({ f: foe, depth: 0.55, role: 'enemy', kind: 'regular', scaleMul: 1, speedMul: 1, ai: { cool: 0, mode: 'circle', tellT: 0, tellMove: '', tellKind: '', phase: 1, phaseCallout: 0, orbit: 0, preferDepth: 0.55 } });
+  BeatEmUp.waveSpawnQueue = [{ kind: 'regular', ox: 0.5, depth: 0.5, sentinel: 'stay' }];
+  const castN = BeatEmUp.cast.length, queueN = BeatEmUp.waveSpawnQueue.length;
+  const beforeMash = BeatEmUp.stageTransitionLeft;
+  BeatEmUp.goNextStage(); BeatEmUp.goNextStage();
+  r.mash = BeatEmUp.stageTransitionLeft === beforeMash;
+  r.armed = { stage: BeatEmUp.stage, over: BeatEmUp.stageOver, left: BeatEmUp.stageTransitionLeft, leftArmed, t: BeatEmUp.stageTransitionT, next: BeatEmUp.stageTransitionStage, phase: Game.phase, stop: Game.stop, duration: BeatEmUp.stageTransitionDuration };
+  const texts = [];
+  const ctx = Game.ctx, orig = ctx.fillText.bind(ctx);
+  ctx.fillText = (text, ...rest) => { texts.push(String(text)); return orig(text, ...rest); };
+  Game.draw();
+  ctx.fillText = orig;
+  r.overlay = texts.filter(text => text === 'STAGE CLEAR' || text.startsWith('Next stage in '));
+  let early = null;
+  for (let i = 1; i <= frames - 1; i++) {
+    Game.fixedStep();
+    if (BeatEmUp.stage !== 2 || Game.phase !== 'matchEnd' || Game.timer !== timer0 || player.hp !== hp0 || foe.hp !== 100
+      || BeatEmUp.cast.length !== castN || BeatEmUp.waveSpawnQueue.length !== queueN || BeatEmUp.waveSpawnQueue[0].sentinel !== 'stay') {
+      early = { i, stage: BeatEmUp.stage, phase: Game.phase, timer: Game.timer, hp: player.hp, foe: foe.hp, cast: BeatEmUp.cast.length, queue: BeatEmUp.waveSpawnQueue.length };
+      break;
+    }
+  }
+  r.early = early;
+  r.beforeLast = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, seconds: BeatEmUp.clearCountdownSeconds(), timer: Game.timer, hp: player.hp };
+  BeatEmUp.update(STEP);
+  r.updateFrozen = player.hp === hp0 && foe.hp === 100 && Game.timer === timer0 && BeatEmUp.cast.length === castN && BeatEmUp.waveSpawnQueue[0].sentinel === 'stay';
+  Game.fixedStep();
+  r.after = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, t: BeatEmUp.stageTransitionT, phase: Game.phase, fighting: Game.fighting, over: BeatEmUp.stageOver,
+    living: BeatEmUp.cast.filter(e => e.role === 'enemy' && e.f.hp > 0).length };
+  Game.fixedStep();
+  r.once = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft };
+  r.pass = delay === 5 && frames === 300 && r.elapsed === 5
+    && r.final.over === 1 && r.final.left === 0 && r.final.stage === BeatEmUp.stageTotal && r.final.winner === 'Campaign complete' && r.final.phase === 'matchEnd'
+    && r.finalAfter.stage === BeatEmUp.stageTotal && r.finalAfter.left === 0 && r.finalAfter.winner === 'Campaign complete' && r.finalAfter.phase === 'matchEnd'
+    && r.loss.over === -1 && r.loss.left === 0 && r.loss.stage === 4 && r.loss.phase === 'matchEnd'
+    && r.retry.stage === 4 && r.retry.left === 0 && r.retry.over === 0 && r.retry.phase === 'intro'
+    && r.armed.stage === 2 && r.armed.over === 1 && r.armed.left === frames && r.armed.leftArmed === frames && r.armed.next === 3
+    && r.armed.phase === 'matchEnd' && r.armed.stop === 0 && r.armed.t === 5 && r.armed.duration === delay && r.mash
+    && r.overlay.indexOf('STAGE CLEAR') >= 0 && r.overlay.indexOf('Next stage in 5') >= 0
+    && !r.early && r.beforeLast.stage === 2 && r.beforeLast.left === 1 && r.beforeLast.seconds === 1 && r.beforeLast.timer === timer0 && r.beforeLast.hp === hp0
+    && r.updateFrozen
+    && r.after.stage === 3 && r.after.left === 0 && r.after.t === 0 && r.after.phase === 'intro' && r.after.fighting === 0 && r.after.living === 0 && r.after.over === 0
+    && r.once.stage === 3 && r.once.left === 0;
+  return r;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -1907,6 +1993,10 @@ def main():
             print('panorama backdrops', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
             if not stage1_bg['pass']:
                 failures.append('Panorama backdrop failed: expected backgrounds[0] = stage-01-street-brawl.webp and backgrounds[1] = stage-02-dockyard.webp decoding at 3371x725 (stages 3-10 unchanged, no panorama config there), for both stages anchors W1=0 < W2 <= 723 < W3 (right edge at the 2170 join) < Boss (right end) in range for W=640/960/1169/1555 and equal to the pinned Stage 1 values, glide eased with the camera smoothstep/duration and monotonic with no frame jump above the eased step, unlocked follow moves both ways and is capped at the panorama, resets to the wave anchor, aspect-kept source window for stages 1-2 and the stretched draw for stage 3')
+            stage_clear = page.evaluate(STAGE_CLEAR_DELAY)
+            print('stage clear delay', json.dumps({k: v for k, v in stage_clear.items() if k != 'pass'}))
+            if not stage_clear['pass']:
+                failures.append('Stage clear delay failed: expected STAGE_TRANSITION_DELAY = 5s (300 fixed steps) between a boss clear and the next stage, STAGE CLEAR / Next stage in N on screen, no timer drain, damage, or spawns during the wait, one-shot (repeat clear/next does not skip or restart), and the final stage plus game-over/retry unchanged')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
