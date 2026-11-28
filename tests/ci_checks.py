@@ -680,7 +680,7 @@ GRAPPLER = r"""
     && r.interrupt.kind === 'hit' && !r.interrupt.caught && r.interrupt.held === 0
     // Catch on the first reach frame in range; hold exactly headbuttAt frames, headbutt = release, then hitRecovery.
     && su.caught === tl.su + 1 && su.held === sp.headbuttAt && su.pinned && su.release === 'headbutt' && su.releaseFrame === tl.su + 1 + sp.headbuttAt
-    && Math.abs(su.hpLoss - su.expectDmg) < 1e-6 && su.noRegrab === sp.noRegrab && su.stun === sp.stun && su.vxAway && su.strikes === 0
+    && Math.abs(su.hpLoss - su.expectDmg) < 1e-6 && su.noRegrab === sp.noRegrab && su.stun === Math.round(sp.stun * PLAYER_DEFENSE.stunTaken) && su.vxAway && su.strikes === 0
     && su.frames === tl.su + 1 + sp.headbuttAt + Math.max(1, Math.round(sp.hitRecovery * PACE.enemy)) && su.phases === 'xw,xh,xb,xs,xg' && su.coolT > 0
     && r.noRegrabFrames === Math.round(sp.noRegrab * 60) && !r.regrabBlocked.caught && r.regrabBlocked.reasons.includes('no-regrab')
     && r.holderHit.release === 'holder-hit' && r.holderHit.hpLoss === 0 && r.holderHit.others === 'held' && r.holderHit.heldHp === 0 && Math.abs(r.holderHit.noRegrab - (sp.noRegrab - Game.STEP)) < 1e-9
@@ -814,7 +814,7 @@ DISRUPTOR = r"""
     && d.zoneFrame === tl.su + 1 && d.poseAtZone === 'da' && d.frames === tl.total && d.strikes === 0 && d.faces.join() === '-1' && Math.abs(d.back - sp.backStep) < 1e-6
     && d.phases === 'dw,da,dr,dg' && d.zoneX === d.expectX && d.zoneDepth === .5 && d.coolT > 0 && d.zones === 1 && r.secondPlace
     // Warning first: no damage before frame warn+1; exactly one zap of dmg x difficulty with the short stun; removed after warn+live.
-    && once(r.inside) && r.inside.hits[0] === sp.warn + 1 && Math.abs(r.inside.dmg - r.expectDmg) < 1e-6 && r.inside.stun === sp.stun
+    && once(r.inside) && r.inside.hits[0] === sp.warn + 1 && Math.abs(r.inside.dmg - r.expectDmg) < 1e-6 && r.inside.stun === Math.round(sp.stun * PLAYER_DEFENSE.stunTaken)
     && r.inside.maxT === end && r.inside.removedAt === end + 1 && r.inside.xFixed && r.inside.draws.warn > 0 && r.inside.draws.live > 0
     && once(r.edge) && r.stepOut.hits.length === 0 && r.outside.hits.length === 0
     && r.lane.join() === '1,0,0' && r.laneChange === 0 && r.lateEntry.join() === '80' && r.invuln.join() === '70' && r.air === 0 && once(r.blocking)
@@ -1271,26 +1271,29 @@ STAGE1 = r"""
   r.stats = [A.brawler.health, A.brawler.speed, A.brawler.combo, A.rusher.health, A.rusher.speed, A.rusher.rush].join('/');
   const hash = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h.toString(16); };
   r.moveHash = hash(JSON.stringify([A.brawler, A.rusher, EnemyCombos.jabCross, EnemyRushes.shoulder]));
-  // --- Attacker cap follows difficulty: Easy 2, Normal 3, Hard 4. Four enemies, so the cap is the most that tell.
+  // --- Attacker slots follow ArcadeDiff. Four enemies, so the cap is how many may walk in.
+  // attackGap staggers swing starts, so simultaneous tells can sit under the slot cap. They may not exceed it.
   BeatEmUp.stage = 1; Game.phase = 'fight'; Game.fighting = 1; Math.random = () => .01;
   const p = fighters[0]; p.reset(600, 1); player.f = p; player.depth = .5; p.hp = 1e4;
-  const caps = {};
+  const caps = {}, slots = {};
   for (const level of ['easy', 'normal', 'hard']) {
     Game.arcadeLevel = level;
+    BeatEmUp.attackGapT = 0; BeatEmUp.attackGapOwner = null;
     BeatEmUp.cast = [player, ...['brawler', 'rusher', 'brawler', 'rusher'].map((k, i) => { const e = BeatEmUp.makeEnemy(k, 600 + (i % 2 ? 1 : -1) * (40 + 4 * i), .5); e.ai.cool = 0; return e; })];
-    let maxAct = 0;
+    let maxAct = 0, maxSlots = 0;
     for (let i = 0; i < 300; i++) {
       BeatEmUp.updateGroupAI(Game.STEP, player);
       const act = BeatEmUp.cast.filter(e => e.role === 'enemy' && (e.ai.tellT > 0 || e.f.atk)).length;
       maxAct = Math.max(maxAct, act);
+      maxSlots = Math.max(maxSlots, BeatEmUp.attackersNow ? BeatEmUp.attackersNow.size : 0);
       BeatEmUp.cast.forEach(e => { if (e.role === 'enemy' && e.ai.tellT <= 0) e.ai.cool = 0; });
     }
-    caps[level] = maxAct;
+    caps[level] = maxAct; slots[level] = maxSlots;
   }
   Game.arcadeLevel = 'normal';
   Math.random = prev.random;
-  r.attackers = caps;
-  r.capOk = caps.easy === 2 && caps.normal === 3 && caps.hard === 4;
+  r.attackers = caps; r.slots = slots;
+  r.capOk = ['easy', 'normal', 'hard'].every(level => slots[level] === ArcadeDiff[level].attackers && caps[level] <= ArcadeDiff[level].attackers && caps[level] >= 1);
   Object.assign(BeatEmUp, { stage: prev.stage, cast: prev.cast, cameraX: prev.cameraX, lockL: prev.lockL, lockR: prev.lockR, wave: prev.wave, waveSpawnQueue: prev.queue, waveSpawnTimer: prev.timer });
   Object.assign(Game, { arcadeLevel: prev.level, mode: prev.mode, phase: prev.phase, banner: prev.banner, bannerT: prev.bannerT, fighting: prev.fighting });
   r.pass = r.stage1Ok && r.stage1DefsOk && r.stage1SpawnedOk && r.fallbackOk && r.chainOk && r.stats === '110/0.95/jabCross/80/1.35/shoulder' && r.moveHash === '29a4f6df' && r.capOk;
@@ -1359,6 +1362,7 @@ STAGE2 = r"""
     }
     return o;
   };
+  BeatEmUp.attackGapT = 0; BeatEmUp.attackGapOwner = null;
   BeatEmUp.cast = [player, ...wave3()];
   r.ai = run(300);
   // one Grappler holding (G index 0): the other Grappler never tells while it holds, Brawlers still attack
@@ -1368,8 +1372,8 @@ STAGE2 = r"""
   const w3 = farG1(); w3[0].f.grabVictim = p;
   r.aiHold = run(200);
   w3[0].f.grabVictim = null; Math.random = prev.random;
-  r.aiOk = r.ai.maxAct === 3 && r.ai.maxGrab === 1 && r.ai.brawlerTell && r.aiControl.grabTells[1] > 0
-    && r.aiHold.maxAct <= 3 && !r.aiHold.grabTells[1] && r.aiHold.brawlerTell;
+  r.aiOk = r.ai.maxAct === ArcadeDiff.normal.attackers && r.ai.maxGrab === 1 && r.ai.brawlerTell && r.aiControl.grabTells[1] > 0
+    && r.aiHold.maxAct <= ArcadeDiff.normal.attackers && !r.aiHold.grabTells[1] && r.aiHold.brawlerTell;
   // --- No grace window: right after a release (noRegrab running, no heldBy) Brawlers are still eligible and can tell
   const w4 = wave3(); BeatEmUp.cast = [player, ...w4]; p.noRegrabT = 1.5; p.heldBy = null; Math.random = () => .01;
   r.afterRelease = run(60, () => { p.noRegrabT = Math.max(0, p.noRegrabT - Game.STEP); });
@@ -3203,6 +3207,193 @@ HUD_LABELS = r'''() => {
   return out;
 }'''
 
+PLAYER_DEFENSE_SIM = r'''() => {
+  // Player-received hits read PLAYER_DEFENSE. Enemy burst stays on enemyBurstKO / enemyBurstWindow.
+  const D = PLAYER_DEFENSE, STEP = Game.STEP, r = {};
+  const player = fighters[0], foe = fighters[1];
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  Game.minX = 0; Game.maxX = 2000;
+  const stand = (f, x) => {
+    f.playerControlled = f === player; f.bossProfile = null; f.hp = 500; f.chip = 500;
+    f.x = x; f.y = 0; f.vx = 0; f.vy = 0; f.grounded = true; f.stun = 0; f.state = 'idle';
+    f.ragdollActive = false; f.ragdollKO = false; f.ragdollElapsed = 0; f.invincibleT = 0; f.wakeGuardT = 0;
+    f.dodgeT = 0; f.damageBurst = 0; f.damageBurstT = 0; f.atk = null; f.heldBy = null;
+  };
+  const light = (extra = {}) => ({ dmg: 1, kb: 160, stun: 10, chip: 0, special: false, chain: 0, knockdown: false, ...extra });
+  const down = f => !!(f.ragdollActive || f.state === 'knockdown');
+  const step = (f, n) => { for (let i = 0; i < n; i++) f.update(STEP, foe, 0); };
+  stand(player, 400); stand(foe, 340); foe.playerControlled = false;
+  r.constants = { ...D, attackers: { easy: ArcadeDiff.easy.attackers, normal: ArcadeDiff.normal.attackers, hard: ArcadeDiff.hard.attackers } };
+
+  // Light hits flinch: scaled stun and knockback, no knockdown, and the slide stays inside the lane.
+  const kind = player.takeHit(light(), foe);
+  r.flinch = { kind, state: player.state, stun: player.stun, vx: player.vx, down: down(player) };
+  Game.minX = 100; Game.maxX = 200; player.x = 199;
+  for (let i = 0; i < 8; i++) { player.update(STEP, foe, 0); }
+  r.flinch.x = player.x; r.flinch.clamped = player.x <= Game.maxX + 1e-6 && player.x >= Game.minX - 1e-6;
+  const expectStun = Math.round(10 * D.stunTaken), expectVx = 160 * D.kbTaken;
+  r.flinchOk = kind === 'hit' && player.state === 'hit' && !r.flinch.down && r.flinch.stun === expectStun
+    && Math.abs(r.flinch.vx - expectVx) < 1e-6 && r.flinch.clamped;
+
+  // Two hits under burstKO do not fall. The hit that crosses burstKO does. The window does not refresh.
+  stand(player, 400); stand(foe, 340); foe.playerControlled = false;
+  const half = (D.burstKO - 1) / 2;
+  player.takeHit(light({ dmg: half }), foe); player.stun = 0; player.state = 'idle'; player.vx = 0;
+  player.takeHit(light({ dmg: half }), foe);
+  r.under = { burst: player.damageBurst, down: down(player), timer: player.damageBurstT };
+  const timerAfterSecond = player.damageBurstT;
+  step(player, Math.round(0.4 / STEP));
+  const beforeThird = player.damageBurstT;
+  player.stun = 0; player.state = 'idle'; player.ragdollActive = false;
+  player.takeHit(light({ dmg: 2 }), foe);
+  r.cross = { burst: player.damageBurst, down: down(player), timerBefore: beforeThird, timerAfterSecond };
+  r.meterOk = !r.under.down && r.under.burst < D.burstKO && r.cross.down
+    && beforeThird < timerAfterSecond - 0.2 && beforeThird < D.burstWindow - 0.2;
+
+  // After the window expires, earlier damage is gone and a fresh under-threshold hit does not fall.
+  stand(player, 400); stand(foe, 340); foe.playerControlled = false;
+  player.takeHit(light({ dmg: D.burstKO - 1 }), foe);
+  step(player, Math.round((D.burstWindow + 0.05) / STEP));
+  r.expired = { burst: player.damageBurst, timer: player.damageBurstT };
+  player.stun = 0; player.state = 'idle'; player.ragdollActive = false; player.y = 0; player.grounded = true;
+  player.takeHit(light({ dmg: D.burstKO - 1 }), foe);
+  r.fresh = { down: down(player), burst: player.damageBurst };
+  r.windowOk = r.expired.burst === 0 && r.expired.timer === 0 && !r.fresh.down && r.fresh.burst === D.burstKO - 1;
+
+  // Marked knockdown drops the player on 1 damage. Chain 3 does not, unless the constant says so.
+  stand(player, 400); stand(foe, 340); foe.playerControlled = false;
+  player.takeHit(light({ dmg: 1, knockdown: true }), foe);
+  r.marked = down(player);
+  stand(player, 400);
+  player.takeHit(light({ dmg: 1, chain: 3 }), foe);
+  r.chain = { down: down(player), expect: !!D.chainKnockdown };
+  stand(foe, 340); foe.playerControlled = false; foe.hp = 500;
+  foe.takeHit(light({ dmg: 1, chain: 3 }), player);
+  r.enemyChain = down(foe);
+  r.markedOk = r.marked && r.chain.down === r.chain.expect && r.enemyChain;
+
+  // Boss kb/stun stay authored. A non-boss hit is scaled.
+  stand(player, 400); stand(foe, 340); foe.playerControlled = false;
+  foe.bossProfile = { name: 'boss' };
+  player.takeHit(light({ kb: 140, stun: 18 }), foe);
+  r.boss = { stun: player.stun, vx: player.vx, down: down(player) };
+  stand(player, 400); foe.bossProfile = null; foe.playerControlled = false;
+  player.takeHit(light({ kb: 140, stun: 18 }), foe);
+  r.scaled = { stun: player.stun, vx: player.vx };
+  r.bossOk = r.boss.stun === 18 && Math.abs(r.boss.vx - 140) < 1e-6 && !r.boss.down
+    && r.scaled.stun === Math.round(18 * D.stunTaken) && Math.abs(r.scaled.vx - 140 * D.kbTaken) < 1e-6;
+
+  // Hits during wake / invincibleT do not land.
+  stand(player, 400); stand(foe, 340); foe.playerControlled = false;
+  player.invincibleT = 0.2; const hp = player.hp;
+  r.iframe = player.takeHit(light({ dmg: 12 }), foe);
+  r.iframeOk = r.iframe === 'invulnerable' && player.hp === hp && !down(player) && player.damageBurst === 0;
+
+  // Enemies still fall at enemyBurstKO and still refresh the window on each hit.
+  stand(foe, 340); foe.playerControlled = false; foe.hp = 500;
+  foe.takeHit(light({ dmg: D.enemyBurstKO - 5, kb: 0, stun: 0 }), player);
+  step(foe, Math.round(0.5 / STEP));
+  foe.stun = 0; foe.state = 'idle'; foe.ragdollActive = false;
+  foe.takeHit(light({ dmg: 1, kb: 0, stun: 0 }), player);
+  r.enemyBurst = { timer: foe.damageBurstT, down: down(foe), burst: foe.damageBurst };
+  foe.stun = 0; foe.state = 'idle'; foe.ragdollActive = false;
+  foe.takeHit(light({ dmg: 10, kb: 0, stun: 0 }), player);
+  r.enemyFell = down(foe);
+  r.enemyOk = Math.abs(r.enemyBurst.timer - D.enemyBurstWindow) < 1e-6 && !r.enemyBurst.down && r.enemyFell;
+
+  // Wake-up: invuln, no new enemy attack during wakeNoAttack, blink only in the last wakeBlink.
+  stand(player, 400); player.hp = 200; player.ragdollActive = true; player.ragdollKO = false;
+  player.ragdollElapsed = 0; player.ragdollFrom = Pose.idle(player.classProfile); player.ragdollDirection = 1;
+  player.updateRagdoll(PACE.getUp);
+  r.wake = { invuln: player.invincibleT, guard: player.wakeGuardT, up: !player.ragdollActive && player.state === 'idle' };
+  const blinkAt = t => t > 0 && t <= D.wakeBlink && Math.floor(t * 24) % 2 === 0;
+  let sawOn = false, sawOff = false;
+  for (let i = 1; i <= 24; i++) { const t = D.wakeBlink * i / 24; if (blinkAt(t)) sawOn = true; else sawOff = true; }
+  r.blinkOn = sawOn && sawOff; r.blinkOff = blinkAt(D.wakeBlink + STEP);
+  Game.arcadeLevel = 'normal'; Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1;
+  BeatEmUp.attackGapT = 0; BeatEmUp.attackGapOwner = null;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = 4000; BeatEmUp.cameraX = 0; BeatEmUp.stage = 1; BeatEmUp.stageOver = 0;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  player.depth = .5;
+  const crowd = ['brawler', 'brawler', 'brawler', 'brawler'].map((k, i) => {
+    const e = BeatEmUp.makeEnemy(k, 400 + (i % 2 ? 1 : -1) * (36 + 8 * i), .5); e.ai.cool = 0; e.f.face = i % 2 ? -1 : 1; return e;
+  });
+  BeatEmUp.cast = [pEntry, ...crowd];
+  let tellsDuring = 0;
+  const guardFrames = Math.round(D.wakeNoAttack / STEP);
+  for (let i = 0; i < guardFrames; i++) {
+    BeatEmUp.updateGroupAI(STEP, pEntry);
+    player.wakeGuardT = Math.max(0, D.wakeNoAttack - (i + 1) * STEP);
+    tellsDuring += crowd.filter(e => e.ai.tellT > 0 || e.f.atk).length ? 1 : 0;
+    crowd.forEach(e => { e.ai.cool = 0; });
+  }
+  let tellsAfter = 0;
+  for (let i = 0; i < 90 && !tellsAfter; i++) {
+    player.wakeGuardT = 0;
+    BeatEmUp.updateGroupAI(STEP, pEntry);
+    tellsAfter = crowd.filter(e => e.ai.tellT > 0).length;
+    crowd.forEach(e => { if (e.ai.tellT <= 0) e.ai.cool = 0; });
+  }
+  r.wakeOk = r.wake.up && r.wake.invuln === D.wakeInvuln && r.wake.guard === D.wakeNoAttack
+    && r.blinkOn && !r.blinkOff && tellsDuring === 0 && tellsAfter > 0;
+
+  // Four brawlers: slot count equals the normal cap, simultaneous swings never exceed it, starts are staggered.
+  BeatEmUp.attackGapT = 0; BeatEmUp.attackGapOwner = null; player.wakeGuardT = 0;
+  const mob = ['brawler', 'brawler', 'brawler', 'brawler'].map((k, i) => {
+    const e = BeatEmUp.makeEnemy(k, 400 + (i % 2 ? 1 : -1) * (36 + 6 * i), .5); e.ai.cool = 0; return e;
+  });
+  BeatEmUp.cast = [pEntry, ...mob];
+  let maxAct = 0, maxSlots = 0, lastOpen = -1; const gaps = [];
+  const cap = ArcadeDiff.normal.attackers;
+  for (let i = 0; i < 240; i++) {
+    const gapBefore = BeatEmUp.attackGapT;
+    BeatEmUp.updateGroupAI(STEP, pEntry);
+    maxSlots = Math.max(maxSlots, BeatEmUp.attackersNow ? BeatEmUp.attackersNow.size : 0);
+    const acting = mob.filter(e => e.f.hp > 0 && (e.ai.tellT > 0 || e.f.atk));
+    maxAct = Math.max(maxAct, acting.length);
+    // A refreshed gap means a different enemy opened an attack. Re-tells by the owner do not refresh it.
+    if (BeatEmUp.attackGapT > gapBefore + 1e-6) {
+      if (lastOpen >= 0) gaps.push(i - lastOpen);
+      lastOpen = i;
+    }
+    mob.forEach(e => { if (e.ai.tellT <= 0) e.ai.cool = 0; });
+  }
+  const minGap = D.attackGap / STEP - 1;
+  r.crowd = { maxAct, maxSlots, cap, gaps: gaps.slice(0, 6), gapCount: gaps.length };
+  r.crowdOk = maxSlots === cap && maxAct <= cap && maxAct >= 1 && gaps.length >= 1 && gaps.every(g => g >= minGap);
+
+  // Scripted Stage 1 wave 2, player idle, 30s. Numbers are reported; the cap still holds.
+  let seed = 0xC0FFEE42 >>> 0;
+  Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  Game.arcadeLevel = 'normal'; Game.timer = 9999; BeatEmUp.stageOver = 0; BeatEmUp.downPending = 0;
+  BeatEmUp.attackGapT = 0; BeatEmUp.attackGapOwner = null;
+  player.setClass('freehand'); player.playerControlled = true; player.reset(Game.W * 0.35, 1); player.hp = 10000; player.chip = 10000;
+  pEntry.f = player; pEntry.depth = 0.55; player.depth = 0.55;
+  BeatEmUp.cast = [pEntry]; BeatEmUp.startWave(2, true, false);
+  for (let k = 0; k < 80 && BeatEmUp.waveSpawnQueue.length; k++) BeatEmUp.updateWaveSpawns(10);
+  Game.phase = 'fight'; Game.fighting = 1; Game.timer = 9999; player.hp = 10000;
+  Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.was[0][a] = 0; });
+  const roster = BeatEmUp.cast.filter(e => e.role === 'enemy').map(e => e.kind);
+  let kd = 0, dmg = 0, hits = 0, waveAct = 0;
+  for (let i = 0; i < 30 * 60; i++) {
+    Input.acts.forEach(a => { Input.pad[0][a] = 0; });
+    const hp0 = player.hp;
+    const was = !!(player.ragdollActive || player.state === 'knockdown' || player.state === 'ko');
+    BeatEmUp.update(STEP);
+    if (player.hp < hp0) { dmg += hp0 - player.hp; hits++; }
+    const now = !!(player.ragdollActive || player.state === 'knockdown' || player.state === 'ko');
+    if (now && !was) kd++;
+    if (player.hp < 5000) player.hp = 10000;
+    const act = BeatEmUp.cast.filter(e => e.role === 'enemy' && e.f.hp > 0 && (e.ai.tellT > 0 || e.f.atk)).length;
+    if (act > waveAct) waveAct = act;
+  }
+  r.wave = { roster, knockdowns: kd, damage: +dmg.toFixed(3), hits, maxAct: waveAct };
+  r.waveOk = roster.length >= 4 && waveAct <= ArcadeDiff.normal.attackers && hits > 0 && kd < hits;
+
+  r.pass = !!(r.flinchOk && r.meterOk && r.windowOk && r.markedOk && r.bossOk && r.iframeOk && r.enemyOk && r.wakeOk && r.crowdOk && r.waveOk);
+  return r;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -3357,11 +3548,15 @@ def main():
             stage1 = page.evaluate(STAGE1)
             print('stage 1', json.dumps({k: v for k, v in stage1.items() if k != 'pass'}))
             if not stage1['pass']:
-                failures.append('Stage 1 failed: expected waves brawler,brawler / brawler,rusher,brawler / brawler,rusher,brawler,rusher with no kunai/bruiser text and the Block Captain unchanged, Stage 1 spawns read from its wave "spawns" (and actually spawned there), stages 3-10 reproducing the old built-in layouts for all 72 slots, wave -> stage[n] -> stage default -> built-in per-field fallback with 0-1 clamping, Brawler/Rusher stats and moves unchanged, and at most 2 simultaneous attackers')
+                failures.append('Stage 1 failed: expected waves brawler,brawler / brawler,rusher,brawler / brawler,rusher,brawler,rusher with no kunai/bruiser text and the Block Captain unchanged, Stage 1 spawns read from its wave "spawns" (and actually spawned there), stages 3-10 reproducing the old built-in layouts for all 72 slots, wave -> stage[n] -> stage default -> built-in per-field fallback with 0-1 clamping, Brawler/Rusher stats and moves unchanged, and walk-in slots matching ArcadeDiff with simultaneous attacks never above that cap')
             stage2 = page.evaluate(STAGE2)
             print('stage 2', json.dumps({k: v for k, v in stage2.items() if k != 'pass'}))
             if not stage2['pass']:
-                failures.append('Stage 2 failed: expected waves grappler,brawler / grappler,brawler,brawler / grappler,grappler,brawler,brawler with Grappler/Brawler text and the Dockmaster unchanged, other stages byte-identical, authored spawns read and actually spawned, at most one Grappler among the active attackers (an active Grappler keeps its slot, others yield to the next enemy; exact old slice otherwise), the two-attacker cap, Brawlers eligible right after a release (no grace window), no-regrab refusing a second grab, and Grappler/Brawler stats and moves unchanged')
+                failures.append('Stage 2 failed: expected waves grappler,brawler / grappler,brawler,brawler / grappler,grappler,brawler,brawler with Grappler/Brawler text and the Dockmaster unchanged, other stages byte-identical, authored spawns read and actually spawned, at most one Grappler among the active attackers (an active Grappler keeps its slot, others yield to the next enemy; exact old slice otherwise), the ArcadeDiff attacker cap, Brawlers eligible right after a release (no grace window), no-regrab refusing a second grab, and Grappler/Brawler stats and moves unchanged')
+            defense = page.evaluate(PLAYER_DEFENSE_SIM)
+            print('player defense', json.dumps({k: v for k, v in defense.items() if k != 'pass'}))
+            if not defense['pass']:
+                failures.append('Player defense failed: expected light hits to flinch (stunTaken/kbTaken, no knockdown, x clamped), burstKO inside burstWindow to knock down without refreshing the window, marked knockdown to drop the player, chain 3 to follow chainKnockdown, bosses to keep authored kb/stun, invincibleT hits to miss, enemies to keep enemyBurstKO with a refreshing window, wakeInvuln plus wakeNoAttack with a wakeBlink at the end, and a 4-enemy crowd to stay within ArcadeDiff.normal.attackers with starts at least attackGap apart')
             boss_b2b = page.evaluate(BOSS_B2B)
             print('boss b2b', json.dumps({k: v for k, v in boss_b2b.items() if k not in ('pass', 'bcStay', 'bcGap', 'bcSide', 'bcLane', 'bcEdge')}))
             if not boss_b2b['pass']:

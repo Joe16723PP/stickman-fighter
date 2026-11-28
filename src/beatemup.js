@@ -1,6 +1,6 @@
 import { Sfx } from './audio.js';
 import { BladeSuper } from './blade.js';
-import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones, specialHitStop } from './config.js';
+import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PLAYER_DEFENSE, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones, specialHitStop } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
@@ -245,7 +245,23 @@ export class BeatEmUp {
   static waveTotal = 3;
   static waveSpawnQueue = [];
   static waveSpawnTimer = 0;
-  static get MAX_ATTACKERS() { return BeatEmUp.difficulty.attackers || 2; } // Easy 2, Normal 3, Hard 4 walk in. A ranged attacker takes one slot.
+  static get MAX_ATTACKERS() { return BeatEmUp.difficulty.attackers || 2; } // Easy 2, Normal 2, Hard 3 walk in. A ranged attacker takes one slot.
+  static attackGapT = 0;
+  static attackGapOwner = null;
+  static attackersNow = null;
+  /** Non-boss enemies wait out the wake-up grace and the stagger before they START an attack. Bosses keep their rate. */
+  static attackBlocked(e, player) {
+    if (e.kind === 'boss') return false;
+    if (player?.f?.wakeGuardT > 0) return true;
+    return BeatEmUp.attackGapT > 0 && BeatEmUp.attackGapOwner !== e;
+  }
+  /** The enemy who just opened an attack does not refresh the gap by telling again. The next enemy waits attackGap. */
+  static noteAttackStart(e) {
+    if (e.kind === 'boss') return;
+    if (BeatEmUp.attackGapOwner === e && BeatEmUp.attackGapT > 0) return;
+    BeatEmUp.attackGapT = PLAYER_DEFENSE.attackGap;
+    BeatEmUp.attackGapOwner = e;
+  }
   /** Grappler is an active attacker: holding a victim, mid-grab, or telling its GRAB. */
   static grapplerActive(e) { return !!(e.f.enemyGrab && (e.f.grabVictim || e.f.atk?.grab || (e.ai?.tellT > 0 && e.ai.tellMove === 'punch'))); }
   /** Nearest-first melee attackers with at most one Grappler (Stage 2). An active Grappler (holding, mid-grab or telling)
@@ -435,6 +451,7 @@ export class BeatEmUp {
     BeatEmUp.boss = null;
     BeatEmUp.bossMaxHp = 220;
     BeatEmUp.stageOver = 0;
+    BeatEmUp.attackGapT = 0; BeatEmUp.attackGapOwner = null;
     BeatEmUp.downPending = 0; BeatEmUp.downTimer = 0;
     BeatEmUp.lives = BeatEmUp.START_LIVES;
     BeatEmUp.score = 0;
@@ -747,7 +764,8 @@ export class BeatEmUp {
     if (p) {
       p.f.reset(BeatEmUp.downX, 1);
       p.f.color = p.f.classProfile?.color || PlayerCoolColor; p.f.tag = 'YOU'; p.f.meter = 0;
-      p.f.invincibleT = 1.5;
+      p.f.invincibleT = PLAYER_DEFENSE.wakeInvuln;
+      p.f.wakeGuardT = PLAYER_DEFENSE.wakeNoAttack;
       p.depth = BeatEmUp.downDepth;
     }
     // Keep the remaining wave (and a boss's current health) intact after spending a life.
@@ -996,6 +1014,9 @@ export class BeatEmUp {
       ...(ranged ? [ranged] : []),
       ...BeatEmUp.pickMelee(sorted.filter(e => e !== ranged), BeatEmUp.MAX_ATTACKERS - (ranged ? 1 : 0)),
     ]);
+    BeatEmUp.attackersNow = attackers;
+    BeatEmUp.attackGapT = Math.max(0, BeatEmUp.attackGapT - dt);
+    if (BeatEmUp.attackGapT <= 0) BeatEmUp.attackGapOwner = null;
     for (const e of alive) {
       const ai = e.ai;
       ai.cool = Math.max(0, ai.cool - dt);
@@ -1108,7 +1129,7 @@ export class BeatEmUp {
       } else if (dist > reach) {
         if (e.f.x < player.f.x) Input.pad[1].right = 1;
         else Input.pad[1].left = 1;
-      } else if (ai.cool <= 0 && BeatEmUp.depthClose(e.depth, player.depth, BeatEmUp.depthHitTolerance(e, player) * 0.9) && !grabBlocked && !deployBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0)) { // Guard only bashes what its shield faces
+      } else if (ai.cool <= 0 && BeatEmUp.depthClose(e.depth, player.depth, BeatEmUp.depthHitTolerance(e, player) * 0.9) && !grabBlocked && !deployBlocked && !(bash && (player.f.x - e.f.x) * e.f.face <= 0) && !BeatEmUp.attackBlocked(e, player)) { // Guard only bashes what its shield faces
         let move, label, tell;
         if (e.bossProfile) {
           const profile = e.bossProfile;
@@ -1153,6 +1174,7 @@ export class BeatEmUp {
           if (ai.counterQueued) { move = 'punch'; label = counter.label; }
         }
         ai.tellMove = move; ai.tellKind = label; ai.tellT = tell;
+        BeatEmUp.noteAttackStart(e);
       }
       BeatEmUp._driveEnemyPad(e, player, dt);
     }
@@ -1202,9 +1224,11 @@ export class BeatEmUp {
 
     const dist = Math.abs(e.f.x - player.f.x);
     if (canAttack && Game.fighting && Game.phase === 'fight' && ai.cool <= 0
-      && dist >= 175 && dist <= 420 && BeatEmUp.depthClose(e.depth, player.depth)) {
+      && dist >= 175 && dist <= 420 && BeatEmUp.depthClose(e.depth, player.depth)
+      && !BeatEmUp.attackBlocked(e, player)) {
       ai.throwPhase = 'windup'; ai.tellT = EnemyProjectile.tell; ai.tellKind = 'THROW';
       e.f.enemyThrowPose = 'windup';
+      BeatEmUp.noteAttackStart(e);
     }
   }
 

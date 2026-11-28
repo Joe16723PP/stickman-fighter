@@ -1,7 +1,7 @@
 import { Game, fighters } from './game.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { BossSignatures, PACE, paceEnemy } from './config.js';
+import { BossSignatures, PACE, PLAYER_DEFENSE, paceEnemy } from './config.js';
 
 // Karate has no combo sheet. Both Attack punches play `punch` (one jab).
 const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, roll: 8, special: 24 };
@@ -124,8 +124,21 @@ let hudCanvas = null;
 let worldImage = null;
 let hudImage = null;
 
+/** Last wakeBlink seconds of wake-up invulnerability. Phaser had no blink for invincibleT. */
+function wakeBlinkOn(fighter) {
+  return !!(fighter.playerControlled && fighter.invincibleT > 0 && fighter.invincibleT <= PLAYER_DEFENSE.wakeBlink
+    && Math.floor(fighter.invincibleT * 24) % 2 === 0);
+}
+
 function key(name, index) {
   return 'karate-' + name + '-' + index;
+}
+
+// Standing hitstun stays on the on-feet recoil (the first two fall frames). Ragdoll and KO play the full fall.
+function fallIndex(fighter, elapsed, count) {
+  const index = Math.floor(Math.max(0, elapsed) * 12);
+  if (fighter.state === 'hit' && !fighter.ragdollActive && fighter.hp > 0) return Math.min(1, index);
+  return Math.min(count - 1, index);
 }
 
 function clipOf(fighter) {
@@ -216,7 +229,7 @@ function frameOf(fighter, name) {
       fighter._clipName = name;
       fighter._clipStart = now;
     }
-    return Math.max(0, Math.min(count - 1, Math.floor((now - fighter._clipStart) * 12)));
+    return fallIndex(fighter, (now - fighter._clipStart), count);
   }
   const now = fighter.animT || 0;
   if (fighter._clipName !== name) {
@@ -268,7 +281,7 @@ function staffFrame(fighter, name) {
   }
   if (name === 'fall') {
     if (downedFall(fighter)) return fallHoldIndex(fighter, STAFF_FALL_COUNT);
-    return Math.max(0, Math.min(STAFF_FALL_COUNT - 1, Math.floor(((fighter.animT || 0) - fighter._staffClipStart) * 12)));
+    return fallIndex(fighter, (fighter.animT || 0) - fighter._staffClipStart, STAFF_FALL_COUNT);
   }
   if (name === 'punch') return chainSlice(fighter, (fighter.atk?.chain || 0) <= 0 ? 0 : 3, 3);
   if (name === 'kick') {
@@ -352,7 +365,7 @@ function bladeFrame(fighter, name) {
   const count = BLADE[name].count;
   if (name === 'fall') {
     if (downedFall(fighter)) return fallHoldIndex(fighter, count);
-    return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._bladeClipStart) * 12)));
+    return fallIndex(fighter, (fighter.animT || 0) - fighter._bladeClipStart, count);
   }
   // Quick Draw is frames 0–2; the second Attack press uses frames 3–5 of the same clip.
   if (name === 'punch') return chainSlice(fighter, (fighter.atk?.chain || 0) <= 0 ? 0 : 3, 3);
@@ -1010,7 +1023,7 @@ function paint(scene) {
       view.body.setScale(titleBodyScale(null, fighter, screen));
       if (fighter.flash > 0) view.body.setTintFill(0xffffff);
       else view.body.clearTint();
-      const blink = fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
+      const blink = wakeBlinkOn(fighter) || (fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0);
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
@@ -1027,7 +1040,7 @@ function paint(scene) {
       view.body.setScale(titleBodyScale(null, fighter, screen));
       if (fighter.flash > 0) view.body.setTintFill(0xffffff);
       else view.body.clearTint();
-      const blink = staffName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
+      const blink = wakeBlinkOn(fighter) || (staffName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0);
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
@@ -1044,7 +1057,7 @@ function paint(scene) {
       view.body.setScale(titleBodyScale(null, fighter, screen));
       if (fighter.flash > 0) view.body.setTintFill(0xffffff);
       else view.body.clearTint();
-      const blink = bladeName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
+      const blink = wakeBlinkOn(fighter) || (bladeName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0);
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
