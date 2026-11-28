@@ -1,7 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossSignatures, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses, PACE, paceEnemy, SPECIAL_GAIN_MULT } from './config.js';
+import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossSignatures, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses, PACE, PLAYER_DEFENSE, paceEnemy, SPECIAL_GAIN_MULT } from './config.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
 import { Input } from './input.js';
@@ -52,7 +52,7 @@ export class Fighter {
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
     this.landSquash = 0; this.koT = 0; this.atkPhase = '';
     this.damageBurst = 0; this.damageBurstT = 0;
-    this.invincibleT = 0;
+    this.invincibleT = 0; this.wakeGuardT = 0;
     this.attackBoostT = 0;
     this.ragdollActive = false; this.ragdollKO = false; this.ragdollElapsed = 0;
     this.ragdollDirection = 0; this.ragdollAngle = 0; this.ragdollFrom = null;
@@ -939,6 +939,7 @@ export class Fighter {
     this.attackBoostT = Math.max(0, this.attackBoostT - dt);
     this.wardShieldT = Math.max(0, this.wardShieldT - dt);
     this.invincibleT = Math.max(0, this.invincibleT - dt);
+    this.wakeGuardT = Math.max(0, this.wakeGuardT - dt);
     const dodgeCd = this.dodgeCooldown;
     this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
     if (this.playerControlled && dodgeCd > 0 && this.dodgeCooldown === 0) {
@@ -1345,7 +1346,6 @@ export class Fighter {
       if (this.hp <= 0) this.startRagdoll(from, true);
       return 'armored';
     }
-    this.stun = atk.stun;
     if (this.classProfile?.weapon === 'staff' && this.state === 'special') {
       Fx.clearStaffSuper(this);
       this.specialOriginX = null; this.specialOriginDepth = null; this.specialFxPulse = -1;
@@ -1358,31 +1358,44 @@ export class Fighter {
     }
     Sfx.play('hit', this.classProfile);
     const push = Math.sign(this.x - from.x) || (from?.face || 1);
+    const scaled = this.scalesIncoming(from);
+    this.stun = scaled ? Math.round((atk.stun || 0) * PLAYER_DEFENSE.stunTaken) : atk.stun;
     const karateHold = atk.special && from?.classProfile?.style === 'ward' && !from.classProfile?.weapon && !atk.knockdown;
     if (karateHold) { this.vx = 0; if (this.superPinGap == null) this.superPinGap = this.x - from.x; this.superPinFrom = from; }
-    else { this.superPinGap = null; this.superPinFrom = null; this.vx = push * atk.kb; }
+    else { this.superPinGap = null; this.superPinFrom = null; this.vx = push * atk.kb * (scaled ? PLAYER_DEFENSE.kbTaken : 1); }
     if (this.state === 'special' && this.classProfile?.weapon === 'blade') this.bladeSuper = null;
     this.atk = null; this.blocking = 0; this.dashLeft = 0;
     this.heavyFollow = 0; this.heavyQueued = false;
     this.atkPhase = '';
     this.state = 'hit';
     this.recordDamage(hpBefore - this.hp, from, !!atk.deferKnockdown);
-    const knockdown = atk.knockdown || (!atk.special && atk.chain === 3);
+    const chainDrops = !atk.special && atk.chain === 3 && (!this.playerControlled || PLAYER_DEFENSE.chainKnockdown);
+    const knockdown = !!atk.knockdown || chainDrops;
     if (knockdown && !(Game.mode === 'practice' && !this.playerControlled)) this.startRagdoll(from, false);
     return 'hit';
   }
+  /** Non-boss enemy hits on the player use PLAYER_DEFENSE. Bosses and any player attacker keep authored kb/stun. */
+  scalesIncoming(from) {
+    return !!(this.playerControlled && from && !from.playerControlled && !from.bossProfile);
+  }
   recordDamage(amount, from, deferKnockdown = false) {
     if (amount <= 0) return;
+    const player = !!this.playerControlled;
+    const window = player ? PLAYER_DEFENSE.burstWindow : PLAYER_DEFENSE.enemyBurstWindow;
+    const limit = player ? PLAYER_DEFENSE.burstKO : PLAYER_DEFENSE.enemyBurstKO;
     if (this.damageBurstT <= 0) this.damageBurst = 0;
+    const opening = this.damageBurstT <= 0;
     this.damageBurst += amount;
-    this.damageBurstT = 1.6;
+    // Player window counts from the first hit. Enemy window still restarts on every hit.
+    if (!player || opening) this.damageBurstT = window;
     if (this.hp <= 0 && !(Game.mode === 'practice' && !this.playerControlled)) this.startRagdoll(from, true);
     // Karate super: P and QK must not trigger the burst knockdown, so the HK (which knocks down itself) can land.
     // Staff super: same rule for both spins, so only the Dragon Slam knocks down.
-    else if (!deferKnockdown && !this.ragdollActive && this.damageBurst >= 30 && !(Game.mode === 'practice' && !this.playerControlled)
+    else if (!deferKnockdown && !this.ragdollActive && this.damageBurst >= limit && !(Game.mode === 'practice' && !this.playerControlled)
       && !(from?.state === 'special' && (from.classProfile?.style === 'ward' || from.classProfile?.weapon === 'staff')
         && from.superPulse() >= 0 && from.superPulse() < (from.atk?.superFractions?.length || 3) - 1)) {
       this.damageBurst = 0;
+      this.damageBurstT = 0;
       this.startRagdoll(from, false);
     }
   }
@@ -1431,7 +1444,10 @@ export class Fighter {
     if (this.ragdollElapsed >= PACE.getUp) {
       this.ragdollActive = false; this.ragdollAngle = 0; this.ragdollElapsed = 0;
       this.y = 0; this.vy = 0; this.grounded = true; this.state = 'idle';
-      if (this.playerControlled) this.invincibleT = 1.5;
+      if (this.playerControlled) {
+        this.invincibleT = PLAYER_DEFENSE.wakeInvuln;
+        this.wakeGuardT = PLAYER_DEFENSE.wakeNoAttack;
+      }
       this.damageBurst = 0; this.damageBurstT = 0;
       this.aim('idle', Pose.idle(this.classProfile), .16);
     }
