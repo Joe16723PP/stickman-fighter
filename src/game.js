@@ -1299,9 +1299,10 @@ export class Game {
       Game.drawTitle(ctx, 'chrome');
       ctx.restore();
       const scene = Game.phaserScene;
+      const atlasIdle = (pack) => scene.textures.exists(pack) && scene.textures.get(pack).has(pack + '-idle-0');
       if (!window.__menuShown && Game.spriteBodies && scene
-        && scene.textures.exists('menu-bg') && scene.textures.exists('karate-idle-0')
-        && scene.textures.exists('staff-idle-0') && scene.textures.exists('blade-idle-0')) {
+        && scene.textures.exists('menu-bg') && atlasIdle('karate')
+        && atlasIdle('staff') && atlasIdle('blade')) {
         window.__menuShown = true;
         window.__menuShownAt = performance.now();
       }

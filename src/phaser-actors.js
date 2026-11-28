@@ -781,6 +781,31 @@ function enemyFrame(fighter, name, count, kind) {
   return Math.floor((fighter.animT || 0) * 12) % count;
 }
 
+function packOfFrame(frameName) {
+  const name = String(frameName || '');
+  let best = null;
+  for (const id of Object.keys(PACKS)) {
+    if (name.startsWith(id + '-') && (!best || id.length > best.length)) best = id;
+  }
+  return best;
+}
+
+/** True when the atlas for this frame name is loaded and contains the frame. */
+export function frameReady(scene, frameName) {
+  const pack = packOfFrame(frameName);
+  if (!pack || !scene || !scene.textures.exists(pack)) return false;
+  return scene.textures.get(pack).has(frameName);
+}
+
+function useFrame(scene, view, frameName) {
+  const pack = packOfFrame(frameName);
+  if (!frameReady(scene, frameName)) return false;
+  if (!view.body) view.body = scene.add.image(0, 0, pack, frameName);
+  else if (view.body.texture.key !== pack || !view.body.frame || view.body.frame.name !== frameName) view.body.setTexture(pack, frameName);
+  view.body.setVisible(true);
+  return true;
+}
+
 function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
   const kind = posedKind(entry);
   const table = ENEMY_CLIPS[kind];
@@ -788,10 +813,8 @@ function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
   const meta = table?.[clip];
   if (!meta) return false;
   const index = enemyFrame(fighter, name, meta.count, kind);
-  const texture = kind + '-' + clip + '-' + index;
-  if (!scene.textures.exists(texture)) return false;
-  if (!view.body) view.body = scene.add.image(0, 0, texture);
-  if (view.body.texture.key !== texture) view.body.setTexture(texture);
+  const frameName = kind + '-' + clip + '-' + index;
+  if (!useFrame(scene, view, frameName)) return false;
   const box = meta.box;
   const foot = meta.anchor - box.w / 2;
   view.body.setFlipX(fighter.face < 0);
@@ -805,58 +828,52 @@ function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
   return true;
 }
 
-// One pack per posed character. Counts stay on the clip tables above, so a frame
-// added there is picked up here. To ship one atlas later, set `atlas: { key, texture, json }`
-// on that pack: queueFrames already loads an atlas entry, and the frame keys stay
-// `pack-clip-index` (the names to put inside the atlas).
+// One atlas per posed character. Frame names stay `pack-clip-index` and match the atlas JSON.
 const HERO_PACKS = ['karate', 'staff', 'blade'];
 const BOSS_SPRITE_PACK = { bossBlockParty: 'block-captain', bossDockHaulIn: 'dockmaster' };
 const MENU_FRAMES = [
   { kind: 'image', key: 'menu-bg', url: 'assets/backgrounds/main-menu.webp', pack: 'menu', clip: 'menu' },
 ];
 const PACKS = {};
-function definePack(id, root, clips, stamp) {
-  PACKS[id] = { root, clips, stamp };
+function definePack(id, clips) {
+  PACKS[id] = { clips };
 }
-definePack('karate', 'assets/characters/karate/frames/clips/',
-  Object.fromEntries(Object.entries(CLIPS).map(([name, count]) => [name, { count }])),
-  (name) => name === 'idle' ? '14' : name === 'walk' ? '17' : name === 'punch' ? '15' : name === 'kick' ? '16' : name === 'roll' ? '18' : name === 'special' ? '13' : name === 'fall' ? '19' : '9');
-definePack('staff', 'assets/characters/staff/frames/clips/', {
+definePack('karate', Object.fromEntries(Object.entries(CLIPS).map(([name, count]) => [name, { count }])));
+definePack('staff', {
   idle: { count: STAFF_IDLE_COUNT }, walk: { count: STAFF_WALK_COUNT }, roll: { count: STAFF_ROLL_COUNT },
   punch: { count: STAFF_PUNCH_COUNT }, kick: { count: STAFF_KICK_COUNT }, special: { count: STAFF_SPECIAL_COUNT },
   fall: { count: STAFF_FALL_COUNT },
-}, () => '1');
-definePack('blade', 'assets/characters/blade/frames/clips/',
-  Object.fromEntries(Object.entries(BLADE).map(([name, meta]) => [name, { count: meta.count }])),
-  (name) => name === 'kick' ? '2' : '1');
+});
+definePack('blade', Object.fromEntries(Object.entries(BLADE).map(([name, meta]) => [name, { count: meta.count }])));
 for (const [kind, table] of Object.entries(ENEMY_CLIPS)) {
-  definePack(kind, 'assets/characters/' + kind + '/frames/clips/',
-    Object.fromEntries(Object.entries(table).map(([name, meta]) => [name, { count: meta.count }])),
-    () => '1');
+  definePack(kind, Object.fromEntries(Object.entries(table).map(([name, meta]) => [name, { count: meta.count }])));
 }
 
-function packFrames(packId, clipNames) {
-  const spec = PACKS[packId];
-  if (!spec) return [];
-  if (spec.atlas) {
-    return [{ kind: 'atlas', key: spec.atlas.key, url: spec.atlas.texture, json: spec.atlas.json, pack: packId, clip: 'atlas' }];
-  }
-  const clips = {};
-  const names = clipNames || Object.keys(spec.clips);
-  for (const name of names) if (spec.clips[name]) clips[name] = spec.clips[name];
-  const out = [];
-  for (const [name, meta] of Object.entries(clips)) {
-    const stamp = spec.stamp(name);
-    for (let i = 0; i < meta.count; i++) {
-      const file = String(i).padStart(2, '0');
-      out.push({
-        kind: 'image',
-        key: packId + '-' + name + '-' + i,
-        url: spec.root + name + '/' + file + '.png?v=' + stamp,
-        pack: packId,
-        clip: name,
-      });
+function atlasEntry(packId) {
+  return {
+    kind: 'atlas',
+    key: packId,
+    url: 'assets/characters/' + packId + '/atlas.webp',
+    json: 'assets/characters/' + packId + '/atlas.json',
+    pack: packId,
+    clip: 'atlas',
+  };
+}
+
+function packFrames(packId) {
+  if (!PACKS[packId]) return [];
+  return [atlasEntry(packId)];
+}
+
+/** Every frame name an animation can request, grouped by character atlas. */
+export function animationFrames() {
+  const out = {};
+  for (const [id, spec] of Object.entries(PACKS)) {
+    const names = [];
+    for (const [clip, meta] of Object.entries(spec.clips)) {
+      for (let i = 0; i < meta.count; i++) names.push(id + '-' + clip + '-' + i);
     }
+    out[id] = names;
   }
   return out;
 }
@@ -872,14 +889,13 @@ function dedupeFrames(frames) {
   return out;
 }
 
-/** Idle frames for the three heroes, plus the menu background. This is the boot preload. */
+/**
+ * Boot preload. The menu draws all three heroes' idles, and each idle lives inside
+ * that hero's atlas, so the smallest set that keeps the menu correct is the three
+ * hero atlases (karate, staff, blade) plus the menu background.
+ */
 export function bootPreloadList() {
-  return [...HERO_PACKS.flatMap((id) => packFrames(id, ['idle'])), ...MENU_FRAMES];
-}
-
-/** Every non-idle frame of the three playable heroes. */
-export function heroDeferredList() {
-  return HERO_PACKS.flatMap((id) => packFrames(id).filter((frame) => frame.clip !== 'idle'));
+  return [...HERO_PACKS.map((id) => atlasEntry(id)), ...MENU_FRAMES];
 }
 
 function heroPackId(classId) {
@@ -943,19 +959,15 @@ function productionScheduling() {
   try {
     if (new URLSearchParams(location.search).get('load') === 'production') return true;
   } catch (e) {}
-  // The texture harness waits until karate-special-23 exists, then paints enemies.
-  // Under automation that frame is published last, after every pack is cached.
-  // Production backgrounds hero frames only; each stage queues its own enemies.
+  // The texture harness paints brawler and heavy without walking each stage.
+  // Under automation those atlases are queued once the menu atlases are in.
+  // Production loads only the picked fighter and the current stage, at stage entry.
   return !(typeof navigator !== 'undefined' && navigator.webdriver);
 }
 
-/** Hero frames after the menu is up. Does not block the scene update. */
+/** Test pages prefetch every enemy atlas. Production does not load ahead of the stage. */
 export function startBackgroundLoads(scene) {
-  const heroes = heroDeferredList();
-  if (productionScheduling()) {
-    queueFrames(scene, heroes, true);
-    return;
-  }
+  if (productionScheduling()) return;
   const seen = new Set();
   const enemies = [];
   const settings = typeof ARCADE_STAGE_SETTINGS !== 'undefined' ? ARCADE_STAGE_SETTINGS : [];
@@ -966,18 +978,7 @@ export function startBackgroundLoads(scene) {
       enemies.push(frame);
     }
   }
-  const sentinel = heroes.filter((frame) => frame.key === 'karate-special-23');
-  const first = [...enemies, ...heroes.filter((frame) => frame.key !== 'karate-special-23')];
-  queueFrames(scene, first, true);
-  // Wait until that batch is cached, then publish the frame the texture harness waits on.
-  const watch = () => {
-    if (!first.every((frame) => scene.textures.exists(frame.key))) {
-      requestAnimationFrame(watch);
-      return;
-    }
-    queueFrames(scene, sentinel, true);
-  };
-  requestAnimationFrame(watch);
+  queueFrames(scene, enemies, true);
 }
 
 let loadUi = null;
@@ -1150,11 +1151,12 @@ function paint(scene) {
     const bladeName = rival ? null : bladeClip(fighter);
     const enemyName = entry ? enemyClip(entry, fighter) : null;
     let enemyPosed = false;
+    let heroPosed = false;
     if (karate) {
       const name = clipOf(fighter);
-      const texture = key(name, frameOf(fighter, name));
-      if (!view.body) view.body = scene.add.image(0, 0, texture);
-      if (view.body.texture.key !== texture) view.body.setTexture(texture);
+      const frameName = key(name, frameOf(fighter, name));
+      heroPosed = useFrame(scene, view, frameName);
+      if (heroPosed) {
       const box = clipBox(name);
       const foot = name === 'idle' ? IDLE_ANCHOR - box.w / 2 : name === 'walk' ? WALK_ANCHOR - box.w / 2 : name === 'punch' ? PUNCH_ANCHOR - box.w / 2 : name === 'kick' ? KICK_ANCHOR - box.w / 2 : name === 'roll' ? ROLL_ANCHOR - box.w / 2 : name === 'fall' ? FALL_ANCHOR - box.w / 2 : name === 'special' ? SPECIAL_ANCHOR - box.w / 2 : 0;
       view.body.setFlipX(fighter.face < 0);
@@ -1166,11 +1168,12 @@ function paint(scene) {
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
+      }
     } else if (staffName) {
       const index = staffFrame(fighter, staffName);
-      const texture = 'staff-' + staffName + '-' + index;
-      if (!view.body) view.body = scene.add.image(0, 0, texture);
-      if (view.body.texture.key !== texture) view.body.setTexture(texture);
+      const frameName = 'staff-' + staffName + '-' + index;
+      heroPosed = useFrame(scene, view, frameName);
+      if (heroPosed) {
       const box = staffName === 'walk' ? STAFF_WALK_BOX : staffName === 'roll' ? STAFF_ROLL_BOX : staffName === 'fall' ? STAFF_FALL_BOX : staffName === 'punch' ? STAFF_PUNCH_BOX : staffName === 'kick' ? STAFF_KICK_BOX : staffName === 'special' ? STAFF_SPECIAL_BOX : STAFF_IDLE_BOX;
       const anchor = staffName === 'walk' ? STAFF_WALK_ANCHOR : staffName === 'roll' ? STAFF_ROLL_ANCHOR : staffName === 'fall' ? STAFF_FALL_ANCHOR : staffName === 'punch' ? STAFF_PUNCH_ANCHOR : staffName === 'kick' ? STAFF_KICK_ANCHOR : staffName === 'special' ? STAFF_SPECIAL_ANCHOR : STAFF_IDLE_ANCHOR;
       const foot = anchor - box.w / 2;
@@ -1183,11 +1186,12 @@ function paint(scene) {
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
+      }
     } else if (bladeName) {
       const index = bladeFrame(fighter, bladeName);
-      const texture = 'blade-' + bladeName + '-' + index;
-      if (!view.body) view.body = scene.add.image(0, 0, texture);
-      if (view.body.texture.key !== texture) view.body.setTexture(texture);
+      const frameName = 'blade-' + bladeName + '-' + index;
+      heroPosed = useFrame(scene, view, frameName);
+      if (heroPosed) {
       const meta = BLADE[bladeName];
       const box = meta.box;
       const foot = meta.anchor - box.w / 2;
@@ -1200,11 +1204,13 @@ function paint(scene) {
       view.body.setAlpha(blink ? 0.35 : 1);
       place(view.body, fighter, screen, camera, (box.w / 2 + foot) / box.w, true, box);
       if (view.plate) view.plate.setVisible(false);
+      }
     } else if (enemyName) {
       enemyPosed = paintEnemy(scene, view, fighter, entry, screen, camera, enemyName);
       if (!enemyPosed && view.body) view.body.setVisible(false);
     } else if (view.body) view.body.setVisible(false);
-    if (!karate && !staffName && !bladeName && !enemyPosed) {
+    if (!heroPosed && !enemyPosed) {
+      if (view.body) view.body.setVisible(false);
       const plate = paintPlate(scene, view, fighter, false);
       plate.setScale(screen);
       plate.setRotation(0);
@@ -1230,6 +1236,24 @@ function paint(scene) {
   Game.ctx = main;
 }
 
+const idleBitmaps = new Map();
+
+/** Untrimmed source-size bitmap. Trimmed atlas pixels are pasted at spriteSourceSize so the menu box stays put. */
+function idleBitmap(frame) {
+  const cached = idleBitmaps.get(frame.name);
+  if (cached) return cached;
+  const canvas = document.createElement('canvas');
+  canvas.width = frame.realWidth;
+  canvas.height = frame.realHeight;
+  const cut = frame.canvasData;
+  const ctx = canvas.getContext('2d');
+  if (cut && cut.width > 0 && cut.height > 0) {
+    ctx.drawImage(frame.source.image, cut.x, cut.y, cut.width, cut.height, frame.x, frame.y, cut.width, cut.height);
+  }
+  idleBitmaps.set(frame.name, canvas);
+  return canvas;
+}
+
 /** Idle frame for a class card. Box, anchor, and body height are the gameplay clip values. */
 export function classIdleSource(classId, index) {
   const spec = classId === 'staff' ? { folder: 'staff', count: STAFF_IDLE_COUNT, box: STAFF_IDLE_BOX, anchor: STAFF_IDLE_ANCHOR }
@@ -1238,13 +1262,13 @@ export function classIdleSource(classId, index) {
     : null;
   if (!spec) return null;
   const count = spec.count;
-  const frame = ((Math.floor(index) % count) + count) % count;
-  const key = spec.folder + '-idle-' + frame;
+  const frameIndex = ((Math.floor(index) % count) + count) % count;
+  const key = spec.folder + '-idle-' + frameIndex;
   const scene = Game.phaserScene;
   let image = null;
-  if (scene && scene.textures.exists(key)) {
-    const source = scene.textures.get(key).getSourceImage();
-    if (source && source.width > 0) image = source;
+  if (frameReady(scene, key)) {
+    const frame = scene.textures.get(spec.folder).get(key);
+    if (frame && frame.realWidth > 0) image = idleBitmap(frame);
   }
-  return { folder: spec.folder, count, box: spec.box, anchor: spec.anchor, frame, key, image, body: BODY };
+  return { folder: spec.folder, count, box: spec.box, anchor: spec.anchor, frame: frameIndex, key, image, body: BODY };
 }

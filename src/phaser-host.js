@@ -28,7 +28,7 @@ export function startPhaser(canvas) {
         setLoadUi(null);
         Game.phaserScene = this;
         prepareKarate(this);
-        // Menu scene is this scene. Hero frames continue in the background.
+        // Menu is this scene. Production waits until stage entry for enemy atlases.
         startBackgroundLoads(this);
       },
       update(time) { if (Game.ready) Game.frame(time); },

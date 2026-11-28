@@ -8,9 +8,9 @@ import * as moves from './moves.js';
 import * as pose from './pose.js';
 import * as fighter from './fighter.js';
 import * as blade from './blade.js';
-import { attackClip, bootPreloadList, stageEntryList } from './phaser-actors.js';
+import { animationFrames, attackClip, bootPreloadList, classIdleSource, stageEntryList } from './phaser-actors.js';
 
-const published = { Game, fighters, Input, Fx, BeatEmUp, attackClip, bootPreloadList, stageEntryList, ...config, ...audio, ...moves, ...pose, ...fighter, ...blade };
+const published = { Game, fighters, Input, Fx, BeatEmUp, animationFrames, attackClip, bootPreloadList, classIdleSource, stageEntryList, ...config, ...audio, ...moves, ...pose, ...fighter, ...blade };
 for (const [name, value] of Object.entries(published)) window[name] = value;
 
 Game.init();

@@ -2510,16 +2510,16 @@ TITLE_UI = r'''() => {
       Game.paintPhaser();
       const folder = card.id === 'staff' ? 'staff' : card.id === 'blade' ? 'blade' : 'karate';
       const frame = Math.floor(fighters[0].animT * PACE.spriteFps) % 6;
-      const src = scene.textures.get(folder + '-idle-' + frame).getSourceImage();
+      const art = classIdleSource(card.id, fighters[0].animT * PACE.spriteFps);
+      const src = art && art.image;
       const special = 'SPECIAL · ' + FighterClasses[card.id].super;
-      const brawler = scene.children.list.some(o => o.visible && o.texture && String(o.texture.key).indexOf('brawler-idle-') === 0);
-      if (drawn.filter(img => img === src).length < 2) problems.push('hero sprite ' + folder);
+      const brawler = scene.children.list.some(o => o.visible && o.frame && String(o.frame.name).indexOf('brawler-idle-') === 0);
+      if (!src || art.frame !== frame || drawn.filter(img => img === src).length < 2) problems.push('hero sprite ' + folder);
       if (texts.indexOf(special) < 0) problems.push('special ' + special);
       const heroCss = cssOf(Game.titleLayout().hero);
       if (heroCss.h < innerHeight * 0.72 - 1) problems.push('hero ' + card.id + ' ' + heroCss.h.toFixed(1));
       if (brawler) problems.push('brawler still drawn');
-      const cardSrc = scene.textures.get(folder + '-idle-' + frame).getSourceImage();
-      if (drawn.filter(img => img === cardSrc).length < 1) problems.push('card sprite ' + folder);
+      if (!src || drawn.filter(img => img === src).length < 1) problems.push('card sprite ' + folder);
     }
     const hard = Game.titleLayout().levels.find(l => l.id === 'hard');
     tap(hard);
@@ -2663,6 +2663,7 @@ BODY_SCALE = r'''() => {
   const same = (a, b) => a.x === b.x && a.depth === b.depth && a.hp === b.hp && a.meter === b.meter
     && a.hx === b.hx && a.hy === b.hy && a.hw === b.hw && a.hh === b.hh;
   const visible = () => Game.phaserScene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+  const spriteName = (o) => (o.frame && o.frame.name && o.frame.name !== '__BASE') ? String(o.frame.name) : String(o.texture.key);
   try {
     if (!Game.paintPhaser || !Game.phaserScene) { out.pass = false; out.error = 'paint missing'; return out; }
     Game.frame = function(){};
@@ -2697,8 +2698,8 @@ BODY_SCALE = r'''() => {
         const beforeEnemy = snap(brawler.f);
         Game.paintPhaser();
         const images = visible();
-        const left = images.find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
-        const right = images.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
+        const left = images.find(o => spriteName(o).indexOf(folder + '-idle-') === 0);
+        const right = images.find(o => spriteName(o).indexOf('brawler-idle-') === 0);
         const playerH = left ? left.getBounds().height : 0;
         const enemyH = right ? right.getBounds().height : 0;
         const ratio = enemyH ? playerH / enemyH : 0;
@@ -2714,7 +2715,7 @@ BODY_SCALE = r'''() => {
           enemyScale: right ? +Math.abs(right.scaleY).toFixed(5) : 0,
           expected: +expected.toFixed(5),
           scaleOk, heightOk, gameplayOk,
-          left: left && left.texture.key, right: right && right.texture.key,
+          left: left && spriteName(left), right: right && spriteName(right),
         };
         out.rows.push(row);
         if (!scaleOk || !heightOk || !gameplayOk) out.pass = false;
@@ -2730,7 +2731,7 @@ BODY_SCALE = r'''() => {
       const f = fighters[0];
       f.state = 'idle'; f.atk = null; f.animT = 0; f.hp = 100; f.ragdollActive = false;
       Game.paintPhaser();
-      const img = visible().find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
+      const img = visible().find(o => spriteName(o).indexOf(folder + '-idle-') === 0);
       const expected = (96 * f.drawS()) / BODY * screenOf();
       const scale = img ? Math.abs(img.scaleY) : 0;
       const ok = !!(img && Math.abs(scale - expected) < 1e-3);
@@ -2749,9 +2750,10 @@ HEAVY_SPRITES = r'''() => {
   const out = { pass: true, problems: [] };
   const fail = (msg) => { out.pass = false; out.problems.push(msg); };
   const visible = () => Game.phaserScene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+  const spriteName = (o) => (o.frame && o.frame.name && o.frame.name !== '__BASE') ? String(o.frame.name) : String(o.texture.key);
   const keyOf = (prefix) => {
-    const img = visible().find(o => String(o.texture.key).indexOf(prefix) === 0);
-    return img ? String(img.texture.key) : '';
+    const img = visible().find(o => spriteName(o).indexOf(prefix) === 0);
+    return img ? spriteName(img) : '';
   };
   const holdCounts = (phaseLen, holds) => {
     const art = holds.reduce((sum, n) => sum + n, 0) || 1;
@@ -2793,8 +2795,9 @@ HEAVY_SPRITES = r'''() => {
     Game.banner = ''; Game.phase = 'fight'; Game.fighting = 1; Game.mode = 'beatemup';
     const scene = Game.phaserScene;
     const missing = [];
+    const heavyAtlas = scene.textures.exists('heavy') ? scene.textures.get('heavy') : null;
     for (const [name, count] of Object.entries({ idle: 6, walk: 8, slam: 9, hit: 4, fall: 6 })) {
-      for (let i = 0; i < count; i++) if (!scene.textures.exists('heavy-' + name + '-' + i)) missing.push(name + ':' + i);
+      for (let i = 0; i < count; i++) if (!heavyAtlas || !heavyAtlas.has('heavy-' + name + '-' + i)) missing.push(name + ':' + i);
     }
     if (missing.length) fail('missing textures ' + missing.join(','));
     const paint = () => { Game.paintPhaser(); };
@@ -2809,9 +2812,9 @@ HEAVY_SPRITES = r'''() => {
     if (!out.player) fail('player sprite missing');
     if (plates().length) fail('vector plate visible on idle: ' + plates().join(','));
     const imgs = visible();
-    const hvImg = imgs.find(o => String(o.texture.key).indexOf('heavy-') === 0);
-    const brImg = imgs.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
-    const plImg = imgs.find(o => String(o.texture.key).indexOf('karate-idle-') === 0);
+    const hvImg = imgs.find(o => spriteName(o).indexOf('heavy-') === 0);
+    const brImg = imgs.find(o => spriteName(o).indexOf('brawler-idle-') === 0);
+    const plImg = imgs.find(o => spriteName(o).indexOf('karate-idle-') === 0);
     const ratio = brImg && hvImg ? Math.abs(hvImg.scaleY) / Math.abs(brImg.scaleY) : 0;
     out.scale = +ratio.toFixed(4);
     out.scaleMul = heavy.scaleMul;
@@ -2889,27 +2892,24 @@ HEAVY_SPRITES = r'''() => {
 ASSET_SCHEDULE = r'''() => {
   const problems = [];
   const boot = (typeof bootPreloadList === 'function') ? bootPreloadList() : [];
-  const manifest = (Game.bootManifest || []).map(f => f.key + '|' + f.url);
-  const again = boot.map(f => f.key + '|' + f.url);
+  const manifest = (Game.bootManifest || []).map(f => f.key + '|' + f.url + '|' + (f.json || ''));
+  const again = boot.map(f => f.key + '|' + f.url + '|' + (f.json || ''));
   if (!boot.length) problems.push('boot list empty');
   if (manifest.join('\n') !== again.join('\n')) problems.push('boot manifest is not bootPreloadList');
-  const allowed = new Set(['menu-bg']);
-  for (const id of ['karate', 'staff', 'blade']) {
-    for (let i = 0; i < 6; i++) allowed.add(id + '-idle-' + i);
-  }
+  const heroes = ['karate', 'staff', 'blade'];
+  const allowed = new Set(heroes.concat(['menu-bg']));
   if (boot.length !== allowed.size) problems.push('boot count ' + boot.length + ' expected ' + allowed.size);
   for (const frame of boot) {
     if (!allowed.has(frame.key)) problems.push('boot extra ' + frame.key);
-    if (frame.clip && frame.clip !== 'idle' && frame.clip !== 'menu') problems.push('boot clip ' + frame.key);
     if (frame.key === 'menu-bg') {
+      if (frame.kind !== 'image') problems.push('menu kind ' + frame.kind);
       if (String(frame.url).indexOf('assets/backgrounds/main-menu.webp') !== 0) problems.push('menu url ' + frame.url);
     } else {
-      const parts = frame.key.split('-');
-      const index = parts.pop();
-      const id = parts[0];
-      const file = String(index).padStart(2, '0');
-      const expect = 'assets/characters/' + id + '/frames/clips/idle/' + file + '.png';
-      if (String(frame.url).indexOf(expect) !== 0) problems.push('idle url ' + frame.url);
+      if (frame.kind !== 'atlas') problems.push('boot kind ' + frame.key);
+      const expectUrl = 'assets/characters/' + frame.key + '/atlas.webp';
+      const expectJson = 'assets/characters/' + frame.key + '/atlas.json';
+      if (frame.url !== expectUrl) problems.push('atlas url ' + frame.url);
+      if (frame.json !== expectJson) problems.push('atlas json ' + frame.json);
     }
   }
   allowed.forEach(key => { if (!boot.some(f => f.key === key)) problems.push('boot missing ' + key); });
@@ -2926,17 +2926,50 @@ ASSET_SCHEDULE = r'''() => {
     const got = new Set(list.map(f => f.pack));
     expect.forEach(kind => {
       const frames = list.filter(f => f.pack === kind);
-      if (!frames.length) problems.push('stage ' + stage + ' missing ' + kind);
-      if (!frames.some(f => f.key === kind + '-idle-0')) problems.push('stage ' + stage + ' no idle ' + kind);
+      if (frames.length !== 1) problems.push('stage ' + stage + ' atlas count ' + kind + ' ' + frames.length);
       frames.forEach(f => {
-        if (String(f.url).indexOf('assets/characters/' + kind + '/frames/clips/') !== 0) problems.push('stage url ' + f.url);
+        if (f.kind !== 'atlas' || f.key !== kind) problems.push('stage ' + stage + ' entry ' + f.key);
+        if (f.url !== 'assets/characters/' + kind + '/atlas.webp') problems.push('stage url ' + f.url);
+        if (f.json !== 'assets/characters/' + kind + '/atlas.json') problems.push('stage json ' + f.json);
       });
     });
     got.forEach(pack => { if (!expect.has(pack)) problems.push('stage ' + stage + ' extra ' + pack); });
+    heroes.forEach(id => { if (got.has(id)) problems.push('stage ' + stage + ' loaded hero ' + id); });
     if (stage === 1 && (!expect.has('brawler') || !expect.has('rusher') || !expect.has('block-captain'))) problems.push('stage 1 packs');
     if (stage === 2 && (!expect.has('grappler') || !expect.has('dockmaster') || !expect.has('brawler'))) problems.push('stage 2 packs');
   });
   return { pass: problems.length === 0, problems, boot: boot.length };
+}'''
+
+ATLAS_FRAMES = r'''async () => {
+  const problems = [];
+  const listed = (typeof animationFrames === 'function') ? animationFrames() : null;
+  if (!listed) { problems.push('animationFrames missing'); return { pass: false, problems }; }
+  let count = 0;
+  for (const pack of Object.keys(listed)) {
+    const names = listed[pack] || [];
+    count += names.length;
+    let json = null;
+    try {
+      const res = await fetch('assets/characters/' + pack + '/atlas.json');
+      if (!res.ok) problems.push('atlas json ' + pack + ' ' + res.status);
+      else json = await res.json();
+    } catch (err) {
+      problems.push('atlas json ' + pack + ' ' + err);
+    }
+    const frames = (json && json.frames) || {};
+    const have = new Set(Object.keys(frames));
+    for (const name of names) {
+      if (!have.has(name)) problems.push('missing ' + name);
+      else {
+        const data = frames[name];
+        if (!data.sourceSize || !data.spriteSourceSize) problems.push('trim ' + name);
+      }
+      have.delete(name);
+    }
+    have.forEach(name => problems.push('unreferenced ' + name));
+  }
+  return { pass: problems.length === 0, problems, packs: Object.keys(listed).length, frames: count };
 }'''
 
 def free_port():
@@ -2971,17 +3004,23 @@ def main():
             loaded = {'pass': False, 'error': 'preload did not finish'}
             try:
                 load_page.wait_for_function(
-                    "() => !!(Game.phaserScene && Game.phaserScene.textures.exists('karate-punch-5') && Game.phaserScene.textures.exists('karate-special-23'))",
+                    """() => {
+                      const s = Game.phaserScene;
+                      if (!s || !s.textures.exists('karate') || !s.textures.exists('heavy') || !s.textures.exists('brawler')) return false;
+                      const k = s.textures.get('karate');
+                      return k.has('karate-punch-5') && k.has('karate-special-23');
+                    }""",
                     timeout=20000)
                 loaded = load_page.evaluate('''() => {
                   const scene = Game.phaserScene;
+                  const atlas = scene.textures.exists('karate') ? scene.textures.get('karate') : null;
                   const need = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, roll: 8, special: 24 };
                   const missing = [];
                   for (const [name, count] of Object.entries(need)) {
-                    for (let i = 0; i < count; i++) if (!scene.textures.exists('karate-' + name + '-' + i)) missing.push(name + ':' + i);
+                    for (let i = 0; i < count; i++) if (!atlas || !atlas.has('karate-' + name + '-' + i)) missing.push(name + ':' + i);
                   }
                   const combo = [];
-                  for (let i = 0; i < 18; i++) if (scene.textures.exists('karate-combo-' + i)) combo.push(i);
+                  for (let i = 0; i < 18; i++) if (atlas && atlas.has('karate-combo-' + i)) combo.push(i);
                   const keys = scene.textures.getTextureKeys().filter(k => String(k).indexOf('karate-combo') === 0);
                   return { missing, combo, keys, pass: missing.length === 0 && combo.length === 0 && keys.length === 0 };
                 }''')
@@ -2994,8 +3033,16 @@ def main():
                 schedule = {'pass': False, 'problems': [str(exc)]}
             print('asset schedule', json.dumps({k: v for k, v in schedule.items() if k != 'pass'}))
             if not schedule.get('pass'):
-                failures.append('Asset schedule failed: boot preload must be only the three heroes\' idle frames plus the menu background, and each stage\'s posed enemies and boss must be the stage-entry list: '
+                failures.append('Asset schedule failed: boot preload must be the three hero atlases plus the menu background, and each stage\'s posed enemies and boss must be one atlas on the stage-entry list: '
                                 + json.dumps(schedule.get('problems')))
+            try:
+                atlas_frames = load_page.evaluate(ATLAS_FRAMES)
+            except Exception as exc:
+                atlas_frames = {'pass': False, 'problems': [str(exc)]}
+            print('atlas frames', json.dumps({k: v for k, v in atlas_frames.items() if k != 'pass'}))
+            if not atlas_frames.get('pass'):
+                failures.append('Atlas frames failed: every animation frame name must exist in that character\'s atlas.json: '
+                                + json.dumps(atlas_frames.get('problems')))
             if not loaded.get('pass') or load_problems:
                 failures.append('Texture load failed: game preload left Karate frames missing, loaded a combo texture, or reported a missing file: '
                                 + json.dumps({'loaded': {k: v for k, v in loaded.items() if k != 'pass'}, 'http': load_problems[:8]}))
