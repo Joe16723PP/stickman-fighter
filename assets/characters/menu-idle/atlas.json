@@ -1,0 +1,375 @@
+{
+  "frames": {
+    "blade-idle-0": {
+      "frame": {
+        "x": 2,
+        "y": 1344,
+        "w": 123,
+        "h": 169
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 39,
+        "w": 123,
+        "h": 169
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 224
+      }
+    },
+    "blade-idle-1": {
+      "frame": {
+        "x": 142,
+        "y": 2,
+        "w": 118,
+        "h": 191
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 17,
+        "w": 118,
+        "h": 191
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 224
+      }
+    },
+    "blade-idle-2": {
+      "frame": {
+        "x": 142,
+        "y": 575,
+        "w": 114,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 22,
+        "y": 18,
+        "w": 114,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 224
+      }
+    },
+    "blade-idle-3": {
+      "frame": {
+        "x": 141,
+        "y": 777,
+        "w": 119,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 21,
+        "w": 119,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 224
+      }
+    },
+    "blade-idle-4": {
+      "frame": {
+        "x": 142,
+        "y": 386,
+        "w": 116,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 21,
+        "w": 116,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 224
+      }
+    },
+    "blade-idle-5": {
+      "frame": {
+        "x": 123,
+        "y": 1519,
+        "w": 117,
+        "h": 166
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 42,
+        "w": 117,
+        "h": 166
+      },
+      "sourceSize": {
+        "w": 156,
+        "h": 224
+      }
+    },
+    "karate-idle-0": {
+      "frame": {
+        "x": 2,
+        "y": 1153,
+        "w": 123,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 16,
+        "w": 123,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-1": {
+      "frame": {
+        "x": 142,
+        "y": 966,
+        "w": 118,
+        "h": 179
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 26,
+        "w": 118,
+        "h": 179
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-2": {
+      "frame": {
+        "x": 2,
+        "y": 1515,
+        "w": 119,
+        "h": 170
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 35,
+        "w": 119,
+        "h": 170
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-3": {
+      "frame": {
+        "x": 127,
+        "y": 1342,
+        "w": 119,
+        "h": 175
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 30,
+        "w": 119,
+        "h": 175
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-4": {
+      "frame": {
+        "x": 127,
+        "y": 1153,
+        "w": 119,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 18,
+        "w": 119,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-5": {
+      "frame": {
+        "x": 142,
+        "y": 195,
+        "w": 118,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 16,
+        "w": 118,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "staff-idle-0": {
+      "frame": {
+        "x": 2,
+        "y": 586,
+        "w": 138,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 24,
+        "w": 138,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 170,
+        "h": 228
+      }
+    },
+    "staff-idle-1": {
+      "frame": {
+        "x": 2,
+        "y": 200,
+        "w": 138,
+        "h": 191
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 22,
+        "w": 138,
+        "h": 191
+      },
+      "sourceSize": {
+        "w": 170,
+        "h": 228
+      }
+    },
+    "staff-idle-2": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 136,
+        "h": 196
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 17,
+        "w": 136,
+        "h": 196
+      },
+      "sourceSize": {
+        "w": 170,
+        "h": 228
+      }
+    },
+    "staff-idle-3": {
+      "frame": {
+        "x": 2,
+        "y": 393,
+        "w": 138,
+        "h": 191
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 22,
+        "w": 138,
+        "h": 191
+      },
+      "sourceSize": {
+        "w": 170,
+        "h": 228
+      }
+    },
+    "staff-idle-4": {
+      "frame": {
+        "x": 2,
+        "y": 777,
+        "w": 137,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 26,
+        "w": 137,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 170,
+        "h": 228
+      }
+    },
+    "staff-idle-5": {
+      "frame": {
+        "x": 2,
+        "y": 966,
+        "w": 138,
+        "h": 185
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 28,
+        "w": 138,
+        "h": 185
+      },
+      "sourceSize": {
+        "w": 170,
+        "h": 228
+      }
+    }
+  },
+  "meta": {
+    "app": "stickman-fighter-atlas-packer",
+    "version": "1.0",
+    "image": "atlas.webp",
+    "format": "RGBA8888",
+    "size": {
+      "w": 262,
+      "h": 1687
+    },
+    "scale": "1"
+  }
+}
