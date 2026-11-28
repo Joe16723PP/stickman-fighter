@@ -24,6 +24,7 @@ INIT_SCRIPT = '''
     return _raf(function(now){
       if (!frozen && window.Game && Game.frame) {
         frozen = true;
+        window.__gameFrame = Game.frame;
         Game.frame = function(){};
         window.requestAnimationFrame = function(){ return 0; };
       }
@@ -1821,6 +1822,13 @@ STAGE_CLEAR_DELAY = '''() => {
   // During the wait the fight step does not run: no spawns, no damage, no timer drain.
   const STEP = Game.STEP, delay = STAGE_TRANSITION_DELAY, frames = Math.round(delay / STEP);
   const r = { delay, frames, step: STEP, elapsed: frames * STEP };
+  // One real Game.frame step. Preload the accumulator so the rAF clock cannot skip or double a step.
+  Game.last = 0;
+  const simStep = () => {
+    Game.paused = false;
+    Game.acc = Game.STEP;
+    window.__gameFrame(Game.last);
+  };
   const park = () => {
     Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.matchOver = 0;
     Game.winner = ''; Game.banner = ''; Game.timer = 123.5; Game.stop = 0.05; Game.shake = 0;
@@ -1838,7 +1846,8 @@ STAGE_CLEAR_DELAY = '''() => {
   BeatEmUp.stage = BeatEmUp.stageTotal; BeatEmUp.wave = 4;
   BeatEmUp.checkWaveState();
   r.final = { stage: BeatEmUp.stage, over: BeatEmUp.stageOver, left: BeatEmUp.stageTransitionLeft, winner: Game.winner, phase: Game.phase };
-  for (let i = 0; i < frames; i++) Game.fixedStep();
+  Game.stop = 0;
+  for (let i = 0; i < frames; i++) simStep();
   r.finalAfter = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, winner: Game.winner, phase: Game.phase };
   // Game over does not arm the delay. Retry still restarts the same stage at once.
   park();
@@ -1871,7 +1880,7 @@ STAGE_CLEAR_DELAY = '''() => {
   r.overlay = texts.filter(text => text === 'STAGE CLEAR' || text.startsWith('Next stage in '));
   let early = null;
   for (let i = 1; i <= frames - 1; i++) {
-    Game.fixedStep();
+    simStep();
     if (BeatEmUp.stage !== 2 || Game.phase !== 'matchEnd' || Game.timer !== timer0 || player.hp !== hp0 || foe.hp !== 100
       || BeatEmUp.cast.length !== castN || BeatEmUp.waveSpawnQueue.length !== queueN || BeatEmUp.waveSpawnQueue[0].sentinel !== 'stay') {
       early = { i, stage: BeatEmUp.stage, phase: Game.phase, timer: Game.timer, hp: player.hp, foe: foe.hp, cast: BeatEmUp.cast.length, queue: BeatEmUp.waveSpawnQueue.length };
@@ -1882,10 +1891,10 @@ STAGE_CLEAR_DELAY = '''() => {
   r.beforeLast = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, seconds: BeatEmUp.clearCountdownSeconds(), timer: Game.timer, hp: player.hp };
   BeatEmUp.update(STEP);
   r.updateFrozen = player.hp === hp0 && foe.hp === 100 && Game.timer === timer0 && BeatEmUp.cast.length === castN && BeatEmUp.waveSpawnQueue[0].sentinel === 'stay';
-  Game.fixedStep();
+  simStep();
   r.after = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft, t: BeatEmUp.stageTransitionT, phase: Game.phase, fighting: Game.fighting, over: BeatEmUp.stageOver,
     living: BeatEmUp.cast.filter(e => e.role === 'enemy' && e.f.hp > 0).length };
-  Game.fixedStep();
+  simStep();
   r.once = { stage: BeatEmUp.stage, left: BeatEmUp.stageTransitionLeft };
   r.pass = delay === 5 && frames === 300 && r.elapsed === 5
     && r.final.over === 1 && r.final.left === 0 && r.final.stage === BeatEmUp.stageTotal && r.final.winner === 'Campaign complete' && r.final.phase === 'matchEnd'
