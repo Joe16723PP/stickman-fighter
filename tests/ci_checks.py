@@ -5,6 +5,8 @@ Beat 'em up and Practice harnesses, plus edge clearance at 667x375 and 844x390:
 Beat 'em up fighters must stay inside the 2%..98% screen band.
 Beat 'em up player sprites (Karate, Staff, Blade) must match a scaleMul-1 Brawler's
 on-screen height within 2% at the same depth. Practice keeps drawS().
+A downed fighter (knockdown or KO) must draw its own fall clip, play it once, and
+hold the last frame. Walk clips must show at least two frames and loop (repeat -1).
 
 The seeded 1v1 parity digest was retired with 1v1 mode.
 
@@ -2886,6 +2888,218 @@ HEAVY_SPRITES = r'''() => {
   return out;
 }'''
 
+DEATH_FALL = r'''() => {
+  // Knockdown and KO must paint <name>-fall, advance off the standing first frame
+  // while animT stays frozen (the beat 'em up death path only calls updateRagdoll),
+  // play once, and hold the last frame. idle/walk must not take the sprite back.
+  const out = { pass: true, problems: [], rows: [] };
+  const fail = (msg) => { out.pass = false; out.problems.push(msg); };
+  const visible = () => Game.phaserScene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+  const keyOf = (prefix) => {
+    const img = visible().find(o => String(o.texture.key).indexOf(prefix) === 0);
+    return img ? String(img.texture.key) : '';
+  };
+  const counts = {
+    karate: 8, staff: 8, blade: 8, brawler: 8, rusher: 8,
+    grappler: 6, heavy: 6, 'block-captain': 8, dockmaster: 6,
+  };
+  const readFall = (prefix) => {
+    Game.paintPhaser();
+    const fall = keyOf(prefix + '-fall-');
+    if (!fall) { fail(prefix + ' stood as ' + (keyOf(prefix + '-') || 'nothing')); return -1; }
+    return +fall.slice((prefix + '-fall-').length);
+  };
+  const expectIndex = (elapsed, count) => Math.max(0, Math.min(count - 1, Math.floor(elapsed * 12)));
+  const stepRagdoll = (entry, n) => {
+    for (let i = 0; i < n; i++) {
+      if (entry.f.hp <= 0) {
+        if (entry.f.ragdollActive && entry.f.ragdollElapsed < 2) BeatEmUp.withDepth(entry, () => entry.f.updateRagdoll(1 / 60));
+      } else BeatEmUp.withDepth(entry, () => entry.f.updateRagdoll(1 / 60));
+      entry.f.vx = 0; entry.f.vy = 0; entry.f.y = 0; entry.f.grounded = true;
+    }
+  };
+  try {
+    if (!Game.paintPhaser || !Game.phaserScene) { fail('paint missing'); return out; }
+    Game.frame = function(){};
+    Game.fit();
+    Game.selectClass('freehand');
+    BeatEmUp.begin();
+    Game.frame = function(){};
+    const player = BeatEmUp.playerEntry();
+    const depth = 0.55;
+    const captain = BeatEmUp.makeEnemy('boss', 880, depth);
+    captain.f.bossProfile = { signature: { key: 'bossBlockParty' }, scale: 1.25 };
+    captain.scaleMul = 1.25;
+    const dock = BeatEmUp.makeEnemy('boss', 1000, depth);
+    dock.f.bossProfile = { signature: { key: 'bossDockHaulIn' }, scale: 1.28 };
+    dock.scaleMul = 1.28;
+    const enemies = [
+      ['brawler', BeatEmUp.makeEnemy('brawler', 400, depth)],
+      ['rusher', BeatEmUp.makeEnemy('rusher', 520, depth)],
+      ['grappler', BeatEmUp.makeEnemy('grappler', 640, depth)],
+      ['heavy', BeatEmUp.makeEnemy('heavy', 760, depth)],
+      ['block-captain', captain],
+      ['dockmaster', dock],
+    ];
+    const prep = (f) => {
+      f.y = 0; f.vy = 0; f.vx = 0; f.grounded = true; f.atk = null; f.flash = 0; f.face = 1;
+      f.animT = 3; f._clipName = 'idle'; f._staffClip = 'idle'; f._bladeClip = 'idle'; f._posedClip = 'idle';
+      f.ragdollActive = false; f.ragdollKO = false; f.ragdollElapsed = 0; f.ragdollAngle = 0;
+      f.hp = 100; f.state = 'idle';
+    };
+    const show = (entries) => {
+      BeatEmUp.cast = entries;
+      BeatEmUp.boss = null; BeatEmUp.cameraX = 0; BeatEmUp.waveSpawnQueue = [];
+      BeatEmUp.eventT = 0; BeatEmUp.stageIntroT = 0; BeatEmUp.showGo = 0; BeatEmUp.stageOver = 0;
+      Game.banner = ''; Game.phase = 'fight'; Game.fighting = 1; Game.mode = 'beatemup';
+    };
+    const heroes = [['karate', 'freehand', player], ['staff', 'staff', player], ['blade', 'blade', player]];
+    const run = (label, prefix, entry, lethal) => {
+      const count = counts[prefix];
+      const f = entry.f;
+      prep(f);
+      entry.depth = depth; f.depth = depth;
+      f.hp = lethal ? 0 : 80;
+      f.state = lethal ? 'ko' : 'knockdown';
+      f.ragdollActive = true; f.ragdollKO = !!lethal; f.ragdollElapsed = 0;
+      f.animT = 4;
+      const anim = f.animT;
+      const at0 = readFall(prefix);
+      if (at0 !== 0) fail(label + ' frame0 ' + at0);
+      f.ragdollElapsed = 0.25;
+      const midSet = readFall(prefix);
+      if (midSet !== expectIndex(0.25, count)) fail(label + ' mid-set ' + midSet);
+      f.ragdollElapsed = 0; f.vx = 0; f.vy = 0; f.y = 0; f.grounded = true;
+      stepRagdoll(entry, 18);
+      const mid = readFall(prefix);
+      const midExpect = expectIndex(f.ragdollElapsed, count);
+      if (mid !== midExpect || mid < 1 || mid >= count - 1) fail(label + ' mid ' + mid + ' elapsed ' + f.ragdollElapsed);
+      let held = mid;
+      if (lethal) {
+        // KO never gets up. Stay inside the 2s corpse window, past one full clip,
+        // and confirm the index does not wrap back to the standing frame.
+        stepRagdoll(entry, 70);
+        held = readFall(prefix);
+        if (held !== count - 1) fail(label + ' hold ' + held + ' elapsed ' + f.ragdollElapsed);
+        f.ragdollElapsed = 1.5;
+        if (readFall(prefix) !== count - 1) fail(label + ' repeated');
+      }
+      const shown = lethal ? count - 1 : mid;
+      f.state = 'idle';
+      if (readFall(prefix) !== shown) fail(label + ' idle overrode');
+      f.state = 'walk';
+      if (readFall(prefix) !== shown) fail(label + ' walk overrode');
+      if (f.animT !== anim) fail(label + ' animT moved');
+      out.rows.push({ who: label, frames: count, mid: mid, hold: held, elapsed: +f.ragdollElapsed.toFixed(3) });
+    };
+    for (const [prefix, classId, entry] of heroes) {
+      Game.selectClass(classId);
+      player.f.setClass(classId);
+      show([player]);
+      run(prefix + ' knockdown', prefix, entry, false);
+      run(prefix + ' ko', prefix, entry, true);
+    }
+    for (const [prefix, entry] of enemies) {
+      prep(player.f);
+      player.f.setClass('freehand');
+      show([player, entry]);
+      run(prefix + ' knockdown', prefix, entry, false);
+      run(prefix + ' ko', prefix, entry, true);
+    }
+  } catch (err) {
+    fail(String(err && err.stack || err));
+  }
+  return out;
+}'''
+
+WALK_CYCLE = r'''() => {
+  // Walk playback loops (Phaser repeat -1). The project picks frames by hand, so
+  // this samples the painted index: >=2 distinct frames, order 0..n-1, then 0 again.
+  const out = { pass: true, problems: [], rows: [] };
+  const fail = (msg) => { out.pass = false; out.problems.push(msg); };
+  const visible = () => Game.phaserScene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+  const keyOf = (prefix) => {
+    const img = visible().find(o => String(o.texture.key).indexOf(prefix) === 0);
+    return img ? String(img.texture.key) : '';
+  };
+  try {
+    if (!Game.paintPhaser || !Game.phaserScene) { fail('paint missing'); return out; }
+    Game.frame = function(){};
+    Game.fit();
+    BeatEmUp.begin();
+    Game.frame = function(){};
+    const player = BeatEmUp.playerEntry();
+    const depth = 0.55;
+    const show = (entries) => {
+      BeatEmUp.cast = entries;
+      BeatEmUp.boss = null; BeatEmUp.cameraX = 0; BeatEmUp.waveSpawnQueue = [];
+      BeatEmUp.eventT = 0; BeatEmUp.stageIntroT = 0; BeatEmUp.showGo = 0; BeatEmUp.stageOver = 0;
+      Game.banner = ''; Game.phase = 'fight'; Game.fighting = 1; Game.mode = 'beatemup';
+    };
+    const alive = (f) => {
+      f.hp = 100; f.ragdollActive = false; f.ragdollKO = false; f.ragdollElapsed = 0;
+      f.atk = null; f.y = 0; f.flash = 0; f.face = 1; f.depth = depth;
+      f._clipName = ''; f._staffClip = ''; f._bladeClip = ''; f._posedClip = '';
+    };
+    const check = (label, prefix, count, setClock) => {
+      const order = [];
+      for (let i = 0; i <= count; i++) {
+        setClock(i);
+        Game.paintPhaser();
+        const key = keyOf(prefix + '-walk-');
+        order.push(key ? key.slice((prefix + '-walk-').length) : '?');
+      }
+      const distinct = {};
+      for (let i = 0; i < count; i++) distinct[order[i]] = 1;
+      const n = Object.keys(distinct).length;
+      const expect = [];
+      for (let i = 0; i < count; i++) expect.push(String(i));
+      expect.push('0');
+      const loop = order[count] === '0' && order[count - 1] === String(count - 1);
+      if (n < 2) fail(label + ' distinct ' + n + ' [' + order.join(',') + ']');
+      if (!loop || order.join(',') !== expect.join(',')) fail(label + ' repeat ' + order.join(',') + ' expected ' + expect.join(','));
+      out.rows.push({ who: label, order: order.join(','), distinct: n, repeat: loop ? -1 : 0 });
+    };
+    const heroes = [['karate', 'freehand', 8], ['staff', 'staff', 8], ['blade', 'blade', 8]];
+    for (const [prefix, classId, count] of heroes) {
+      Game.selectClass(classId);
+      player.f.setClass(classId);
+      player.depth = depth;
+      alive(player.f);
+      player.f.state = 'walk';
+      show([player]);
+      const fps = PACE.spriteFps;
+      check(prefix, prefix, count, (i) => { player.f.state = 'walk'; player.f.animT = (i + 0.5) / fps; player.f.walkPx = 0; });
+    }
+    const captain = BeatEmUp.makeEnemy('boss', 800, depth);
+    captain.f.bossProfile = { signature: { key: 'bossBlockParty' }, scale: 1.25 };
+    const dock = BeatEmUp.makeEnemy('boss', 900, depth);
+    dock.f.bossProfile = { signature: { key: 'bossDockHaulIn' }, scale: 1.28 };
+    const list = [
+      ['brawler', BeatEmUp.makeEnemy('brawler', 400, depth), 8],
+      ['rusher', BeatEmUp.makeEnemy('rusher', 500, depth), 8],
+      ['grappler', BeatEmUp.makeEnemy('grappler', 600, depth), 6],
+      ['heavy', BeatEmUp.makeEnemy('heavy', 700, depth), 8],
+      ['block-captain', captain, 8],
+      ['dockmaster', dock, 6],
+    ];
+    alive(player.f);
+    player.f.setClass('freehand');
+    player.f.state = 'idle';
+    for (const [prefix, entry, count] of list) {
+      entry.depth = depth;
+      alive(entry.f);
+      entry.f.state = 'walk';
+      show([player, entry]);
+      const step = 148 / count;
+      check(prefix, prefix, count, (i) => { entry.f.state = 'walk'; entry.f.walkPx = (i + 0.5) * step; entry.f.animT = 0; });
+    }
+  } catch (err) {
+    fail(String(err && err.stack || err));
+  }
+  return out;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -2960,6 +3174,16 @@ def main():
                 if not heavy_sprites.get('pass'):
                     failures.append('Heavy sprites failed: expected heavy-* frames (no vector plate) at scale 1.12 with feet on the shared floor line, and slam frames following timing [10,10,10,4,14,12,10,8,4] across the existing wind-up, swing, and recovery: '
                                     + json.dumps({k: v for k, v in heavy_sprites.items() if k != 'pass'}))
+                death_fall = load_page.evaluate(DEATH_FALL)
+                print('death fall', json.dumps({k: v for k, v in death_fall.items() if k != 'pass'}))
+                if not death_fall.get('pass'):
+                    failures.append('Death fall failed: every posed fighter (karate, staff, blade, brawler, rusher, grappler, heavy, block-captain, dockmaster) must map knockdown and KO to its fall clip, play that clip once from ragdollElapsed while animT stays frozen, hold the last frame, and ignore idle/walk: '
+                                    + json.dumps({k: v for k, v in death_fall.items() if k != 'pass'}))
+                walk_cycle = load_page.evaluate(WALK_CYCLE)
+                print('walk cycle', json.dumps({k: v for k, v in walk_cycle.items() if k != 'pass'}))
+                if not walk_cycle.get('pass'):
+                    failures.append('Walk cycle failed: every posed walk clip must paint at least 2 distinct frames in order and loop (repeat -1) instead of restarting or clamping: '
+                                    + json.dumps({k: v for k, v in walk_cycle.items() if k != 'pass'}))
             load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
             def note_response(response):

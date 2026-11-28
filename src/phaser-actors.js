@@ -138,6 +138,22 @@ function clipOf(fighter) {
   return 'idle';
 }
 
+// Fall clips are authored at 12 fps (clips.json). A knockdown or KO is stepped with
+// updateRagdoll, and the beat 'em up death path calls that instead of Fighter.update,
+// so animT stays frozen. Fall frame 0 is still on its feet; reading animT left every
+// corpse drawn in that stand. ragdollElapsed starts at 0 in startRagdoll and keeps
+// moving, so the clip plays once and holds its last frame. There is no Phaser
+// anims.play. A texture that is actually missing still falls through to the vector
+// plate, which tilts by ragdollAngle.
+function downedFall(fighter) {
+  return !!(fighter.ragdollActive || fighter.state === 'ko' || fighter.state === 'knockdown');
+}
+
+function fallHoldIndex(fighter, count) {
+  const index = Math.floor((fighter.ragdollElapsed || 0) * 12);
+  return Math.max(0, Math.min(count - 1, index));
+}
+
 function frameOf(fighter, name) {
   const count = CLIPS[name];
   if (name === 'walk' || name === 'idle') return Math.floor((fighter.animT || 0) * PACE.spriteFps) % count;
@@ -194,6 +210,7 @@ function frameOf(fighter, name) {
     return Math.max(0, Math.min(count - 1, index));
   }
   if (name === 'fall') {
+    if (downedFall(fighter)) return fallHoldIndex(fighter, count);
     const now = fighter.animT || 0;
     if (fighter._clipName !== name) {
       fighter._clipName = name;
@@ -250,6 +267,7 @@ function staffFrame(fighter, name) {
     fighter._staffClipStart = fighter.animT || 0;
   }
   if (name === 'fall') {
+    if (downedFall(fighter)) return fallHoldIndex(fighter, STAFF_FALL_COUNT);
     return Math.max(0, Math.min(STAFF_FALL_COUNT - 1, Math.floor(((fighter.animT || 0) - fighter._staffClipStart) * 12)));
   }
   if (name === 'punch') return chainSlice(fighter, (fighter.atk?.chain || 0) <= 0 ? 0 : 3, 3);
@@ -333,6 +351,7 @@ function bladeFrame(fighter, name) {
   }
   const count = BLADE[name].count;
   if (name === 'fall') {
+    if (downedFall(fighter)) return fallHoldIndex(fighter, count);
     return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._bladeClipStart) * 12)));
   }
   // Quick Draw is frames 0–2; the second Attack press uses frames 3–5 of the same clip.
@@ -761,6 +780,7 @@ function enemyFrame(fighter, name, count, kind) {
     fighter._posedClipStart = fighter.animT || 0;
   }
   if (name === 'flinch') return Math.floor((fighter.animT || 0) * 12) % 2;
+  if (name === 'fall' && downedFall(fighter)) return fallHoldIndex(fighter, count);
   if (name === 'fall' || name === 'hit') {
     return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._posedClipStart) * 12)));
   }
