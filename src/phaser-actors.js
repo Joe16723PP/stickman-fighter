@@ -377,6 +377,14 @@ function stageEnemy(fighter) {
   return entry;
 }
 
+// Title has no cast, and stageEnemy bails while phase is 'title', so the right fighter
+// used to fall through to the vector plate. The entry only picks the Brawler idle clip.
+// Title scale is the shared menu scale, not enemyBodyScale.
+function titleBrawlerEntry(fighter) {
+  if (Game.phase !== 'title' || fighter !== fighters[1]) return null;
+  return { f: fighter, role: 'enemy', kind: 'brawler', scaleMul: 1, depth: fighter.depth };
+}
+
 // Same corpse window BeatEmUp.draw uses: a KO stays up for 2s, then leaves with its shadow.
 function enemyOnStage(entry) {
   if (entry.f.hp > 0) return true;
@@ -388,6 +396,47 @@ function enemyOnStage(entry) {
 function enemyBodyScale(entry) {
   const s = (BeatEmUp.baseS || 1) * BeatEmUp.depthToScale(entry.depth) * (entry.scaleMul || 1);
   return (96 * s) / BODY;
+}
+
+// Tallest idle crop on the title (Staff's staff). Both fighters share one scale so a
+// class swap cannot poke a weapon through the cards, and neither uses in-game scale.
+function titleTallestBaseline() {
+  return Math.max(IDLE_BOX.baseline, STAFF_IDLE_BOX.baseline, BLADE.idle.box.baseline, BRAWLER.idle.box.baseline);
+}
+
+export function titleIdleSpec(id) {
+  if (id === 'staff') return { box: STAFF_IDLE_BOX, anchor: STAFF_IDLE_ANCHOR };
+  if (id === 'blade') return { box: BLADE.idle.box, anchor: BLADE.idle.anchor };
+  if (id === 'brawler') return { box: BRAWLER.idle.box, anchor: BRAWLER.idle.anchor };
+  if (id === 'freehand') return { box: IDLE_BOX, anchor: IDLE_ANCHOR };
+  return null;
+}
+
+// Largest canvas scale that keeps every title idle crop (head and weapon) 8 CSS px
+// under the class cards. Feet stay on the current ground line.
+export function titleMenuCanvasScale() {
+  if (Game.phase !== 'title' || !Game.titleLayout) return 0;
+  const layout = Game.titleLayout();
+  const cards = layout && layout.classes;
+  if (!cards || !cards.length || !fighters[0]) return 0;
+  let cardBottom = cards[0].y + cards[0].h;
+  for (let i = 1; i < cards.length; i++) cardBottom = Math.max(cardBottom, cards[i].y + cards[i].h);
+  const ground = fighters[0].groundY() + (fighters[0].y || 0);
+  const sc = Game.scale || 1;
+  const dpr = Game.fitDpr || 1;
+  const tallest = titleTallestBaseline();
+  const headroom = (ground - cardBottom) * sc - 8;
+  if (!(headroom > 0) || !(tallest > 0)) return 0;
+  return headroom / tallest * dpr;
+}
+
+function titleBodyScale(entry, fighter, screen) {
+  if (Game.phase === 'title') {
+    const menu = titleMenuCanvasScale();
+    if (menu > 0) return menu;
+  }
+  if (entry) return enemyBodyScale(entry) * screen;
+  return ((96 * fighter.drawS()) / BODY) * screen;
 }
 
 // KO corpses dissolve over the last 0.6s of the 2s window instead of popping off.
@@ -662,7 +711,7 @@ function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
   const foot = meta.anchor - box.w / 2;
   view.body.setFlipX(fighter.face < 0);
   view.body.setRotation(0);
-  view.body.setScale(enemyBodyScale(entry) * screen);
+  view.body.setScale(titleBodyScale(entry, fighter, screen));
   if (fighter.flash > 0) view.body.setTintFill(0xffffff);
   else view.body.clearTint();
   view.body.setAlpha(deathAlpha(fighter));
@@ -827,15 +876,16 @@ function paint(scene) {
     live.add(fighter);
     let view = views.get(fighter);
     if (!view) { view = {}; views.set(fighter, view); }
-    const entry = stageEnemy(fighter);
+    const rival = titleBrawlerEntry(fighter);
+    const entry = rival || stageEnemy(fighter);
     if (entry && !enemyOnStage(entry)) {
       if (view.body) view.body.setVisible(false);
       if (view.plate) view.plate.setVisible(false);
       continue;
     }
-    const karate = fighter.classId === 'freehand';
-    const staffName = staffClip(fighter);
-    const bladeName = bladeClip(fighter);
+    const karate = !rival && fighter.classId === 'freehand';
+    const staffName = rival ? null : staffClip(fighter);
+    const bladeName = rival ? null : bladeClip(fighter);
     const enemyName = entry ? enemyClip(entry, fighter) : null;
     let enemyPosed = false;
     if (karate) {
@@ -847,7 +897,7 @@ function paint(scene) {
       const foot = name === 'idle' ? IDLE_ANCHOR - box.w / 2 : name === 'walk' ? WALK_ANCHOR - box.w / 2 : name === 'punch' ? PUNCH_ANCHOR - box.w / 2 : name === 'kick' ? KICK_ANCHOR - box.w / 2 : name === 'roll' ? ROLL_ANCHOR - box.w / 2 : name === 'fall' ? FALL_ANCHOR - box.w / 2 : name === 'special' ? SPECIAL_ANCHOR - box.w / 2 : 0;
       view.body.setFlipX(fighter.face < 0);
       view.body.setRotation(fighter.ragdollActive && name !== 'fall' ? fighter.ragdollAngle : 0);
-      view.body.setScale(((96 * fighter.drawS()) / BODY) * screen);
+      view.body.setScale(titleBodyScale(null, fighter, screen));
       if (fighter.flash > 0) view.body.setTintFill(0xffffff);
       else view.body.clearTint();
       const blink = fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
@@ -864,7 +914,7 @@ function paint(scene) {
       const foot = anchor - box.w / 2;
       view.body.setFlipX(fighter.face < 0);
       view.body.setRotation(0);
-      view.body.setScale(((96 * fighter.drawS()) / BODY) * screen);
+      view.body.setScale(titleBodyScale(null, fighter, screen));
       if (fighter.flash > 0) view.body.setTintFill(0xffffff);
       else view.body.clearTint();
       const blink = staffName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
@@ -881,7 +931,7 @@ function paint(scene) {
       const foot = meta.anchor - box.w / 2;
       view.body.setFlipX(fighter.face < 0);
       view.body.setRotation(0);
-      view.body.setScale(((96 * fighter.drawS()) / BODY) * screen);
+      view.body.setScale(titleBodyScale(null, fighter, screen));
       if (fighter.flash > 0) view.body.setTintFill(0xffffff);
       else view.body.clearTint();
       const blink = bladeName === 'roll' && fighter.playerControlled && fighter.dodgeT > 0 && Math.floor(fighter.dodgeT * 14) % 2 === 0;
@@ -916,4 +966,23 @@ function paint(scene) {
   if (hudImage) hudImage.setDisplaySize(Game.canvas.width, Game.canvas.height);
   Game.paintScale = 0;
   Game.ctx = main;
+}
+
+/** Idle frame for a class card. Box, anchor, and body height are the gameplay clip values. */
+export function classIdleSource(classId, index) {
+  const spec = classId === 'staff' ? { folder: 'staff', count: STAFF_IDLE_COUNT, box: STAFF_IDLE_BOX, anchor: STAFF_IDLE_ANCHOR }
+    : classId === 'blade' ? { folder: 'blade', count: BLADE.idle.count, box: BLADE.idle.box, anchor: BLADE.idle.anchor }
+    : classId === 'freehand' ? { folder: 'karate', count: CLIPS.idle, box: IDLE_BOX, anchor: IDLE_ANCHOR }
+    : null;
+  if (!spec) return null;
+  const count = spec.count;
+  const frame = ((Math.floor(index) % count) + count) % count;
+  const key = spec.folder + '-idle-' + frame;
+  const scene = Game.phaserScene;
+  let image = null;
+  if (scene && scene.textures.exists(key)) {
+    const source = scene.textures.get(key).getSourceImage();
+    if (source && source.width > 0) image = source;
+  }
+  return { folder: spec.folder, count, box: spec.box, anchor: spec.anchor, frame, key, image, body: BODY };
 }

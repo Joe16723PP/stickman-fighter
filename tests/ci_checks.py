@@ -2308,6 +2308,116 @@ SPECIAL_GAIN = r"""() => {
   return r;
 }"""
 
+TITLE_ART = r'''() => {
+  const classes = [['freehand', 'karate'], ['staff', 'staff'], ['blade', 'blade']];
+  // Idle crop boxes, weapon included. Staff's baseline is the tallest title crop.
+  const CROP = {
+    freehand: { w: 154, h: 220, baseline: 204 },
+    staff: { w: 170, h: 228, baseline: 212 },
+    blade: { w: 156, h: 224, baseline: 208 },
+    brawler: { w: 152, h: 224, baseline: 208 },
+  };
+  const TALLEST = 212;
+  const scene = Game.phaserScene;
+  const near = (a, b) => Math.abs(a - b) < 0.05;
+  const nearScale = (a, b) => Math.abs(a - b) < 1e-3;
+  const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  const names = ['karate', 'staff', 'blade'];
+  const source = (folder, frame) => scene.textures.get(folder + '-idle-' + frame).getSourceImage();
+  const drawn = [];
+  const orig = CanvasRenderingContext2D.prototype.drawImage;
+  CanvasRenderingContext2D.prototype.drawImage = function(img) {
+    drawn.push({ img: img, alpha: this.globalAlpha, smooth: this.imageSmoothingEnabled });
+    return orig.apply(this, arguments);
+  };
+  const boxOf = (image) => {
+    const b = image.getBounds();
+    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  };
+  const out = { pass: true, viewport: [innerWidth, innerHeight], classes: {} };
+  try {
+    if (!Game.paintPhaser) { out.pass = false; out.error = 'paint missing'; return out; }
+    Game.fit();
+    Game.goTitle();
+    const sc = Game.scale || 1;
+    const dpr = Game.fitDpr || 1;
+    const screen = sc * dpr;
+    const layout = Game.titleLayout();
+    const cards = layout.classes.map(c => ({ id: c.id, x: c.x * screen, y: c.y * screen, w: c.w * screen, h: c.h * screen }));
+    const cardBottom = Math.max(...layout.classes.map(c => c.y + c.h));
+    const ground = fighters[0].groundY();
+    const menu = ((ground - cardBottom) * sc - 8) / TALLEST * dpr;
+    const limit = cardBottom * screen + 8 * dpr;
+    for (const pair of classes) {
+      const id = pair[0], folder = pair[1];
+      const card = layout.classes.find(c => c.id === id);
+      Game.titlePointer({ clientX: (card.x + card.w / 2) * sc, clientY: (card.y + card.h / 2) * sc });
+      const tapped = Game.selectedClass === id && fighters[0].classId === id;
+      fighters[0].state = 'idle'; fighters[1].state = 'idle';
+      fighters[0].atk = null; fighters[1].atk = null;
+      fighters[0].face = 1; fighters[1].face = -1;
+      fighters[0].animT = 0.25; fighters[1].animT = 0.25;
+      drawn.length = 0;
+      Game.paintPhaser();
+      const images = scene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+      const left = images.find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
+      const right = images.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
+      const plate = images.some(o => String(o.texture.key).indexOf('body-') === 0);
+      const other = images.some(o => names.some(n => n !== folder && String(o.texture.key).indexOf(n + '-idle-') === 0));
+      const playerFrame = Math.floor(fighters[0].animT * PACE.spriteFps) % 6;
+      const brawlerFrame = Math.floor(fighters[1].animT * 12) % 6;
+      const hits = (name, frame) => drawn.filter(d => d.img === source(name, frame));
+      const selected = hits(folder, playerFrame);
+      const othersOk = names.filter(n => n !== folder).every(n => {
+        const row = hits(n, 0);
+        return row.length === 1 && row[0].smooth === false && Math.abs(row[0].alpha - 0.6) < 1e-6;
+      });
+      const idleCount = drawn.filter(d => names.some(n => {
+        for (let f = 0; f < 6; f++) if (d.img === source(n, f)) return true;
+        return false;
+      })).length;
+      const cardsOk = selected.length === 1 && selected[0].smooth === false && selected[0].alpha === 1 && othersOk && idleCount === 3;
+      const leftBox = left ? boxOf(left) : null;
+      const rightBox = right ? boxOf(right) : null;
+      const cropOk = !!(leftBox && rightBox
+        && near(leftBox.w, CROP[id].w * Math.abs(left.scaleX)) && near(leftBox.h, CROP[id].h * Math.abs(left.scaleY))
+        && near(rightBox.w, CROP.brawler.w * Math.abs(right.scaleX)) && near(rightBox.h, CROP.brawler.h * Math.abs(right.scaleY)));
+      const clearOk = !!(leftBox && rightBox && cropOk
+        && cards.every(c => !overlaps(leftBox, c) && !overlaps(rightBox, c))
+        && leftBox.y + 0.05 >= limit && rightBox.y + 0.05 >= limit);
+      const staffTop = ground * screen - TALLEST * menu;
+      const scaleOk = !!(left && right && nearScale(Math.abs(left.scaleX), menu) && nearScale(Math.abs(left.scaleY), menu)
+        && nearScale(Math.abs(right.scaleX), menu) && nearScale(Math.abs(right.scaleY), menu)
+        && nearScale(Math.abs(left.scaleX), Math.abs(right.scaleX)) && near(staffTop, limit));
+      const fightersOk = !!(tapped && left && right && !plate && !other
+        && left.texture.key === folder + '-idle-' + playerFrame && left.flipX === false
+        && right.texture.key === 'brawler-idle-' + brawlerFrame && right.flipX === true
+        && scaleOk && clearOk);
+      const hitsCard = [];
+      if (leftBox) cards.forEach(c => { if (overlaps(leftBox, c)) hitsCard.push('L:' + c.id); });
+      if (rightBox) cards.forEach(c => { if (overlaps(rightBox, c)) hitsCard.push('R:' + c.id); });
+      out.classes[id] = {
+        cardsOk: cardsOk, fightersOk: fightersOk, tapped: tapped, clearOk: clearOk, scaleOk: scaleOk, cropOk: cropOk,
+        left: left && left.texture.key, right: right && right.texture.key, flip: right && right.flipX,
+        leftScale: left && +left.scaleX.toFixed(4), rightScale: right && +right.scaleX.toFixed(4),
+        menu: +menu.toFixed(4),
+        leftTop: leftBox && +((leftBox.y - limit) / dpr).toFixed(2),
+        rightTop: rightBox && +((rightBox.y - limit) / dpr).toFixed(2),
+        hitsCard: hitsCard, idleCount: idleCount, plate: plate, other: other,
+      };
+      if (!cardsOk || !fightersOk) out.pass = false;
+    }
+  } catch (err) {
+    out.pass = false; out.error = String(err && err.stack || err);
+  } finally {
+    CanvasRenderingContext2D.prototype.drawImage = orig;
+    try { localStorage.setItem('stickman-beatemup-class', 'freehand'); } catch (e) {}
+    if (Game.selectClass) Game.selectClass('freehand');
+    if (Game.goTitle) Game.goTitle();
+  }
+  return out;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -2360,6 +2470,17 @@ def main():
             if not loaded.get('pass') or load_problems:
                 failures.append('Texture load failed: game preload left Karate frames missing, loaded a combo texture, or reported a missing file: '
                                 + json.dumps({'loaded': {k: v for k, v in loaded.items() if k != 'pass'}, 'http': load_problems[:8]}))
+            else:
+                title_art = {'pass': True, 'views': {}}
+                for vw, vh in ((667, 375), (844, 390)):
+                    load_page.set_viewport_size({'width': vw, 'height': vh})
+                    view = load_page.evaluate(TITLE_ART)
+                    title_art['views'][f'{vw}x{vh}'] = {k: v for k, v in view.items() if k != 'pass'}
+                    if not view.get('pass'): title_art['pass'] = False
+                print('title sprites', json.dumps(title_art['views']))
+                if not title_art.get('pass'):
+                    failures.append('Title sprites failed: class cards and both title fighters must draw idle sprite textures via a real title tap (selected class on the left, mirrored Brawler idle on the right, other cards held on frame 00 at 60% opacity), sharing one menu scale whose full crops stay 8px under the cards at 667x375 and 844x390: '
+                                    + json.dumps(title_art['views']))
             load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
             def note_response(response):
