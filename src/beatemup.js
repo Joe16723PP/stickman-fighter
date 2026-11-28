@@ -1,6 +1,6 @@
 import { Sfx } from './audio.js';
 import { BladeSuper } from './blade.js';
-import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PlayerCoolColor, ShockZones } from './config.js';
+import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
@@ -274,7 +274,8 @@ export class BeatEmUp {
   static bossMaxHp = 220;
   static stageOver = 0; // 0 playing, 1 win, -1 lose
   static stageTransitionT = 0;
-  static stageTransitionDuration = 1;
+  static stageTransitionDuration = STAGE_TRANSITION_DELAY;
+  static stageTransitionLeft = 0; // fixed steps still to wait before the next stage
   static stageTransitionStage = 0;
   static stageTransitionSwitched = 0;
   static waveTravelT = 0;
@@ -414,6 +415,7 @@ export class BeatEmUp {
 
   static resetStage() {
     BeatEmUp.stageTransitionT = 0;
+    BeatEmUp.stageTransitionLeft = 0;
     BeatEmUp.stageTransitionStage = 0;
     BeatEmUp.stageTransitionSwitched = 0;
     BeatEmUp.waveTravelT = 0;
@@ -470,6 +472,10 @@ export class BeatEmUp {
   }
 
   static startCampaignStage(stage, retry = false) {
+    BeatEmUp.stageTransitionT = 0;
+    BeatEmUp.stageTransitionLeft = 0;
+    BeatEmUp.stageTransitionStage = 0;
+    BeatEmUp.stageTransitionSwitched = 0;
     BeatEmUp.stage = Math.max(1, Math.min(BeatEmUp.stageTotal, stage));
     BeatEmUp.loadStageBackgrounds(BeatEmUp.stage);
     BeatEmUp.cameraX = 0; BeatEmUp.skyOffset = 0; BeatEmUp.bgSet(1);
@@ -636,6 +642,7 @@ export class BeatEmUp {
   }
 
   static updateWaveSpawns(dt) {
+    if (BeatEmUp.stageTransitionLeft > 0) return;
     if (!BeatEmUp.waveSpawnQueue.length) {
       BeatEmUp.waveSpawnTimer = 0;
       return;
@@ -818,11 +825,39 @@ export class BeatEmUp {
     BeatEmUp.retryOrTitle(false);
     return true;
   }
-  static goNextStage() {
-    if (BeatEmUp.stageOver !== 1 || BeatEmUp.stage >= BeatEmUp.stageTotal || BeatEmUp.stageTransitionT > 0) return;
-    BeatEmUp.stageTransitionT = BeatEmUp.stageTransitionDuration;
+  /** Whole seconds still shown on the stage-clear countdown (at least 1 while the delay is running). */
+  static clearCountdownSeconds() {
+    const fps = Math.round(1 / Game.STEP);
+    return Math.max(1, Math.ceil(BeatEmUp.stageTransitionLeft / fps));
+  }
+  /** Arm the post-clear wait. One shot: a second call while it is running does not restart or skip it. Final stage does not arm. */
+  static beginStageClearDelay() {
+    if (BeatEmUp.stageOver !== 1 || BeatEmUp.stage >= BeatEmUp.stageTotal) return;
+    if (BeatEmUp.stageTransitionLeft > 0) return;
+    const frames = Math.round(STAGE_TRANSITION_DELAY / Game.STEP);
+    BeatEmUp.stageTransitionDuration = STAGE_TRANSITION_DELAY;
+    BeatEmUp.stageTransitionLeft = frames;
+    BeatEmUp.stageTransitionT = frames * Game.STEP;
     BeatEmUp.stageTransitionStage = BeatEmUp.stage + 1;
     BeatEmUp.stageTransitionSwitched = 0;
+    Game.stop = 0;
+  }
+  /** One fixed step of the clear delay. The next stage starts on the step the wait hits zero. */
+  static tickStageTransition() {
+    if (!(BeatEmUp.stageTransitionLeft > 0)) return;
+    BeatEmUp.stageTransitionLeft -= 1;
+    if (BeatEmUp.stageTransitionLeft > 0) {
+      BeatEmUp.stageTransitionT = BeatEmUp.stageTransitionLeft * Game.STEP;
+      return;
+    }
+    BeatEmUp.stageTransitionT = 0;
+    BeatEmUp.stageTransitionSwitched = 1;
+    const next = BeatEmUp.stageTransitionStage;
+    BeatEmUp.stageTransitionStage = 0;
+    if (next) BeatEmUp.startCampaignStage(next);
+  }
+  static goNextStage() {
+    BeatEmUp.beginStageClearDelay();
   }
   static retryOrTitle(fromKey) {
     if (BeatEmUp.stageOver === -1) BeatEmUp.startCampaignStage(BeatEmUp.stage, true);
@@ -863,7 +898,7 @@ export class BeatEmUp {
   }
 
   static update(dt) {
-    if (BeatEmUp.stageOver) return;
+    if (BeatEmUp.stageOver || BeatEmUp.stageTransitionLeft > 0) return;
     const player = BeatEmUp.playerEntry();
     if (!player) return;
     if (BeatEmUp.downPending) {
@@ -1306,6 +1341,7 @@ export class BeatEmUp {
       Game.bannerT = 99;
       Game.syncControls();
       BeatEmUp.awardScore(Math.ceil(Game.timer) * 50 + BeatEmUp.lives * 500);
+      BeatEmUp.beginStageClearDelay();
     }
   }
 
@@ -1724,7 +1760,7 @@ export class BeatEmUp {
       const corpses = BeatEmUp.cast.filter(e => e.f.ragdollKO && e.f.ragdollElapsed < 2).slice().sort((a, b) => a.depth - b.depth);
       for (const e of corpses) BeatEmUp.drawFighter(ctx, e);
       Fx.draw(ctx, 'back');
-      BeatEmUp.drawResults(ctx);
+      if (!(BeatEmUp.stageTransitionLeft > 0)) BeatEmUp.drawResults(ctx);
       return;
     }
     BeatEmUp.drawItems(ctx);

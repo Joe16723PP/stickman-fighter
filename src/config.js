@@ -31,6 +31,9 @@ export const ArcadeDiff = {
   hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, attackers: 4, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
 };
 
+/** Seconds after a non-final stage clear before the next stage begins. */
+export const STAGE_TRANSITION_DELAY = 5;
+
 /* Beat 'em up boss hardness: boss threat (HP x damage per second) multiplier.
    Splits into HP x2.5, damage x1.4, attack rate x1.43 at BOSS_HARDNESS = 5 (2.5 x 1.4 x 1.43 = 5). */
 export const BOSS_HARDNESS = 5;
@@ -86,6 +89,12 @@ export const Depth = {
   // Effects may not draw within this many CSS px below the HUD/health-bar panels (practice only).
   HUD_CLEAR_PX: 8,
 };
+
+/* Beat 'em up special-meter gain. Fighter.gainMeter multiplies every award by this
+   (dealing a hit, taking a hit, taking a special, Blade Wave). Special cost, the 100
+   cap, and special effects stay as they are. Meter is a float: the product is stored
+   as-is and then capped. There is no rounding. */
+export const SPECIAL_GAIN_MULT = 0.5;
 
 export const FighterClasses = {
   freehand: { name: 'KARATE', role: 'FAST · 1.75× METER', punchMove: 'KARATE PUNCH', kickMove: 'KARATE KICK', super: 'IRON FIST STRING', color: '#52B8FF', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, attackSpeed: 1.28, punch: 1, kick: .95, superPower: 1, superHits: 4, superVisualDuration: 2.5, criticalChance: .13, criticalDamage: 1.55, meter: 1.75, dash: .13 },

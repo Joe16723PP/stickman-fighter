@@ -1,7 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossSignatures, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses, PACE, paceEnemy } from './config.js';
+import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossSignatures, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses, PACE, paceEnemy, SPECIAL_GAIN_MULT } from './config.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
 import { Input } from './input.js';
@@ -67,7 +67,11 @@ export class Fighter {
   groundY() { return Depth.toY(this.depth, Depth.areaTop(), Depth.areaBot()); }
   depthScale() { return Game.mode === 'practice' ? Depth.toScale(this.depth, Depth.SCALE_1V1_MIN, Depth.SCALE_1V1_MAX) : 1; }
   drawS() { return Fighter.S * this.depthScale(); }
-  gainMeter(n) { this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1) * this.meterGainMultiplier); }
+  gainMeter(n) {
+    // Beat 'em up only. Practice keeps the full rate. Float product, then the same cap of 100.
+    if (Game.mode === 'beatemup') n *= SPECIAL_GAIN_MULT;
+    this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1) * this.meterGainMultiplier);
+  }
   confirmHit(kind, damage) {
     if ((kind !== 'hit' && kind !== 'armored') || damage <= 0) return false;
     this.hitConfirmed = 1;
@@ -235,7 +239,10 @@ export class Fighter {
       }
       return;
     }
-    if (this.playerControlled && kind !== 'special') { this.beginPlayerChain(kind); return; }
+    // Attack chains on the button (chainArmed === 1) and a fresh punch. A direct kick while the
+    // old hit-confirm window is still counting (chainArmed > 1) stays the authored kick.
+    if (this.playerControlled && kind === 'punch') { this.beginPlayerChain(kind); return; }
+    if (this.playerControlled && kind === 'kick' && !(this.chainArmed > 1)) { this.beginPlayerChain(kind); return; }
     if (kind === 'punch' && this.enemyCombo && EnemyCombos[this.enemyCombo]) { this.startEnemyCombo(EnemyCombos[this.enemyCombo]); return; }
     if (kind === 'punch' && this.enemyRush && EnemyRushes[this.enemyRush]) { this.startEnemyRush(EnemyRushes[this.enemyRush]); return; }
     if (kind === 'punch' && this.enemySlam && EnemySlams[this.enemySlam]) { this.startEnemySlam(EnemySlams[this.enemySlam]); return; }
@@ -373,7 +380,7 @@ export class Fighter {
   beginPlayerChain(kind) {
     const finisher = kind === 'kick';
     if (finisher) { this.chain = 2; this.chainArmed = 0; }
-    else if (this.chainArmed) { this.chain = Math.min((this.chain || 0) + 1, 1); this.chainArmed = 0; }
+    else if (this.chainArmed === 1) { this.chain = Math.min((this.chain || 0) + 1, 1); this.chainArmed = 0; }
     else { this.chain = 0; this.chainArmed = 0; }
     const idx = finisher ? 2 : this.chain;
     const timing = finisher ? PACE.finisher : PACE.punch;
