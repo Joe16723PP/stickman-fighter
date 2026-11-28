@@ -71,6 +71,12 @@ export const Depth = {
   HUD_CLEAR_PX: 8,
 };
 
+/* Beat 'em up special-meter gain. Fighter.gainMeter multiplies every award by this
+   (dealing a hit, taking a hit, taking a special, Blade Wave). Special cost, the 100
+   cap, and special effects stay as they are. Meter is a float: the product is stored
+   as-is and then capped. There is no rounding. */
+export const SPECIAL_GAIN_MULT = 0.5;
+
 export const FighterClasses = {
   freehand: { name: 'KARATE', role: 'FAST · 1.75× METER', punchMove: 'KARATE PUNCH', kickMove: 'KARATE KICK', super: 'IRON FIST STRING', color: '#52B8FF', accent: '#FBBF24', style: 'ward', pitch: 1.08, speed: 1.08, attackSpeed: 1.28, punch: 1, kick: .95, superPower: 1, superHits: 4, superVisualDuration: 2.5, criticalChance: .13, criticalDamage: 1.55, meter: 1.75, dash: .13 },
   staff: { name: 'STAFF', role: 'SLOW · HEAVY · LONGEST RANGE', punchMove: 'BO STAFF THRUST', kickMove: 'LOW SWEEP', super: 'DRAGON STAFF SPIN', color: '#3BD6B3', accent: '#FBBF24', style: 'quake', weapon: 'staff', pitch: .92, speed: .98, attackSpeed: .78, punch: 1.22, kick: 1.55, superPower: 1.3, superHits: 3, superVisualDuration: 3.5, criticalChance: .09, criticalDamage: 1.8, meter: 1, dash: .12 },

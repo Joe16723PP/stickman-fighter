@@ -1827,7 +1827,10 @@ STAGE_CLEAR_DELAY = '''() => {
   const simStep = () => {
     Game.paused = false;
     Game.acc = Game.STEP;
+    const present = Game.present;
+    Game.present = () => {};
     window.__gameFrame(Game.last);
+    Game.present = present;
   };
   const park = () => {
     Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.matchOver = 0;
@@ -1910,6 +1913,222 @@ STAGE_CLEAR_DELAY = '''() => {
     && r.once.stage === 3 && r.once.left === 0;
   return r;
 }'''
+SPECIAL_GAIN = r"""() => {
+  // Fixed beat 'em up sequence. "Before" is the award the resolver still computes
+  // (dealt dmg*2.5, taken dmg*1.5, special/Wave flat 12, then class meter and archetype
+  // specialGain). The meter must land on exactly half of that. Meter is a float: no rounding.
+  const prevRandom = Math.random;
+  Math.random = () => 0.999; // above every critical chance, so each hit's damage stays fixed
+  const prev = {
+    mode: Game.mode, phase: Game.phase, fighting: Game.fighting, stage: BeatEmUp.stage,
+    cast: BeatEmUp.cast, items: BeatEmUp.items.slice(),
+  };
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  const legacy = (f, n) => n * (f.classProfile?.meter || 1) * f.meterGainMultiplier;
+  const r = { mult: SPECIAL_GAIN_MULT };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  BeatEmUp.baseS = 1.5; BeatEmUp.worldMax = Game.W * 4.2; BeatEmUp.cameraX = 0;
+  BeatEmUp.stage = 1; BeatEmUp.stageOver = 0; BeatEmUp.items = []; BeatEmUp.enemyProjectiles = [];
+  Game.minX = 0; Game.maxX = BeatEmUp.worldMax; Game.GROUND = Game.H * .72;
+  const player = fighters[0];
+  player.setClass('freehand'); player.playerControlled = true;
+  const pEntry = { f: player, depth: .5, role: 'player', kind: 'player', scaleMul: 1, ai: null };
+  const PX = 500, EX = 550;
+  const foe = BeatEmUp.makeEnemy('regular', EX, .5);
+  foe.f.meterGainMultiplier = 1; // authored regular specialGain is 0; this target shows the full formulas
+  foe.f.damageMultiplier = 1;
+  const settle = f => {
+    f.stun = 0; f.vx = 0; f.vy = 0; f.y = 0; f.grounded = true; f.dodgeT = 0; f.invincibleT = 0;
+    f.ragdollActive = false; f.ragdollKO = false; f.blocking = 0; f.damageBurst = 0; f.damageBurstT = 0;
+    f.hitDone = 0; f.atk = null; f.atkT = 0; f.state = 'idle'; f.dashLeft = 0; f.specialMeterTargets = new Set();
+  };
+  const place = () => {
+    player.reset(PX, 1); player.setClass('freehand'); player.playerControlled = true; player.depth = .5; pEntry.depth = .5;
+    player.hp = 400; player.meter = 0; player.meterGainMultiplier = 1;
+    foe.f.reset(EX, -1); foe.depth = .5; foe.f.face = -1; foe.f.hp = 500; foe.f.meter = 0;
+    foe.f.meterGainMultiplier = 1; foe.f.damageMultiplier = 1;
+    settle(player); settle(foe.f);
+    BeatEmUp.cast = [pEntry, foe];
+    Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
+  };
+  // One pinned attack through BeatEmUp.resolveHits. `deal` / `take` are the pre-multiplier bases.
+  const swing = (who, kind, opts = {}) => {
+    const attacker = who === 'player' ? pEntry : foe;
+    const target = who === 'player' ? foe : pEntry;
+    const ax = who === 'player' ? PX : EX, tx = who === 'player' ? EX : PX;
+    settle(attacker.f); settle(target.f);
+    attacker.f.x = ax; target.f.x = tx;
+    attacker.f.face = who === 'player' ? 1 : -1;
+    target.f.face = who === 'player' ? -1 : 1;
+    if (opts.hp != null) target.f.hp = opts.hp;
+    if (kind === 'special') attacker.f.meter = 100;
+    const meterBeforeA = attacker.f.meter, meterBeforeT = target.f.meter;
+    BeatEmUp.withDepth(attacker, () => attacker.f.startAtk(kind));
+    const spent = kind === 'special' ? attacker.f.meter : null;
+    const gainBase = kind === 'special' ? 0 : meterBeforeA;
+    const base = attacker.f.atk ? attacker.f.atk.dmg : null;
+    let hits = 0, deal = 0, take = 0;
+    const seen = [];
+    for (let i = 0; i < 240 && attacker.f.atk; i++) {
+      attacker.f.x = ax; target.f.x = tx;
+      target.f.stun = 0; target.f.vx = 0; target.f.vy = 0; target.f.y = 0; target.f.grounded = true; target.f.dodgeT = 0;
+      if (opts.hp == null) target.f.hp = Math.max(target.f.hp, 200);
+      BeatEmUp.withDepth(attacker, () => { attacker.f.update(Game.STEP, target.f, who === 'player' ? 0 : 1); attacker.f.x = ax; });
+      BeatEmUp.withDepth(target, () => target.f.clamp());
+      const box = BeatEmUp.withDepth(attacker, () => attacker.f.strike());
+      const hp = target.f.hp, mA = attacker.f.meter, mT = target.f.meter;
+      const had = attacker.f.specialMeterTargets.has(target);
+      BeatEmUp.resolveHits();
+      const connected = target.f.hp < hp || attacker.f.meter !== mA || target.f.meter !== mT;
+      if (!connected || !box) continue;
+      hits++;
+      const nDeal = box.special ? 0 : box.dmg * 2.5;
+      const nTake = box.special ? (had ? 0 : 12) : box.dmg * 1.5;
+      deal += nDeal; take += nTake;
+      seen.push({ dmg: box.dmg, special: !!box.special, nDeal, nTake });
+    }
+    return {
+      hits, base, spent, deal, take, seen,
+      atkMeter: attacker.f.meter - gainBase, defMeter: target.f.meter - meterBeforeT,
+      atkNow: attacker.f.meter, defNow: target.f.meter, targetHp: target.f.hp,
+    };
+  };
+
+  place();
+  const sequence = [];
+  let legacyPlayer = 0, legacyEnemy = 0;
+  const note = (who, kind, opts) => {
+    const s = swing(who, kind, opts);
+    sequence.push(s);
+    if (who === 'player') { legacyPlayer += legacy(player, s.deal); legacyEnemy += legacy(foe.f, s.take); }
+    else { legacyPlayer += legacy(player, s.take); legacyEnemy += legacy(foe.f, s.deal); }
+    return s;
+  };
+  note('player', 'punch');
+  note('player', 'punch');
+  note('player', 'kick');
+  note('enemy', 'punch');
+  r.sequence = sequence.map(s => ({ hits: s.hits, base: s.base, deal: s.deal, take: s.take, atkMeter: s.atkMeter, defMeter: s.defMeter }));
+  r.playerMeter = player.meter; r.enemyMeter = foe.f.meter;
+  r.legacyPlayer = legacyPlayer; r.legacyEnemy = legacyEnemy;
+  r.half = r.mult === 0.5 && near(player.meter, legacyPlayer * 0.5) && near(foe.f.meter, legacyEnemy * 0.5)
+    && near(player.meter * 2, legacyPlayer) && near(foe.f.meter * 2, legacyEnemy)
+    && player.meter > 0 && player.meter < 100 && foe.f.meter > 0 && foe.f.meter < 100
+    && sequence[0].hits === 1 && sequence[0].base === 5 && sequence[0].seen[0].dmg === 5
+    && sequence[1].hits === 1 && sequence[1].base === 5
+    && sequence[2].hits === 1 && near(sequence[2].base, 15 * player.classProfile.kick)
+    && sequence[3].hits === 1 && sequence[3].base === 5;
+
+  // Special still spends a full meter. The attacker is awarded 0. The defender is awarded the flat 12 once, then halved.
+  place();
+  const special = swing('player', 'special');
+  r.special = { hits: special.hits, spent: special.spent, atkNow: special.atkNow, defNow: special.defNow, take: special.take };
+  r.specialOk = special.spent === 0 && special.hits >= 1 && special.atkNow === 0
+    && special.take === 12 && near(special.defNow, legacy(foe.f, 12) * 0.5) && near(special.defNow * 2, 12);
+
+  // Blade Wave awards the same flat 12 through its own gainMeter call, once per target.
+  place();
+  player.setClass('blade'); player.playerControlled = true; player.depth = .5; player.specialMeterTargets = new Set();
+  foe.f.meter = 0; foe.f.hp = 400; foe.f.meterGainMultiplier = 1; foe.f.grounded = true; foe.depth = .5; foe.f.depth = .5;
+  const seq = BladeSuper.begin(player);
+  BladeSuper.hit(seq, foe, true);
+  const waveOnce = foe.f.meter;
+  BladeSuper.hit(seq, foe, true);
+  r.wave = { once: waveOnce, twice: foe.f.meter };
+  r.waveOk = near(waveOnce, 12 * 0.5) && foe.f.meter === waveOnce;
+  BladeSuper.clear();
+
+  // Authored brawler specialGain 0.25 still applies, and the result is half of today's award.
+  place();
+  const br = BeatEmUp.makeEnemy('brawler', 560, .5);
+  br.f.reset(560, -1); br.depth = .5; br.f.face = -1; br.f.hp = 400; br.f.meter = 0;
+  player.reset(500, 1); player.setClass('freehand'); player.playerControlled = true; player.depth = .5; player.hp = 400; player.meter = 0;
+  settle(player); settle(br.f); player.x = 500; br.f.x = 560; player.face = 1; br.f.face = -1;
+  BeatEmUp.cast = [pEntry, br];
+  BeatEmUp.withDepth(br, () => br.f.startAtk('punch'));
+  let bHits = 0, bDeal = 0, bTake = 0;
+  for (let i = 0; i < 120 && br.f.atk; i++) {
+    br.f.x = 560; player.x = 500; player.stun = 0; player.vx = 0; player.vy = 0; player.y = 0;
+    player.grounded = true; player.dodgeT = 0; player.hp = 400;
+    BeatEmUp.withDepth(br, () => { br.f.update(Game.STEP, player, 1); br.f.x = 560; });
+    BeatEmUp.withDepth(pEntry, () => player.clamp());
+    const box = BeatEmUp.withDepth(br, () => br.f.strike());
+    const hp = player.hp, mA = br.f.meter, mT = player.meter;
+    BeatEmUp.resolveHits();
+    if ((player.hp < hp || br.f.meter !== mA || player.meter !== mT) && box && !box.special) {
+      bHits++; bDeal += box.dmg * 2.5; bTake += box.dmg * 1.5;
+    }
+  }
+  r.brawler = { hits: bHits, gain: br.f.meterGainMultiplier, atk: br.f.meter, def: player.meter, deal: bDeal, take: bTake };
+  r.brawlerOk = bHits === 2 && br.f.meterGainMultiplier === 0.25
+    && near(br.f.meter, legacy(br.f, bDeal) * 0.5) && near(player.meter, legacy(player, bTake) * 0.5)
+    && near(br.f.meter * 2, legacy(br.f, bDeal));
+
+  // A kill adds score, not meter. The killing punch fills the same amount as the same punch on a healthy target.
+  place();
+  const alive = swing('player', 'punch');
+  place();
+  const killing = swing('player', 'punch', { hp: 1 });
+  r.kill = { alive: alive.atkMeter, killing: killing.atkMeter, foeHp: killing.targetHp };
+  r.killOk = alive.hits === 1 && killing.hits === 1 && near(alive.atkMeter, killing.atkMeter) && killing.targetHp <= 0;
+
+  // Medkit and energy drink do not fill the meter.
+  place();
+  player.meter = 40; player.hp = 50; player.x = PX; player.depth = .5; pEntry.depth = .5;
+  BeatEmUp.items = [{ kind: 'medkit', x: PX, depth: .5, life: 18, bob: 0 }];
+  BeatEmUp.updateItems(Game.STEP, pEntry);
+  const afterMed = { hp: player.hp, meter: player.meter };
+  BeatEmUp.items = [{ kind: 'energyDrink', x: PX, depth: .5, life: 18, bob: 0 }];
+  BeatEmUp.updateItems(Game.STEP, pEntry);
+  r.pickups = { afterMed, hp: player.hp, meter: player.meter, boost: player.attackBoostT };
+  r.pickupOk = afterMed.hp === 75 && afterMed.meter === 40 && player.meter === 40 && player.attackBoostT > 0;
+
+  // A kunai hit is not a meter source.
+  place();
+  player.meter = 17; player.hp = 400;
+  BeatEmUp.withDepth(pEntry, () => player.clamp());
+  const hp0 = player.hp;
+  BeatEmUp.enemyProjectiles = [{
+    x: player.x, y: player.hitbox.y + player.hitbox.h / 2, depth: player.depth, face: 1,
+    speed: 0, range: 9999, distance: 0, life: 5, damage: 5, width: 80, height: 80, owner: foe.f,
+  }];
+  EnemyProjectile.update(Game.STEP, pEntry);
+  r.projectile = { hp: player.hp, meter: player.meter, left: BeatEmUp.enemyProjectiles.length };
+  r.projectileOk = player.hp < hp0 && player.meter === 17 && BeatEmUp.enemyProjectiles.length === 0;
+
+  // Cap stays 100. Spending a full meter still clears it.
+  place();
+  player.meter = 0; player.gainMeter(1000);
+  const capped = player.meter;
+  player.meter = 100;
+  BeatEmUp.withDepth(pEntry, () => player.startAtk('special'));
+  r.cap = capped; r.cost = player.meter;
+  r.capOk = capped === 100 && player.meter === 0;
+
+  // Practice keeps the full award. This cut is beat 'em up only.
+  Game.mode = 'practice';
+  player.meter = 0; player.meterGainMultiplier = 1;
+  player.gainMeter(5 * 2.5);
+  r.practice = player.meter;
+  r.practiceOk = near(player.meter, legacy(player, 5 * 2.5));
+
+  r.ratesOk = FighterClasses.freehand.meter === 1.75 && FighterClasses.staff.meter === 1 && FighterClasses.blade.meter === 1.35
+    && EnemyArchetypes.regular.specialGain === 0 && EnemyArchetypes.brawler.specialGain === 0.25
+    && EnemyArchetypes.rusher.specialGain === 0.25 && EnemyArchetypes.guard.specialGain === 0.25
+    && EnemyArchetypes.heavy.specialGain === 0.45 && EnemyArchetypes.boss.specialGain === 1
+    && EnemyArchetypes.ranged.specialGain === 0 && EnemyArchetypes.grappler.specialGain === 0
+    && EnemyArchetypes.disruptor.specialGain === 0
+    && Moves.special.dmg === 22 && Moves.special.chip === 6 && Moves.special.kb === 390 && Moves.special.stun === 22
+    && BladeSuper.WAVE_DAMAGE === 74;
+
+  r.pass = !!(r.half && r.specialOk && r.waveOk && r.brawlerOk && r.killOk && r.pickupOk && r.projectileOk && r.capOk && r.practiceOk && r.ratesOk);
+  Math.random = prevRandom;
+  Game.mode = prev.mode; Game.phase = prev.phase; Game.fighting = prev.fighting;
+  BeatEmUp.stage = prev.stage; BeatEmUp.cast = prev.cast; BeatEmUp.items = prev.items;
+  BeatEmUp.enemyProjectiles = []; BladeSuper.clear();
+  player.setClass('freehand'); player.reset(Game.W * .3, 1); player.meter = 0;
+  return r;
+}"""
 
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
@@ -2006,6 +2225,11 @@ def main():
             print('stage clear delay', json.dumps({k: v for k, v in stage_clear.items() if k != 'pass'}))
             if not stage_clear['pass']:
                 failures.append('Stage clear delay failed: expected STAGE_TRANSITION_DELAY = 5s (300 fixed steps) between a boss clear and the next stage, STAGE CLEAR / Next stage in N on screen, no timer drain, damage, or spawns during the wait, one-shot (repeat clear/next does not skip or restart), and the final stage plus game-over/retry unchanged')
+            special_gain = page.evaluate(SPECIAL_GAIN)
+            print('special gain', json.dumps({k: v for k, v in special_gain.items() if k != 'sequence'}))
+            print('special gain sequence', json.dumps(special_gain.get('sequence')))
+            if not special_gain['pass']:
+                failures.append('Special gain failed: expected a fixed punch/punch/kick/taken-punch sequence to fill the meter at exactly half the pre-multiplier award (dmg*2.5 dealt, dmg*1.5 taken, flat 12 on a special or Blade Wave, class meter and archetype specialGain unchanged), cap 100, a full meter still spent on special, and practice left at the full rate')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
