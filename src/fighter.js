@@ -1955,6 +1955,31 @@ export class Fighter {
     }
     ctx.restore();
   }
+  /** Name above the head. Other tags stay plain white. YOU keeps that fill, weight 700, and a crisp 2px outline. */
+  drawHeadTag(ctx, bones) {
+    if (this.ragdollActive || Game.banner || Game.phase === 'title') return;
+    const b = bones || (this.bodyProfile ? ArchetypeSkeleton.drawBones(this) : this.bones());
+    const x = b.head.x, y = b.y0 - 12 / Game.scale;
+    if (this.tag === 'YOU') {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '700 12px system-ui,sans-serif';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#1A1210';
+      ctx.shadowColor = '#1A1210';
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.shadowBlur = 0;
+      ctx.strokeText(this.tag, x, y);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(this.tag, x, y);
+      ctx.restore();
+      return;
+    }
+    ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(this.tag, x, y);
+  }
   draw(ctx) {
     ctx.save();
     this.drawVector(ctx);
@@ -2028,10 +2053,7 @@ export class Fighter {
       }
       ctx.globalAlpha = 1; ctx.lineWidth = spriteStroke;
     }
-    if (!this.ragdollActive && !Game.banner && Game.phase !== 'title') {
-      ctx.fillStyle = '#fff'; ctx.font = '12px system-ui,sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(this.tag, b.head.x, b.y0 - 12 / Game.scale);
-    }
+    this.drawHeadTag(ctx, b);
     if (this.ragdollActive && !this._phaserBody) ctx.restore();
     if (nudge) ctx.translate(-nudge, 0);
   }
