@@ -12,6 +12,9 @@ export const ArcadeDiff = {
   hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, attackers: 4, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
 };
 
+/** Seconds after a non-final stage clear before the next stage begins. */
+export const STAGE_TRANSITION_DELAY = 5;
+
 /* Beat 'em up boss hardness: boss threat (HP x damage per second) multiplier.
    Splits into HP x2.5, damage x1.4, attack rate x1.43 at BOSS_HARDNESS = 5 (2.5 x 1.4 x 1.43 = 5). */
 export const BOSS_HARDNESS = 5;
