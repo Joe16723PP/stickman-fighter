@@ -1,0 +1,1455 @@
+{
+  "frames": {
+    "karate-fall-0": {
+      "frame": {
+        "x": 431,
+        "y": 736,
+        "w": 129,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 53,
+        "y": 16,
+        "w": 129,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-1": {
+      "frame": {
+        "x": 783,
+        "y": 553,
+        "w": 137,
+        "h": 180
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 44,
+        "y": 25,
+        "w": 137,
+        "h": 180
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-2": {
+      "frame": {
+        "x": 641,
+        "y": 389,
+        "w": 155,
+        "h": 162
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 33,
+        "y": 43,
+        "w": 155,
+        "h": 162
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-3": {
+      "frame": {
+        "x": 515,
+        "y": 2,
+        "w": 187,
+        "h": 159
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 46,
+        "w": 187,
+        "h": 159
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-4": {
+      "frame": {
+        "x": 608,
+        "y": 553,
+        "w": 173,
+        "h": 143
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 22,
+        "y": 62,
+        "w": 173,
+        "h": 143
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-5": {
+      "frame": {
+        "x": 585,
+        "y": 1961,
+        "w": 175,
+        "h": 83
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 28,
+        "y": 122,
+        "w": 175,
+        "h": 83
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-6": {
+      "frame": {
+        "x": 709,
+        "y": 1814,
+        "w": 190,
+        "h": 62
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 143,
+        "w": 190,
+        "h": 62
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-fall-7": {
+      "frame": {
+        "x": 709,
+        "y": 1878,
+        "w": 190,
+        "h": 40
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 165,
+        "w": 190,
+        "h": 40
+      },
+      "sourceSize": {
+        "w": 226,
+        "h": 220
+      }
+    },
+    "karate-idle-0": {
+      "frame": {
+        "x": 691,
+        "y": 923,
+        "w": 123,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 16,
+        "w": 123,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-1": {
+      "frame": {
+        "x": 377,
+        "y": 1304,
+        "w": 118,
+        "h": 179
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 26,
+        "w": 118,
+        "h": 179
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-2": {
+      "frame": {
+        "x": 776,
+        "y": 1114,
+        "w": 119,
+        "h": 170
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 35,
+        "w": 119,
+        "h": 170
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-3": {
+      "frame": {
+        "x": 2,
+        "y": 1527,
+        "w": 119,
+        "h": 175
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 30,
+        "w": 119,
+        "h": 175
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-4": {
+      "frame": {
+        "x": 2,
+        "y": 1338,
+        "w": 119,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 18,
+        "w": 119,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-idle-5": {
+      "frame": {
+        "x": 129,
+        "y": 1334,
+        "w": 118,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 16,
+        "w": 118,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 154,
+        "h": 220
+      }
+    },
+    "karate-kick-0": {
+      "frame": {
+        "x": 395,
+        "y": 1113,
+        "w": 121,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 20,
+        "w": 121,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-1": {
+      "frame": {
+        "x": 816,
+        "y": 923,
+        "w": 103,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 31,
+        "y": 21,
+        "w": 103,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-10": {
+      "frame": {
+        "x": 402,
+        "y": 1838,
+        "w": 91,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 32,
+        "y": 22,
+        "w": 91,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-11": {
+      "frame": {
+        "x": 257,
+        "y": 1145,
+        "w": 118,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 25,
+        "y": 19,
+        "w": 118,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-2": {
+      "frame": {
+        "x": 308,
+        "y": 1838,
+        "w": 92,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 23,
+        "y": 20,
+        "w": 92,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-3": {
+      "frame": {
+        "x": 601,
+        "y": 1502,
+        "w": 99,
+        "h": 191
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 18,
+        "w": 99,
+        "h": 191
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-4": {
+      "frame": {
+        "x": 464,
+        "y": 1645,
+        "w": 97,
+        "h": 191
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 18,
+        "w": 97,
+        "h": 191
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-5": {
+      "frame": {
+        "x": 162,
+        "y": 572,
+        "w": 133,
+        "h": 192
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 17,
+        "w": 133,
+        "h": 192
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-6": {
+      "frame": {
+        "x": 704,
+        "y": 2,
+        "w": 155,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 34,
+        "y": 19,
+        "w": 155,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-7": {
+      "frame": {
+        "x": 343,
+        "y": 203,
+        "w": 153,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 34,
+        "y": 21,
+        "w": 153,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-8": {
+      "frame": {
+        "x": 249,
+        "y": 1337,
+        "w": 111,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 19,
+        "w": 111,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-kick-9": {
+      "frame": {
+        "x": 213,
+        "y": 1838,
+        "w": 93,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 21,
+        "w": 93,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 206,
+        "h": 224
+      }
+    },
+    "karate-punch-0": {
+      "frame": {
+        "x": 2,
+        "y": 769,
+        "w": 130,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 16,
+        "w": 130,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 194,
+        "h": 220
+      }
+    },
+    "karate-punch-1": {
+      "frame": {
+        "x": 401,
+        "y": 927,
+        "w": 127,
+        "h": 184
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 21,
+        "w": 127,
+        "h": 184
+      },
+      "sourceSize": {
+        "w": 194,
+        "h": 220
+      }
+    },
+    "karate-punch-2": {
+      "frame": {
+        "x": 134,
+        "y": 958,
+        "w": 130,
+        "h": 184
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 21,
+        "w": 130,
+        "h": 184
+      },
+      "sourceSize": {
+        "w": 194,
+        "h": 220
+      }
+    },
+    "karate-punch-3": {
+      "frame": {
+        "x": 167,
+        "y": 388,
+        "w": 158,
+        "h": 182
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 23,
+        "w": 158,
+        "h": 182
+      },
+      "sourceSize": {
+        "w": 194,
+        "h": 220
+      }
+    },
+    "karate-punch-4": {
+      "frame": {
+        "x": 530,
+        "y": 1076,
+        "w": 125,
+        "h": 184
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 21,
+        "w": 125,
+        "h": 184
+      },
+      "sourceSize": {
+        "w": 194,
+        "h": 220
+      }
+    },
+    "karate-punch-5": {
+      "frame": {
+        "x": 271,
+        "y": 769,
+        "w": 128,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 17,
+        "w": 128,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 194,
+        "h": 220
+      }
+    },
+    "karate-roll-0": {
+      "frame": {
+        "x": 297,
+        "y": 578,
+        "w": 132,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 16,
+        "w": 132,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-1": {
+      "frame": {
+        "x": 563,
+        "y": 1695,
+        "w": 115,
+        "h": 136
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 69,
+        "w": 115,
+        "h": 136
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-2": {
+      "frame": {
+        "x": 680,
+        "y": 1695,
+        "w": 130,
+        "h": 117
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 88,
+        "w": 130,
+        "h": 117
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-3": {
+      "frame": {
+        "x": 338,
+        "y": 1682,
+        "w": 120,
+        "h": 131
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 23,
+        "y": 74,
+        "w": 120,
+        "h": 131
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-4": {
+      "frame": {
+        "x": 585,
+        "y": 1833,
+        "w": 122,
+        "h": 126
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 79,
+        "w": 122,
+        "h": 126
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-5": {
+      "frame": {
+        "x": 2,
+        "y": 1909,
+        "w": 129,
+        "h": 129
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 76,
+        "w": 129,
+        "h": 129
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-6": {
+      "frame": {
+        "x": 798,
+        "y": 389,
+        "w": 119,
+        "h": 143
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 22,
+        "y": 62,
+        "w": 119,
+        "h": 143
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-roll-7": {
+      "frame": {
+        "x": 472,
+        "y": 547,
+        "w": 134,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 18,
+        "w": 134,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 172,
+        "h": 220
+      }
+    },
+    "karate-special-0": {
+      "frame": {
+        "x": 138,
+        "y": 766,
+        "w": 131,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 29,
+        "y": 27,
+        "w": 131,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-1": {
+      "frame": {
+        "x": 2,
+        "y": 1150,
+        "w": 125,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 28,
+        "y": 31,
+        "w": 125,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-10": {
+      "frame": {
+        "x": 776,
+        "y": 1286,
+        "w": 102,
+        "h": 195
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 38,
+        "y": 22,
+        "w": 102,
+        "h": 195
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-11": {
+      "frame": {
+        "x": 497,
+        "y": 1450,
+        "w": 102,
+        "h": 193
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 39,
+        "y": 24,
+        "w": 102,
+        "h": 193
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-12": {
+      "frame": {
+        "x": 515,
+        "y": 163,
+        "w": 152,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 27,
+        "w": 152,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-13": {
+      "frame": {
+        "x": 2,
+        "y": 205,
+        "w": 163,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 29,
+        "w": 163,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-14": {
+      "frame": {
+        "x": 236,
+        "y": 1529,
+        "w": 100,
+        "h": 192
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 38,
+        "y": 25,
+        "w": 100,
+        "h": 192
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-15": {
+      "frame": {
+        "x": 811,
+        "y": 194,
+        "w": 109,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 45,
+        "y": 27,
+        "w": 109,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-16": {
+      "frame": {
+        "x": 635,
+        "y": 1305,
+        "w": 102,
+        "h": 195
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 35,
+        "y": 22,
+        "w": 102,
+        "h": 195
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-17": {
+      "frame": {
+        "x": 498,
+        "y": 355,
+        "w": 141,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 38,
+        "y": 27,
+        "w": 141,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-18": {
+      "frame": {
+        "x": 178,
+        "y": 2,
+        "w": 175,
+        "h": 192
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 25,
+        "w": 175,
+        "h": 192
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-19": {
+      "frame": {
+        "x": 518,
+        "y": 1262,
+        "w": 115,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 44,
+        "y": 31,
+        "w": 115,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-2": {
+      "frame": {
+        "x": 2,
+        "y": 960,
+        "w": 127,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 36,
+        "y": 29,
+        "w": 127,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-20": {
+      "frame": {
+        "x": 362,
+        "y": 1485,
+        "w": 100,
+        "h": 195
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 36,
+        "y": 22,
+        "w": 100,
+        "h": 195
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-21": {
+      "frame": {
+        "x": 178,
+        "y": 196,
+        "w": 163,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 27,
+        "y": 27,
+        "w": 163,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-22": {
+      "frame": {
+        "x": 739,
+        "y": 1483,
+        "w": 98,
+        "h": 193
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 41,
+        "y": 24,
+        "w": 98,
+        "h": 193
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-23": {
+      "frame": {
+        "x": 669,
+        "y": 194,
+        "w": 140,
+        "h": 193
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 27,
+        "y": 24,
+        "w": 140,
+        "h": 193
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-3": {
+      "frame": {
+        "x": 327,
+        "y": 393,
+        "w": 143,
+        "h": 183
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 35,
+        "y": 34,
+        "w": 143,
+        "h": 183
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-4": {
+      "frame": {
+        "x": 355,
+        "y": 2,
+        "w": 158,
+        "h": 199
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 31,
+        "y": 18,
+        "w": 158,
+        "h": 199
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-5": {
+      "frame": {
+        "x": 740,
+        "y": 735,
+        "w": 127,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 36,
+        "y": 31,
+        "w": 127,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-6": {
+      "frame": {
+        "x": 266,
+        "y": 959,
+        "w": 127,
+        "h": 184
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 33,
+        "y": 33,
+        "w": 127,
+        "h": 184
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-7": {
+      "frame": {
+        "x": 2,
+        "y": 395,
+        "w": 158,
+        "h": 181
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 34,
+        "y": 36,
+        "w": 158,
+        "h": 181
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-8": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 174,
+        "h": 201
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 16,
+        "w": 174,
+        "h": 201
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-special-9": {
+      "frame": {
+        "x": 562,
+        "y": 888,
+        "w": 127,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 30,
+        "y": 31,
+        "w": 127,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 212,
+        "h": 232
+      }
+    },
+    "karate-walk-0": {
+      "frame": {
+        "x": 657,
+        "y": 1114,
+        "w": 117,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 34,
+        "y": 18,
+        "w": 117,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-1": {
+      "frame": {
+        "x": 111,
+        "y": 1717,
+        "w": 100,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 31,
+        "y": 17,
+        "w": 100,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-2": {
+      "frame": {
+        "x": 123,
+        "y": 1525,
+        "w": 111,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 35,
+        "y": 17,
+        "w": 111,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-3": {
+      "frame": {
+        "x": 131,
+        "y": 1144,
+        "w": 124,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 19,
+        "w": 124,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-4": {
+      "frame": {
+        "x": 2,
+        "y": 578,
+        "w": 134,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 18,
+        "w": 134,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-5": {
+      "frame": {
+        "x": 495,
+        "y": 1838,
+        "w": 88,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 34,
+        "y": 18,
+        "w": 88,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-6": {
+      "frame": {
+        "x": 2,
+        "y": 1704,
+        "w": 107,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 29,
+        "y": 17,
+        "w": 107,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    },
+    "karate-walk-7": {
+      "frame": {
+        "x": 608,
+        "y": 698,
+        "w": 130,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 19,
+        "w": 130,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 168,
+        "h": 222
+      }
+    }
+  },
+  "meta": {
+    "app": "stickman-fighter-atlas-packer",
+    "version": "1.0",
+    "image": "atlas.webp",
+    "format": "RGBA8888",
+    "size": {
+      "w": 922,
+      "h": 2046
+    },
+    "scale": "1"
+  }
+}

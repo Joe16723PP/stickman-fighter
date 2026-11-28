@@ -1,0 +1,735 @@
+{
+  "frames": {
+    "dockmaster-chain-lash-0": {
+      "frame": {
+        "x": 384,
+        "y": 845,
+        "w": 127,
+        "h": 179
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 38,
+        "y": 26,
+        "w": 127,
+        "h": 179
+      },
+      "sourceSize": {
+        "w": 238,
+        "h": 220
+      }
+    },
+    "dockmaster-chain-lash-1": {
+      "frame": {
+        "x": 2,
+        "y": 182,
+        "w": 174,
+        "h": 180
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 25,
+        "w": 174,
+        "h": 180
+      },
+      "sourceSize": {
+        "w": 238,
+        "h": 220
+      }
+    },
+    "dockmaster-chain-lash-2": {
+      "frame": {
+        "x": 185,
+        "y": 2,
+        "w": 177,
+        "h": 179
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 45,
+        "y": 26,
+        "w": 177,
+        "h": 179
+      },
+      "sourceSize": {
+        "w": 238,
+        "h": 220
+      }
+    },
+    "dockmaster-chain-lash-3": {
+      "frame": {
+        "x": 532,
+        "y": 172,
+        "w": 161,
+        "h": 177
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 46,
+        "y": 28,
+        "w": 161,
+        "h": 177
+      },
+      "sourceSize": {
+        "w": 238,
+        "h": 220
+      }
+    },
+    "dockmaster-chain-lash-4": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 181,
+        "h": 178
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 28,
+        "y": 27,
+        "w": 181,
+        "h": 178
+      },
+      "sourceSize": {
+        "w": 238,
+        "h": 220
+      }
+    },
+    "dockmaster-chain-lash-5": {
+      "frame": {
+        "x": 132,
+        "y": 714,
+        "w": 126,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 36,
+        "y": 17,
+        "w": 126,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 238,
+        "h": 220
+      }
+    },
+    "dockmaster-fall-0": {
+      "frame": {
+        "x": 178,
+        "y": 353,
+        "w": 163,
+        "h": 168
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 17,
+        "w": 163,
+        "h": 168
+      },
+      "sourceSize": {
+        "w": 208,
+        "h": 200
+      }
+    },
+    "dockmaster-fall-1": {
+      "frame": {
+        "x": 646,
+        "y": 929,
+        "w": 157,
+        "h": 137
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 34,
+        "y": 48,
+        "w": 157,
+        "h": 137
+      },
+      "sourceSize": {
+        "w": 208,
+        "h": 200
+      }
+    },
+    "dockmaster-fall-2": {
+      "frame": {
+        "x": 551,
+        "y": 1068,
+        "w": 159,
+        "h": 116
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 30,
+        "y": 69,
+        "w": 159,
+        "h": 116
+      },
+      "sourceSize": {
+        "w": 208,
+        "h": 200
+      }
+    },
+    "dockmaster-fall-3": {
+      "frame": {
+        "x": 384,
+        "y": 1026,
+        "w": 165,
+        "h": 120
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 65,
+        "w": 165,
+        "h": 120
+      },
+      "sourceSize": {
+        "w": 208,
+        "h": 200
+      }
+    },
+    "dockmaster-fall-4": {
+      "frame": {
+        "x": 177,
+        "y": 1094,
+        "w": 164,
+        "h": 63
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 122,
+        "w": 164,
+        "h": 63
+      },
+      "sourceSize": {
+        "w": 208,
+        "h": 200
+      }
+    },
+    "dockmaster-fall-5": {
+      "frame": {
+        "x": 2,
+        "y": 1094,
+        "w": 173,
+        "h": 73
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 112,
+        "w": 173,
+        "h": 73
+      },
+      "sourceSize": {
+        "w": 208,
+        "h": 200
+      }
+    },
+    "dockmaster-idle-0": {
+      "frame": {
+        "x": 704,
+        "y": 2,
+        "w": 130,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 18,
+        "w": 130,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 222
+      }
+    },
+    "dockmaster-idle-1": {
+      "frame": {
+        "x": 172,
+        "y": 523,
+        "w": 128,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 18,
+        "w": 128,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 222
+      }
+    },
+    "dockmaster-idle-2": {
+      "frame": {
+        "x": 2,
+        "y": 670,
+        "w": 128,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 19,
+        "w": 128,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 222
+      }
+    },
+    "dockmaster-idle-3": {
+      "frame": {
+        "x": 302,
+        "y": 655,
+        "w": 127,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 20,
+        "w": 127,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 222
+      }
+    },
+    "dockmaster-idle-4": {
+      "frame": {
+        "x": 431,
+        "y": 656,
+        "w": 126,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 20,
+        "w": 126,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 222
+      }
+    },
+    "dockmaster-idle-5": {
+      "frame": {
+        "x": 2,
+        "y": 860,
+        "w": 126,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 19,
+        "w": 126,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 164,
+        "h": 222
+      }
+    },
+    "dockmaster-low-swing-0": {
+      "frame": {
+        "x": 689,
+        "y": 577,
+        "w": 149,
+        "h": 160
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 32,
+        "y": 27,
+        "w": 149,
+        "h": 160
+      },
+      "sourceSize": {
+        "w": 216,
+        "h": 202
+      }
+    },
+    "dockmaster-low-swing-1": {
+      "frame": {
+        "x": 349,
+        "y": 183,
+        "w": 172,
+        "h": 164
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 23,
+        "w": 172,
+        "h": 164
+      },
+      "sourceSize": {
+        "w": 216,
+        "h": 202
+      }
+    },
+    "dockmaster-low-swing-2": {
+      "frame": {
+        "x": 532,
+        "y": 2,
+        "w": 170,
+        "h": 168
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 28,
+        "y": 19,
+        "w": 170,
+        "h": 168
+      },
+      "sourceSize": {
+        "w": 216,
+        "h": 202
+      }
+    },
+    "dockmaster-low-swing-3": {
+      "frame": {
+        "x": 2,
+        "y": 517,
+        "w": 168,
+        "h": 151
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 36,
+        "w": 168,
+        "h": 151
+      },
+      "sourceSize": {
+        "w": 216,
+        "h": 202
+      }
+    },
+    "dockmaster-low-swing-4": {
+      "frame": {
+        "x": 178,
+        "y": 183,
+        "w": 169,
+        "h": 168
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 31,
+        "y": 19,
+        "w": 169,
+        "h": 168
+      },
+      "sourceSize": {
+        "w": 216,
+        "h": 202
+      }
+    },
+    "dockmaster-low-swing-5": {
+      "frame": {
+        "x": 513,
+        "y": 848,
+        "w": 131,
+        "h": 169
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 40,
+        "y": 18,
+        "w": 131,
+        "h": 169
+      },
+      "sourceSize": {
+        "w": 216,
+        "h": 202
+      }
+    },
+    "dockmaster-special-0": {
+      "frame": {
+        "x": 364,
+        "y": 2,
+        "w": 166,
+        "h": 179
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 18,
+        "w": 166,
+        "h": 179
+      },
+      "sourceSize": {
+        "w": 254,
+        "h": 212
+      }
+    },
+    "dockmaster-special-1": {
+      "frame": {
+        "x": 349,
+        "y": 349,
+        "w": 181,
+        "h": 153
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 44,
+        "w": 181,
+        "h": 153
+      },
+      "sourceSize": {
+        "w": 254,
+        "h": 212
+      }
+    },
+    "dockmaster-special-2": {
+      "frame": {
+        "x": 532,
+        "y": 351,
+        "w": 179,
+        "h": 152
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 59,
+        "y": 45,
+        "w": 179,
+        "h": 152
+      },
+      "sourceSize": {
+        "w": 254,
+        "h": 212
+      }
+    },
+    "dockmaster-special-3": {
+      "frame": {
+        "x": 526,
+        "y": 505,
+        "w": 161,
+        "h": 149
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 26,
+        "y": 48,
+        "w": 161,
+        "h": 149
+      },
+      "sourceSize": {
+        "w": 254,
+        "h": 212
+      }
+    },
+    "dockmaster-special-4": {
+      "frame": {
+        "x": 343,
+        "y": 504,
+        "w": 181,
+        "h": 149
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 48,
+        "w": 181,
+        "h": 149
+      },
+      "sourceSize": {
+        "w": 254,
+        "h": 212
+      }
+    },
+    "dockmaster-special-5": {
+      "frame": {
+        "x": 2,
+        "y": 364,
+        "w": 172,
+        "h": 151
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 49,
+        "y": 46,
+        "w": 172,
+        "h": 151
+      },
+      "sourceSize": {
+        "w": 254,
+        "h": 212
+      }
+    },
+    "dockmaster-walk-0": {
+      "frame": {
+        "x": 559,
+        "y": 656,
+        "w": 124,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 17,
+        "w": 124,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 222
+      }
+    },
+    "dockmaster-walk-1": {
+      "frame": {
+        "x": 713,
+        "y": 193,
+        "w": 126,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 17,
+        "w": 126,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 222
+      }
+    },
+    "dockmaster-walk-2": {
+      "frame": {
+        "x": 713,
+        "y": 385,
+        "w": 126,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 17,
+        "w": 126,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 222
+      }
+    },
+    "dockmaster-walk-3": {
+      "frame": {
+        "x": 260,
+        "y": 844,
+        "w": 122,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 19,
+        "w": 122,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 222
+      }
+    },
+    "dockmaster-walk-4": {
+      "frame": {
+        "x": 685,
+        "y": 739,
+        "w": 123,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 19,
+        "w": 123,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 222
+      }
+    },
+    "dockmaster-walk-5": {
+      "frame": {
+        "x": 130,
+        "y": 904,
+        "w": 122,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 19,
+        "w": 122,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 160,
+        "h": 222
+      }
+    }
+  },
+  "meta": {
+    "app": "stickman-fighter-atlas-packer",
+    "version": "1.0",
+    "image": "atlas.webp",
+    "format": "RGBA8888",
+    "size": {
+      "w": 841,
+      "h": 1186
+    },
+    "scale": "1"
+  }
+}
