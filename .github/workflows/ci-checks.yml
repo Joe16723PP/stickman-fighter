@@ -16,5 +16,5 @@ jobs:
         run: |
           python -m pip install playwright==1.64.1
           python -m playwright install --with-deps chromium
-      - name: Seeded 1v1 parity + edge clearance
+      - name: Beat 'em up checks + edge clearance
         run: python tests/ci_checks.py

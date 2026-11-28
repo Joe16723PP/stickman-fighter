@@ -6,14 +6,6 @@ import { Game, fighters } from './game.js';
 import { Moves } from './moves.js';
 import { Pose } from './pose.js';
 
-/* Difficulty tuning table — single source of truth */
-export const Diff = {
-  // Retuned for Moves timing (punch su7/re11, kick su11) + layout lane; restore 10/90, 77/23, 96/4 @ seed 0xC0FFEE42
-  easy:   { react: 0.42, block: 0.14, punish: 0.18, special: 0.07, mistake: 0.42, aggro: 0.26, cool: 1.10, damage: 1 },
-  normal: { react: 0.23, block: 0.38, punish: 0.58, special: 0.44, mistake: 0.09, aggro: 0.80, cool: 0.48, damage: 1 },
-  hard:   { react: 0.23, block: 0.58, punish: 1.00, special: 0.78, mistake: 0.02, aggro: 0.92, cool: 0.28, damage: 1.4 },
-};
-
 export const ArcadeDiff = {
   easy:   { damage: .7, health: .8, extraEnemies: -1, attackers: 2, details: 'DAMAGE 70% · ENEMY HP 80% · 4 PER WAVE' },
   normal: { damage: 1, health: 1, extraEnemies: 0, attackers: 3, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
@@ -43,7 +35,7 @@ export const Depth = {
     const band = Math.max(1, Depth.areaBot() - Depth.areaTop());
     return Math.max(0, Math.min(1, depth + dy * (156 / band) * dt));
   },
-  // 1v1/practice band: near lane (depth 1) is exactly Game.GROUND; back lane is 72px higher.
+  // Practice band: near lane (depth 1) is exactly Game.GROUND; back lane is 72px higher.
   BAND_1V1_PX: 72,
   get BAND_1V1_TOP() { return Game.GROUND - Depth.BAND_1V1_PX; },
   get BAND_1V1_BOT() { return Game.GROUND; },
@@ -55,7 +47,7 @@ export const Depth = {
   PLAYER_HIT_PX: 22,
   HIT_MAX_PX: 36,
   // Player Special Moves: total lanes covered, centred on the player's lane (Staff 5, Blade 3, Karate 3).
-  // One lane = the drawn guide spacing (beat 'em up: band / 4 = 43.2px; 1v1/practice: band / 2 = 36px).
+  // One lane = the drawn guide spacing (beat 'em up: band / 4 = 43.2px; practice: band / 2 = 36px).
   SPECIAL_LANES: { staff: 5, blade: 3, freehand: 3 },
   lanePx() {
     return Game.mode === 'beatemup' ? Game.H * (BeatEmUp.BAND_BOT - BeatEmUp.BAND_TOP) / 4 : Depth.BAND_1V1_PX / 2;
@@ -70,9 +62,9 @@ export const Depth = {
     if (!isPlayer) return Depth.HIT_PX;
     return Math.min(Depth.HIT_MAX_PX, Math.max(Depth.HIT_PX, Depth.PLAYER_HIT_PX * ((sizeA || 1) + (sizeB || 1)) / 2));
   },
-  // Round start / Training Reset depth: front lane (scale 1.00), so 1v1 starts exactly like pre-lanes main.
+  // Training Reset depth: front lane (scale 1.00).
   START: 1,
-  // Effects may not draw within this many CSS px below the HUD/health-bar panels (1v1/practice only).
+  // Effects may not draw within this many CSS px below the HUD/health-bar panels (practice only).
   HUD_CLEAR_PX: 8,
 };
 

@@ -12,7 +12,7 @@ export class BeatEmUp {
   static BAND_TOP = 0.56;
   static BAND_BOT = 0.88;
   static DEPTH_HIT_PX = Depth.HIT_PX;
-  /** Beat 'em up enemy lane window. Wider than 1v1's Depth.HIT_PX (14) and still under the player's 22–36. */
+  /** Beat 'em up enemy lane window. Wider than Depth.HIT_PX (14) and still under the player's 22–36. */
   static ENEMY_DEPTH_HIT_PX = 19;
   /** Regular / Brawler punch tell. Inside measured fist contact (61px back lane … 66px front) at runtime scale. */
   static PUNCH_TRIGGER_PX = 60;
@@ -325,7 +325,7 @@ export class BeatEmUp {
     return Math.abs(BeatEmUp.floorDepthPx(a) - BeatEmUp.floorDepthPx(b)) <= tolPx;
   }
   /** Lane window for attacker -> target. Players keep Depth.hitTolerance (22–36px).
-   *  Beat 'em up enemies use ENEMY_DEPTH_HIT_PX. 1v1 never reads this; Depth.HIT_PX stays 14. */
+   *  Beat 'em up enemies use ENEMY_DEPTH_HIT_PX. Practice keeps Depth.HIT_PX at 14. */
   static depthHitTolerance(attacker, target) {
     if (attacker?.role !== 'player') return BeatEmUp.ENEMY_DEPTH_HIT_PX;
     return Depth.hitTolerance(true, attacker?.scaleMul, target?.scaleMul);
@@ -463,7 +463,7 @@ export class BeatEmUp {
     p.tag = 'YOU';
     p.meter = 0;
     BeatEmUp.cast.push({ f: p, depth: 0.55, role: 'player', kind: 'player', scaleMul: 1, speedMul: p.classProfile?.speed || 1, ai: null });
-    // Hide unused 1v1 foe
+    // Park the training dummy offscreen; the arcade cast is the opponent.
     fighters[1].reset(-9999, -1);
     fighters[1].hp = 0;
     BeatEmUp.startWave(1, false, true);
