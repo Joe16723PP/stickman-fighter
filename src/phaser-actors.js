@@ -3,7 +3,8 @@ import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
 import { BossSignatures, PACE } from './config.js';
 
-const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, combo: 18, roll: 8, special: 24 };
+// Karate has no combo sheet. Both Attack punches play `punch` (one jab).
+const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, roll: 8, special: 24 };
 const FRAME_W = 174;
 const FRAME_H = 222;
 const BASELINE = 206;
@@ -17,7 +18,6 @@ const KICK_BOX = { w: 206, h: 224, baseline: 208 };
 const KICK_ANCHOR = 79;
 const SPECIAL_BOX = { w: 212, h: 232, baseline: 216 };
 const SPECIAL_ANCHOR = 97;
-const COMBO_BOX = { w: 148, h: 222, baseline: 206 };
 const ROLL_BOX = { w: 172, h: 220, baseline: 204 };
 const ROLL_ANCHOR = 85;
 const FALL_BOX = { w: 226, h: 220, baseline: 204 };
@@ -100,7 +100,6 @@ const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, grappler: GRAPPLER, 'blo
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
-const feet = {};
 const views = new Map();
 let seq = 0;
 let worldCanvas = null;
@@ -117,7 +116,6 @@ function clipOf(fighter) {
   if (fighter.state === 'roll') return 'roll';
   if (fighter.state === 'special' && fighter.classId === 'freehand') return 'special';
   if (fighter.state === 'kick') return 'kick';
-  if (fighter.state === 'punch' && (fighter.atk?.chain || 0) === 1) return 'combo';
   if (fighter.state === 'punch') return 'punch';
   if (fighter.state === 'walk') return 'walk';
   return 'idle';
@@ -126,10 +124,6 @@ function clipOf(fighter) {
 function frameOf(fighter, name) {
   const count = CLIPS[name];
   if (name === 'walk' || name === 'idle') return Math.floor((fighter.animT || 0) * PACE.spriteFps) % count;
-  if (name === 'combo') {
-    // Karate hit 2 is the cross only: combo frames 5–8, mapped like the Blade punch 3–5 slice.
-    return chainSlice(fighter, 5, 4);
-  }
   if (name === 'roll') {
     const duration = PACE.dodgeDuration;
     const elapsed = Math.max(0, duration - (fighter.dodgeT || 0));
@@ -165,6 +159,8 @@ function frameOf(fighter, name) {
     else index = wind + strike + Math.min(recover - 1, Math.floor((re ? Math.min(1, (t - su - ac) / re) : 1) * recover));
     return Math.max(0, Math.min(count - 1, index));
   }
+  // One jab for Attack hits 1 and 2: frames 0–2 wind up, frame 3 (arm extended)
+  // holds through the active window, frames 4–5 recover. Not sliced like Blade.
   if (name === 'punch') {
     const attack = fighter.atk;
     const su = attack ? attack.su : 4;
@@ -180,7 +176,6 @@ function frameOf(fighter, name) {
     else index = wind + strike + Math.min(recover - 1, Math.floor((re ? Math.min(1, (t - su - ac) / re) : 1) * recover));
     return Math.max(0, Math.min(count - 1, index));
   }
-  if (name === 'combo') return Math.max(0, Math.min(count - 1, Math.floor((fighter.atkT || 0) / 5)));
   if (name === 'fall') {
     const now = fighter.animT || 0;
     if (fighter._clipName !== name) {
@@ -195,30 +190,6 @@ function frameOf(fighter, name) {
     fighter._clipStart = now;
   }
   return Math.max(0, Math.min(count - 1, Math.floor((now - fighter._clipStart) * 12)));
-}
-
-function measureFoot(scene, textureKey) {
-  const image = scene.textures.get(textureKey).getSourceImage();
-  const canvas = document.createElement('canvas');
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0);
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  let maxY = 0;
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      if (data[(y * canvas.width + x) * 4 + 3] > 40 && y > maxY) maxY = y;
-    }
-  }
-  let sum = 0;
-  let count = 0;
-  for (let y = Math.max(0, maxY - 6); y <= maxY; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      if (data[(y * canvas.width + x) * 4 + 3] > 40) { sum += x; count++; }
-    }
-  }
-  feet[textureKey] = count ? sum / count - canvas.width / 2 : 0;
 }
 
 function staffClip(fighter) {
@@ -755,7 +726,6 @@ export function loadKarate(scene) {
 }
 
 export function prepareKarate(scene) {
-  for (let i = 0; i < CLIPS.combo; i++) measureFoot(scene, key('combo', i));
   Game.spriteBodies = true;
   Game.paintPhaser = () => paint(scene);
 }
@@ -821,7 +791,6 @@ function clipBox(name) {
   if (name === 'punch') return PUNCH_BOX;
   if (name === 'kick') return KICK_BOX;
   if (name === 'special') return SPECIAL_BOX;
-  if (name === 'combo') return COMBO_BOX;
   if (name === 'roll') return ROLL_BOX;
   if (name === 'fall') return FALL_BOX;
   return { w: FRAME_W, h: FRAME_H, baseline: BASELINE };
@@ -875,7 +844,7 @@ function paint(scene) {
       if (!view.body) view.body = scene.add.image(0, 0, texture);
       if (view.body.texture.key !== texture) view.body.setTexture(texture);
       const box = clipBox(name);
-      const foot = name === 'idle' ? IDLE_ANCHOR - box.w / 2 : name === 'walk' ? WALK_ANCHOR - box.w / 2 : name === 'punch' ? PUNCH_ANCHOR - box.w / 2 : name === 'kick' ? KICK_ANCHOR - box.w / 2 : name === 'roll' ? ROLL_ANCHOR - box.w / 2 : name === 'fall' ? FALL_ANCHOR - box.w / 2 : name === 'special' ? SPECIAL_ANCHOR - box.w / 2 : name === 'combo' ? (feet[texture] || 0) : 0;
+      const foot = name === 'idle' ? IDLE_ANCHOR - box.w / 2 : name === 'walk' ? WALK_ANCHOR - box.w / 2 : name === 'punch' ? PUNCH_ANCHOR - box.w / 2 : name === 'kick' ? KICK_ANCHOR - box.w / 2 : name === 'roll' ? ROLL_ANCHOR - box.w / 2 : name === 'fall' ? FALL_ANCHOR - box.w / 2 : name === 'special' ? SPECIAL_ANCHOR - box.w / 2 : 0;
       view.body.setFlipX(fighter.face < 0);
       view.body.setRotation(fighter.ragdollActive && name !== 'fall' ? fighter.ragdollAngle : 0);
       view.body.setScale(((96 * fighter.drawS()) / BODY) * screen);
