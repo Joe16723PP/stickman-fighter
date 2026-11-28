@@ -377,6 +377,13 @@ function stageEnemy(fighter) {
   return entry;
 }
 
+// Title has no cast, and stageEnemy bails while phase is 'title', so the right fighter
+// used to fall through to the vector plate. A scaleMul-1 brawler reuses enemyBodyScale.
+function titleBrawlerEntry(fighter) {
+  if (Game.phase !== 'title' || fighter !== fighters[1]) return null;
+  return { f: fighter, role: 'enemy', kind: 'brawler', scaleMul: 1, depth: fighter.depth };
+}
+
 // Same corpse window BeatEmUp.draw uses: a KO stays up for 2s, then leaves with its shadow.
 function enemyOnStage(entry) {
   if (entry.f.hp > 0) return true;
@@ -827,15 +834,16 @@ function paint(scene) {
     live.add(fighter);
     let view = views.get(fighter);
     if (!view) { view = {}; views.set(fighter, view); }
-    const entry = stageEnemy(fighter);
+    const rival = titleBrawlerEntry(fighter);
+    const entry = rival || stageEnemy(fighter);
     if (entry && !enemyOnStage(entry)) {
       if (view.body) view.body.setVisible(false);
       if (view.plate) view.plate.setVisible(false);
       continue;
     }
-    const karate = fighter.classId === 'freehand';
-    const staffName = staffClip(fighter);
-    const bladeName = bladeClip(fighter);
+    const karate = !rival && fighter.classId === 'freehand';
+    const staffName = rival ? null : staffClip(fighter);
+    const bladeName = rival ? null : bladeClip(fighter);
     const enemyName = entry ? enemyClip(entry, fighter) : null;
     let enemyPosed = false;
     if (karate) {
@@ -916,4 +924,23 @@ function paint(scene) {
   if (hudImage) hudImage.setDisplaySize(Game.canvas.width, Game.canvas.height);
   Game.paintScale = 0;
   Game.ctx = main;
+}
+
+/** Idle frame for a class card. Box, anchor, and body height are the gameplay clip values. */
+export function classIdleSource(classId, index) {
+  const spec = classId === 'staff' ? { folder: 'staff', count: STAFF_IDLE_COUNT, box: STAFF_IDLE_BOX, anchor: STAFF_IDLE_ANCHOR }
+    : classId === 'blade' ? { folder: 'blade', count: BLADE.idle.count, box: BLADE.idle.box, anchor: BLADE.idle.anchor }
+    : classId === 'freehand' ? { folder: 'karate', count: CLIPS.idle, box: IDLE_BOX, anchor: IDLE_ANCHOR }
+    : null;
+  if (!spec) return null;
+  const count = spec.count;
+  const frame = ((Math.floor(index) % count) + count) % count;
+  const key = spec.folder + '-idle-' + frame;
+  const scene = Game.phaserScene;
+  let image = null;
+  if (scene && scene.textures.exists(key)) {
+    const source = scene.textures.get(key).getSourceImage();
+    if (source && source.width > 0) image = source;
+  }
+  return { folder: spec.folder, count, box: spec.box, anchor: spec.anchor, frame, key, image, body: BODY };
 }

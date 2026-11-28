@@ -2308,6 +2308,78 @@ SPECIAL_GAIN = r"""() => {
   return r;
 }"""
 
+TITLE_ART = r'''() => {
+  const classes = [['freehand', 'karate'], ['staff', 'staff'], ['blade', 'blade']];
+  const BODY = 188;
+  const scene = Game.phaserScene;
+  const screen = (Game.scale || 1) * (Game.fitDpr || 1);
+  const near = (a, b) => Math.abs(a - b) < 1e-3;
+  const names = ['karate', 'staff', 'blade'];
+  const source = (folder, frame) => scene.textures.get(folder + '-idle-' + frame).getSourceImage();
+  const drawn = [];
+  const orig = CanvasRenderingContext2D.prototype.drawImage;
+  CanvasRenderingContext2D.prototype.drawImage = function(img) {
+    drawn.push({ img: img, alpha: this.globalAlpha, smooth: this.imageSmoothingEnabled });
+    return orig.apply(this, arguments);
+  };
+  const out = { pass: true, classes: {} };
+  try {
+    if (!Game.paintPhaser) { out.pass = false; out.error = 'paint missing'; return out; }
+    Game.goTitle();
+    for (const pair of classes) {
+      const id = pair[0], folder = pair[1];
+      Game.selectClass(id);
+      fighters[0].state = 'idle'; fighters[1].state = 'idle';
+      fighters[0].atk = null; fighters[1].atk = null;
+      fighters[0].face = 1; fighters[1].face = -1;
+      fighters[0].animT = 0.25; fighters[1].animT = 0.25;
+      drawn.length = 0;
+      Game.paintPhaser();
+      const images = scene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+      const left = images.find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
+      const right = images.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
+      const plate = images.some(o => String(o.texture.key).indexOf('body-') === 0);
+      const other = images.some(o => names.some(n => n !== folder && String(o.texture.key).indexOf(n + '-idle-') === 0));
+      const playerFrame = Math.floor(fighters[0].animT * PACE.spriteFps) % 6;
+      const brawlerFrame = Math.floor(fighters[1].animT * 12) % 6;
+      const playerScale = (96 * fighters[0].drawS()) / BODY * screen;
+      const brawl = (BeatEmUp.baseS || 1) * BeatEmUp.depthToScale(fighters[1].depth) * 1;
+      const enemyScale = (96 * brawl) / BODY * screen;
+      const hits = (name, frame) => drawn.filter(d => d.img === source(name, frame));
+      const selected = hits(folder, playerFrame);
+      const othersOk = names.filter(n => n !== folder).every(n => {
+        const row = hits(n, 0);
+        return row.length === 1 && row[0].smooth === false && Math.abs(row[0].alpha - 0.6) < 1e-6;
+      });
+      const idleCount = drawn.filter(d => names.some(n => {
+        for (let f = 0; f < 6; f++) if (d.img === source(n, f)) return true;
+        return false;
+      })).length;
+      const cardsOk = selected.length === 1 && selected[0].smooth === false && selected[0].alpha === 1 && othersOk && idleCount === 3;
+      const fightersOk = !!(left && right && !plate && !other
+        && left.texture.key === folder + '-idle-' + playerFrame && left.flipX === false
+        && right.texture.key === 'brawler-idle-' + brawlerFrame && right.flipX === true
+        && near(left.scaleX, playerScale) && near(Math.abs(right.scaleX), enemyScale));
+      out.classes[id] = {
+        cardsOk: cardsOk, fightersOk: fightersOk,
+        left: left && left.texture.key, right: right && right.texture.key, flip: right && right.flipX,
+        leftScale: left && +left.scaleX.toFixed(4), playerScale: +playerScale.toFixed(4),
+        rightScale: right && +right.scaleX.toFixed(4), enemyScale: +enemyScale.toFixed(4),
+        idleCount: idleCount, plate: plate, other: other,
+      };
+      if (!cardsOk || !fightersOk) out.pass = false;
+    }
+  } catch (err) {
+    out.pass = false; out.error = String(err && err.stack || err);
+  } finally {
+    CanvasRenderingContext2D.prototype.drawImage = orig;
+    try { localStorage.setItem('stickman-beatemup-class', 'freehand'); } catch (e) {}
+    if (Game.selectClass) Game.selectClass('freehand');
+    if (Game.goTitle) Game.goTitle();
+  }
+  return out;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -2360,6 +2432,12 @@ def main():
             if not loaded.get('pass') or load_problems:
                 failures.append('Texture load failed: game preload left Karate frames missing, loaded a combo texture, or reported a missing file: '
                                 + json.dumps({'loaded': {k: v for k, v in loaded.items() if k != 'pass'}, 'http': load_problems[:8]}))
+            else:
+                title_art = load_page.evaluate(TITLE_ART)
+                print('title sprites', json.dumps({k: v for k, v in title_art.items() if k != 'pass'}))
+                if not title_art.get('pass'):
+                    failures.append('Title sprites failed: class cards and both title fighters must draw idle sprite textures (selected class on the left, mirrored Brawler idle on the right, other cards held on frame 00 at 60% opacity): '
+                                    + json.dumps({k: v for k, v in title_art.items() if k != 'pass'}))
             load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
             def note_response(response):

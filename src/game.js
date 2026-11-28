@@ -7,6 +7,7 @@ import { Fx } from './fx.js';
 import { Input } from './input.js';
 import { Pose } from './pose.js';
 import { startPhaser } from './phaser-host.js';
+import { classIdleSource } from './phaser-actors.js';
 
 export let fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
@@ -601,6 +602,9 @@ export class Game {
       }
       if (Game.phase === 'title') {
         fighters[0].face = 1; fighters[1].face = -1;
+        fighters[0].state = 'idle'; fighters[1].state = 'idle';
+        fighters[0].atk = null; fighters[1].atk = null;
+        fighters[0].animT += step; fighters[1].animT += step;
         fighters[0].pose = Pose.idle(fighters[0].classProfile);
         fighters[1].pose = Pose.idle(fighters[1].classProfile);
         fighters[0].y = 0; fighters[1].y = 0;
@@ -895,6 +899,22 @@ export class Game {
       }
       ctx.restore();
     };
+    // Idle crop box and anchor come from the gameplay clips (classIdleSource). The stick
+    // preview stays only until that frame's texture is ready, so a card is never empty.
+    const drawCardFighter = (card, profile) => {
+      const selected = card.id === Game.selectedClass;
+      const art = classIdleSource(card.id, selected ? (fighters[0].animT || 0) * PACE.spriteFps : 0);
+      const previewX = card.x + 23 / sc, previewY = card.y + card.h * .64;
+      if (!art || !art.image) { drawClassPreview(profile, previewX, previewY); return; }
+      const textLeft = card.x + 51 / sc;
+      let scale = card.h * .78 / art.body;
+      const reach = art.box.w - art.anchor;
+      if (reach > 0 && previewX + reach * scale > textLeft) scale = Math.max(0, (textLeft - previewX) / reach);
+      const footY = card.y + card.h - 6 / sc;
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = selected ? 1 : .6;
+      ctx.drawImage(art.image, previewX - art.anchor * scale, footY - art.box.baseline * scale, art.box.w * scale, art.box.h * scale);
+      ctx.restore();
+    };
     for (const t of layout.tabs) {
       const sel = t.id === Game.mode;
       const accent = sel ? '#FFD34D' : '#38BDF8';
@@ -944,8 +964,7 @@ export class Game {
       ctx.fillStyle = selected ? 'rgba(35,54,83,.68)' : 'rgba(5,10,20,.46)';
       ctx.fillRect(card.x + 2 / sc, card.y + 4 / sc, card.w - 4 / sc, card.h - 6 / sc);
       if (selected) drawSelectionArrow(card.x - 10 / sc, card.y + card.h * .5 - 5 / sc, p.accent);
-      const previewX = card.x + 23 / sc, previewY = card.y + card.h * .64;
-      drawClassPreview(p, previewX, previewY);
+      drawCardFighter(card, p);
       const textX = card.x + Math.min(51 / sc, card.w * .29), textW = card.w - (textX - card.x) - 7 / sc;
       if (card.menuCompact) {
         const menuAt = (small,large) => card.y + (compact ? small : large) / sc;
