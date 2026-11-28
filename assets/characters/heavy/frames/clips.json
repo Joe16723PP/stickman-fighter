@@ -1,0 +1,69 @@
+{
+  "frameW": 146,
+  "frameH": 222,
+  "baseline": 206,
+  "body": 188,
+  "fps": 12,
+  "clips": {
+    "idle": 6,
+    "walk": 8,
+    "slam": 9,
+    "hit": 4,
+    "fall": 6
+  },
+  "idle": {
+    "frameW": 146,
+    "frameH": 222,
+    "baseline": 206,
+    "anchor": 77
+  },
+  "walk": {
+    "frameW": 160,
+    "frameH": 220,
+    "baseline": 204,
+    "anchor": 79
+  },
+  "slam": {
+    "frameW": 230,
+    "frameH": 230,
+    "baseline": 214,
+    "anchor": 106,
+    "timing": [
+      10,
+      10,
+      10,
+      4,
+      14,
+      12,
+      10,
+      8,
+      4
+    ],
+    "phases": {
+      "windup": [
+        0,
+        2
+      ],
+      "swing": [
+        3,
+        3
+      ],
+      "recovery": [
+        4,
+        8
+      ]
+    }
+  },
+  "hit": {
+    "frameW": 200,
+    "frameH": 208,
+    "baseline": 192,
+    "anchor": 109
+  },
+  "fall": {
+    "frameW": 254,
+    "frameH": 228,
+    "baseline": 212,
+    "anchor": 125
+  }
+}

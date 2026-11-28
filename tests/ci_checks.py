@@ -2743,6 +2743,149 @@ BODY_SCALE = r'''() => {
   return out;
 }'''
 
+HEAVY_SPRITES = r'''() => {
+  // Draw-only. Heavy must paint heavy-* frames (never the vector plate) and the slam
+  // index must follow clips.json timing, spread across the attack's existing phases.
+  const out = { pass: true, problems: [] };
+  const fail = (msg) => { out.pass = false; out.problems.push(msg); };
+  const visible = () => Game.phaserScene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+  const keyOf = (prefix) => {
+    const img = visible().find(o => String(o.texture.key).indexOf(prefix) === 0);
+    return img ? String(img.texture.key) : '';
+  };
+  const holdCounts = (phaseLen, holds) => {
+    const art = holds.reduce((sum, n) => sum + n, 0) || 1;
+    const len = Math.max(1, phaseLen | 0);
+    const counts = holds.map((hold) => Math.floor(hold * len / art));
+    let extra = len - counts.reduce((sum, n) => sum + n, 0);
+    const order = holds.map((hold, i) => ({ i, rem: (hold * len) % art }));
+    order.sort((a, b) => b.rem - a.rem || a.i - b.i);
+    for (let k = 0; k < extra && k < order.length; k++) counts[order[k].i]++;
+    return counts;
+  };
+  const expand = (counts, first) => {
+    const frames = [];
+    counts.forEach((n, i) => { for (let k = 0; k < n; k++) frames.push(first + i); });
+    return frames;
+  };
+  try {
+    if (!Game.paintPhaser || !Game.phaserScene) { fail('paint missing'); return out; }
+    Game.frame = function(){};
+    Game.fit();
+    Game.selectClass('freehand');
+    BeatEmUp.begin();
+    Game.frame = function(){};
+    const player = BeatEmUp.playerEntry();
+    player.f.setClass('freehand');
+    const depth = 0.5;
+    const brawler = BeatEmUp.makeEnemy('brawler', player.f.x + 160, depth);
+    const heavy = BeatEmUp.makeEnemy('heavy', player.f.x + 320, depth);
+    brawler.scaleMul = 1;
+    for (const entry of [player, brawler, heavy]) {
+      entry.depth = depth; entry.f.depth = depth; entry.f.y = 0; entry.f.hp = 200;
+      entry.f.state = 'idle'; entry.f.atk = null; entry.f.animT = 0; entry.f.flash = 0;
+      entry.f.ragdollActive = false; entry.f.ragdollKO = false; entry.f.face = 1;
+      entry.f._posedClip = ''; entry.f._heavyIdleEpoch = 0;
+    }
+    BeatEmUp.cast = [player, brawler, heavy];
+    BeatEmUp.boss = null; BeatEmUp.cameraX = 0; BeatEmUp.waveSpawnQueue = [];
+    BeatEmUp.eventT = 0; BeatEmUp.stageIntroT = 0; BeatEmUp.showGo = 0;
+    Game.banner = ''; Game.phase = 'fight'; Game.fighting = 1; Game.mode = 'beatemup';
+    const scene = Game.phaserScene;
+    const missing = [];
+    for (const [name, count] of Object.entries({ idle: 6, walk: 8, slam: 9, hit: 4, fall: 6 })) {
+      for (let i = 0; i < count; i++) if (!scene.textures.exists('heavy-' + name + '-' + i)) missing.push(name + ':' + i);
+    }
+    if (missing.length) fail('missing textures ' + missing.join(','));
+    const paint = () => { Game.paintPhaser(); };
+    const plates = () => visible().filter(o => String(o.texture.key).indexOf('body-') === 0).map(o => o.texture.key);
+    paint();
+    const idleKey = keyOf('heavy-');
+    out.idle = idleKey;
+    out.brawler = keyOf('brawler-idle-');
+    out.player = keyOf('karate-idle-');
+    if (idleKey !== 'heavy-idle-0') fail('idle drew ' + idleKey);
+    if (!out.brawler) fail('brawler sprite missing');
+    if (!out.player) fail('player sprite missing');
+    if (plates().length) fail('vector plate visible on idle: ' + plates().join(','));
+    const imgs = visible();
+    const hvImg = imgs.find(o => String(o.texture.key).indexOf('heavy-') === 0);
+    const brImg = imgs.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
+    const plImg = imgs.find(o => String(o.texture.key).indexOf('karate-idle-') === 0);
+    const ratio = brImg && hvImg ? Math.abs(hvImg.scaleY) / Math.abs(brImg.scaleY) : 0;
+    out.scale = +ratio.toFixed(4);
+    out.scaleMul = heavy.scaleMul;
+    if (!(Math.abs(ratio - 1.12) < 1e-3) || Math.abs(heavy.scaleMul - 1.12) > 1e-6) fail('scale ' + ratio + ' mul ' + heavy.scaleMul);
+    const feet = [plImg, brImg, hvImg].map(o => o ? +o.y.toFixed(3) : null);
+    out.feet = feet;
+    if (feet.some(y => y == null) || Math.abs(feet[0] - feet[1]) > 0.5 || Math.abs(feet[1] - feet[2]) > 0.5) fail('feet ' + feet.join(','));
+    heavy.f.state = 'walk'; heavy.f.walkPx = 0;
+    paint();
+    if (keyOf('heavy-') !== 'heavy-walk-0') fail('walk drew ' + keyOf('heavy-'));
+    if (plates().length) fail('vector plate visible on walk');
+    heavy.f.state = 'hit'; heavy.f.animT = 0; heavy.f._posedClip = '';
+    paint();
+    if (keyOf('heavy-') !== 'heavy-hit-0') fail('hit drew ' + keyOf('heavy-'));
+    if (plates().length) fail('vector plate visible on hit');
+    heavy.f.state = 'knockdown'; heavy.f.ragdollActive = true; heavy.f.hp = 80; heavy.f.animT = 0; heavy.f._posedClip = '';
+    paint();
+    if (keyOf('heavy-') !== 'heavy-fall-0') fail('down drew ' + keyOf('heavy-'));
+    if (plates().length) fail('vector plate visible on down');
+    heavy.f.ragdollActive = false; heavy.f.hp = 200; heavy.f.state = 'idle'; heavy.f.animT = 0.4; heavy.f._posedClip = '';
+    heavy.f.startAtk('punch');
+    const attack = heavy.f.atk;
+    if (!attack || !attack.slam) { fail('slam did not arm'); return out; }
+    const su = attack.su, ac = attack.ac, re = attack.re;
+    out.phases = [su, ac, re];
+    const timing = [10, 10, 10, 4, 14, 12, 10, 8, 4];
+    const wind = expand(holdCounts(su, timing.slice(0, 3)), 0);
+    const swing = expand(holdCounts(ac, timing.slice(3, 4)), 3);
+    const recovery = expand(holdCounts(re, timing.slice(4)), 4);
+    const expect = wind.concat(swing, recovery);
+    const art = (holds) => holds.reduce((s, n) => s + n, 0);
+    const proportional = (frames, holds, len) => {
+      const by = {};
+      frames.forEach(f => { by[f] = (by[f] || 0) + 1; });
+      const total = holds.reduce((s, n) => s + n, 0);
+      if (Object.values(by).reduce((s, n) => s + n, 0) !== len) return false;
+      return holds.every((h, i) => {
+        const c = by[frames[0] + i] || 0;
+        const base = Math.floor(h * len / total);
+        return c === base || c === base + 1;
+      });
+    };
+    if (art(timing) !== 82 || art(timing.slice(0, 3)) !== 30 || timing[3] !== 4 || art(timing.slice(4)) !== 48) fail('timing table');
+    if (!proportional(wind, timing.slice(0, 3), su) || !proportional(swing, [4], ac) || !proportional(recovery, timing.slice(4), re)) fail('holds not proportional');
+    const before = { hp: heavy.f.hp, x: heavy.f.x, dmg: attack.dmg, su, ac, re, kb: attack.kb, stun: attack.stun, reach: attack.reach };
+    const got = [];
+    for (let t = 1; t <= su + ac + re; t++) {
+      heavy.f.atkT = t; heavy.f.state = 'punch';
+      paint();
+      const key = keyOf('heavy-slam-');
+      const index = key ? +key.slice('heavy-slam-'.length) : -1;
+      got.push(index);
+      if (plates().length) { fail('vector plate during slam t=' + t); break; }
+    }
+    out.slam = got.join(',');
+    const same = expect.length === got.length && expect.every((f, i) => f === got[i]);
+    if (!same) fail('slam frames ' + got.join(',') + ' expected ' + expect.join(','));
+    const swingGot = got.slice(su, su + ac);
+    if (swingGot.some(f => f !== 3)) fail('swing frames ' + swingGot.join(','));
+    if (got[0] !== 0 || got[su + ac + re - 2] !== 8 || got[got.length - 1] !== 8) fail('slam ends off idle stance');
+    const after = { hp: heavy.f.hp, x: heavy.f.x, dmg: attack.dmg, su: attack.su, ac: attack.ac, re: attack.re, kb: attack.kb, stun: attack.stun, reach: attack.reach };
+    if (JSON.stringify(before) !== JSON.stringify(after)) fail('paint changed gameplay ' + JSON.stringify(before) + ' -> ' + JSON.stringify(after));
+    heavy.f.atk = null; heavy.f.state = 'idle'; heavy.f.atkT = 0;
+    paint();
+    const back = keyOf('heavy-');
+    out.afterSlam = back;
+    if (back !== 'heavy-idle-0') fail('slam returned to ' + back);
+    if (plates().length) fail('vector plate after slam');
+  } catch (err) {
+    fail(String(err && err.stack || err));
+  }
+  return out;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -2812,6 +2955,11 @@ def main():
                 if not body_scale.get('pass'):
                     failures.append('Player body scale failed: Karate, Staff and Blade on-screen heights must match a scaleMul-1 Brawler within 2% at the same Beat \'em up depth (lane scale included), and practice must keep drawS(): '
                                     + json.dumps({k: v for k, v in body_scale.items() if k != 'pass'}))
+                heavy_sprites = load_page.evaluate(HEAVY_SPRITES)
+                print('heavy sprites', json.dumps({k: v for k, v in heavy_sprites.items() if k != 'pass'}))
+                if not heavy_sprites.get('pass'):
+                    failures.append('Heavy sprites failed: expected heavy-* frames (no vector plate) at scale 1.12 with feet on the shared floor line, and slam frames following timing [10,10,10,4,14,12,10,8,4] across the existing wind-up, swing, and recovery: '
+                                    + json.dumps({k: v for k, v in heavy_sprites.items() if k != 'pass'}))
             load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
             def note_response(response):
