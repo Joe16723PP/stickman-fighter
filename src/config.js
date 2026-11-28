@@ -22,6 +22,28 @@ export const PACE = {
   finisher: { su: 19, ac: 7, re: 31 },
   projectileSpeed: 250,
 };
+
+/**
+ * Player-received hits. One place for the art director to retune crowd fairness.
+ * Enemies keep enemyBurstKO / enemyBurstWindow (the old shared 30 / 1.6s, refreshed every hit).
+ * Boss move numbers are not scaled: a bossProfile attacker still deals its authored kb and stun.
+ * Knockdown is damage in the burst window (LF2 fall), not a hit count. The window starts on the
+ * first hit of a run and does not restart when another hit lands.
+ */
+export const PLAYER_DEFENSE = {
+  burstKO: 55,
+  burstWindow: 1.2,
+  chainKnockdown: false,
+  kbTaken: 0.6,
+  stunTaken: 0.8,
+  wakeInvuln: 1.5,
+  wakeBlink: 0.25,
+  wakeNoAttack: 0.8,
+  attackGap: 0.6,
+  enemyBurstKO: 30,
+  enemyBurstWindow: 1.6,
+};
+
 /** Extra ×PACE.enemy on enemy and boss startup, active, and recovery frames. Distances stay put. */
 export function paceEnemy(n) {
   return Math.max(1, Math.round(n * PACE.enemy));
@@ -34,8 +56,8 @@ export function specialHitStop(pulse, hitCount) {
 
 export const ArcadeDiff = {
   easy:   { damage: .7, health: .8, extraEnemies: -1, attackers: 2, details: 'DAMAGE 70% · ENEMY HP 80% · 4 PER WAVE' },
-  normal: { damage: 1, health: 1, extraEnemies: 0, attackers: 3, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
-  hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, attackers: 4, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
+  normal: { damage: 1, health: 1, extraEnemies: 0, attackers: 2, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
+  hard:   { damage: 1.4, health: 1.5, extraEnemies: 1, attackers: 3, details: 'DAMAGE 140% · ENEMY HP 150% · 8 PER WAVE' },
 };
 
 /** Seconds after a non-final stage clear before the next stage begins. */
