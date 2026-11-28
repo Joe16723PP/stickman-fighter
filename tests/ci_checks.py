@@ -1855,7 +1855,7 @@ CHAIN = r"""
   out.pass = row('blade', 'punch,punch,kick') && row('freehand', 'punch,combo,kick') && row('staff', 'punch,punch,kick')
     && inRange(b[0].frames, 0, 2) && inRange(b[1].frames, 3, 5) && b[2].frames.every(x => x.startsWith('kick:'))
     && inRange(s[0].frames, 0, 2) && inRange(s[1].frames, 3, 5) && s[2].frames.every(x => x.startsWith('kick:'))
-    && k[0].frames.every(x => x.startsWith('punch:')) && k[1].frames.every(x => x.startsWith('combo:')) && k[2].frames.every(x => x.startsWith('kick:'));
+    && k[0].frames.every(x => x.startsWith('punch:')) && k[1].frames.every(x => x.startsWith('combo:')) && inRange(k[1].frames, 5, 8) && k[2].frames.every(x => x.startsWith('kick:'));
   Game.mode = prev.mode; Game.phase = prev.phase; Math.random = prev.random;
   return out;
 }
@@ -2020,7 +2020,7 @@ def main():
             chain = page.evaluate(CHAIN)
             print('attack chain', json.dumps({k: v for k, v in chain.items() if k != 'pass'}))
             if not chain['pass']:
-                failures.append('Attack chain failed: expected Blade, Karate and Staff to deal 5/7/9 base damage across punch, the class second clip, and the kick finisher, with hit 3 knocking the target down')
+                failures.append('Attack chain failed: expected Blade, Karate and Staff to deal 5/7/9 base damage across punch, the class second clip, and the kick finisher, with hit 3 knocking the target down and Karate hit 2 staying on combo frames 5-8')
             dodge = page.evaluate(DODGE)
             print('dodge', json.dumps(dodge))
             if not dodge['pass']:

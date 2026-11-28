@@ -127,8 +127,8 @@ function frameOf(fighter, name) {
   const count = CLIPS[name];
   if (name === 'walk' || name === 'idle') return Math.floor((fighter.animT || 0) * PACE.spriteFps) % count;
   if (name === 'combo') {
-    const total = fighter.atk ? fighter.atk.su + fighter.atk.ac + fighter.atk.re : count;
-    return Math.max(0, Math.min(count - 1, Math.floor((fighter.atkT || 0) / Math.max(1, total) * count)));
+    // Karate hit 2 is the cross only: combo frames 5–8, mapped like the Blade punch 3–5 slice.
+    return chainSlice(fighter, 5, 4);
   }
   if (name === 'roll') {
     const duration = PACE.dodgeDuration;
