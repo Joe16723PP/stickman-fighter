@@ -2480,6 +2480,20 @@ TITLE_UI = r'''() => {
     startShadow.h += (layout.start.shadow || 0) * (Game.scale || 1);
     onScreen(startShadow, 'title:start-shadow');
     checkSet('title', titleEntries);
+    layout.classes.forEach((c) => {
+      const sprite = cssOf(c.sprite);
+      const name = cssOf(c.nameBox);
+      if (!c.sprite || !c.nameBox) { problems.push('card parts ' + c.id); return; }
+      if (overlaps(sprite, name)) problems.push('label overlaps ' + c.id);
+      const clearance = name.y - (sprite.y + sprite.h);
+      if (clearance < 3.9) problems.push('label clearance ' + c.id + ' ' + clearance.toFixed(2));
+    });
+    const cardsBottom = Math.max.apply(null, layout.classes.map((c) => { const r = cssOf(c); return r.y + r.h; }));
+    const diff = cssOf(layout.labels.difficulty);
+    const segTop = cssOf(layout.segment).y;
+    if (diff.h < 10 || cssOf(layout.labels.fighter).h < 10) problems.push('section label short');
+    if (diff.y - cardsBottom < 11.5) problems.push('difficulty above ' + (diff.y - cardsBottom).toFixed(1));
+    if (segTop - (diff.y + diff.h) < 5.5) problems.push('difficulty below ' + (segTop - diff.y - diff.h).toFixed(1));
     const taps = []
       .concat(layout.classes, layout.levels, [layout.practice, layout.start, layout.gear]);
     taps.forEach((r, i) => { if (cssOf(r).h < 43.5) problems.push('title tap ' + i + ' short ' + cssOf(r).h.toFixed(1)); });
@@ -2561,14 +2575,32 @@ TITLE_UI = r'''() => {
     };
     Game.mode = 'beatemup';
     Game.phase = 'fight';
-    Game.paused = true;
+    Game.paused = false;
     BeatEmUp.stage = 1;
     BeatEmUp.wave = 2;
     BeatEmUp.stageOver = 0;
     BeatEmUp.stageTransitionLeft = 0;
+    const burger = document.getElementById('main-menu-button');
+    const burgerDead = (where) => {
+      Game.syncControls();
+      const cs = getComputedStyle(burger);
+      const hit = document.elementFromPoint(39, 39);
+      if (cs.display !== 'none' || cs.pointerEvents !== 'none' || hit === burger || (burger && burger.contains(hit))) problems.push(where + ' hamburger shown');
+      burger.click();
+      if (Game.actionMenuOpen) problems.push(where + ' hamburger opened');
+    };
+    Game.syncControls();
+    const openCs = getComputedStyle(burger);
+    const openHit = document.elementFromPoint(39, 39);
+    if (openCs.display === 'none' || openCs.pointerEvents === 'none' || (openHit !== burger && !(burger && burger.contains(openHit)))) problems.push('fight hamburger hidden');
+    burger.click();
+    if (!Game.actionMenuOpen) problems.push('fight hamburger dead');
+    Game.closeActionMenu();
+    Game.paused = true;
     const pause = Game.pauseLayout();
     overlay('pause', pause, ['resume', 'fullscreen', 'menu']);
     if (!pause || pause.sub.text !== 'STAGE 1 · WAVE 2' || pause.resume.text !== '▶ RESUME') problems.push('pause copy');
+    burgerDead('pause');
     Game.paused = false;
     BeatEmUp.stageOver = 1;
     BeatEmUp.stage = 2;
@@ -2577,6 +2609,7 @@ TITLE_UI = r'''() => {
     const count = Game.countdownLayout();
     overlay('countdown', count, []);
     if (!count || count.title.text !== 'STAGE 2 CLEAR' || count.sub.text !== 'NEXT STAGE IN' || count.number.text !== '5') problems.push('countdown copy');
+    burgerDead('countdown');
     BeatEmUp.stageTransitionLeft = 0;
     BeatEmUp.stage = 1;
     BeatEmUp.score = 1200;
@@ -2587,11 +2620,15 @@ TITLE_UI = r'''() => {
     overlay('cleared', cleared, ['home', 'primary']);
     if (!cleared || cleared.primary.text !== 'NEXT STAGE ▶' || cleared.sub.text.indexOf('DEFEATED · ') !== 0 || !cleared.sub2 || cleared.sub2.text.indexOf('NEXT · ') !== 0) problems.push('cleared copy');
     if (cleared && (cleared.stats[0].value !== '1200' || cleared.stats[2].value !== BeatEmUp.formatTime(95) || cleared.stats[3].value !== '2')) problems.push('cleared stats');
+    if (cleared && cleared.home.text !== '⌂ MENU') problems.push('cleared home ' + (cleared && cleared.home.text));
+    burgerDead('cleared');
     BeatEmUp.stageOver = -1;
     const failed = Game.resultsLayout();
     overlay('failed', failed, ['home', 'primary']);
     if (!failed || failed.title.text !== 'STAGE 1 FAILED' || failed.primary.text !== '↻ RETRY STAGE') problems.push('failed copy');
-    if (failed && failed.sub.text !== 'Regroup and fight through ' + BeatEmUp.chapters[0].title.toLowerCase() + ' again.') problems.push('failed flavor');
+    if (failed && (failed.sub.text !== 'Regroup and retry Backstreet Awakening.' || (failed.sub.lines || []).length !== 1)) problems.push('failed flavor ' + (failed && failed.sub.text));
+    if (failed && failed.home.text !== '⌂ MENU') problems.push('failed home ' + (failed && failed.home.text));
+    burgerDead('failed');
     Game.paused = false;
     BeatEmUp.stageOver = 0;
     BeatEmUp.stageTransitionLeft = 0;

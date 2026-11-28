@@ -182,8 +182,15 @@ export class Game {
     if (el) el.classList.toggle('arcade-controls', Game.mode === 'beatemup' || Game.mode === 'practice');
     if (el) el.style.display = Game.paused || Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
     const menu = document.getElementById('main-menu-button');
-    if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
-    Game.menuRight = menu && Game.phase !== 'title' ? menu.getBoundingClientRect().right : 0;
+    const hideMenu = Game.phase === 'title' || Game.overlayOpen();
+    if (menu) {
+      menu.style.display = hideMenu ? 'none' : 'block';
+      menu.style.pointerEvents = hideMenu ? 'none' : '';
+      if (hideMenu) menu.setAttribute('aria-hidden', 'true');
+      else menu.removeAttribute('aria-hidden');
+    }
+    if (hideMenu && Game.actionMenuOpen) Game.closeActionMenu();
+    Game.menuRight = !hideMenu && menu ? menu.getBoundingClientRect().right : 0;
     const reset = document.getElementById('practice-reset');
     if (reset) reset.style.display = !Game.paused && Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
     Game.actionButtons.special = document.querySelector('#controls button.special');
@@ -220,8 +227,27 @@ export class Game {
     return Game.phase !== 'title' && !Game.matchOver
       && !(Game.mode === 'beatemup' && BeatEmUp.stageOver);
   }
+  static overlayOpen() {
+    return !!(Game.paused || (Game.mode === 'beatemup' && (BeatEmUp.stageOver || BeatEmUp.stageTransitionLeft > 0)));
+  }
+  static titleCase(text) {
+    return String(text || '').toLowerCase().split(/\s+/).filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }
+  // One line. A long stage name that does not fit the sheet falls back to the short line.
+  static failFlavor(chapterTitle) {
+    const preferred = 'Regroup and retry ' + Game.titleCase(chapterTitle) + '.';
+    const small = innerWidth < 700;
+    const padX = small ? 16 : 20;
+    const safeL = Game.safeL || 0, safeR = Game.safeR || 0;
+    let sheetW = Math.min(420, innerWidth * 0.62);
+    sheetW = Math.min(sheetW, Math.max(180, innerWidth - safeL - safeR - 8));
+    const innerW = sheetW - padX * 2;
+    if (Game.cssTextWidth(preferred, 12, '400', 0.04) <= innerW + 0.5) return preferred;
+    return 'Regroup and try again.';
+  }
   static toggleActionMenu() {
-    if (Game.phase === 'title') return;
+    if (Game.phase === 'title' || Game.overlayOpen()) return;
     Game.actionMenuOpen = !Game.actionMenuOpen;
     const menu = document.getElementById('game-action-menu');
     const trigger = document.getElementById('main-menu-button');
@@ -334,7 +360,9 @@ export class Game {
     const panelX = wrapX + heroW;
     const panelW = wrapW - heroW;
     const gap = small ? 10 : 12;
-    const labelH = 14;
+    const labelH = 12;
+    const aboveDifficulty = 12;
+    const belowDifficulty = 6;
     const cardH = small ? 60 : 74;
     const cardGap = 8;
     const segH = 52;
@@ -342,7 +370,7 @@ export class Game {
     const padIn = 10;
     const contentX = panelX + padIn;
     const contentW = Math.max(80, panelW - padIn);
-    const stackH = labelH + gap + cardH + gap + labelH + gap + segH + gap + rowH;
+    const stackH = labelH + gap + cardH + aboveDifficulty + labelH + belowDifficulty + segH + gap + rowH;
     let stackY = wrapY + Math.max(0, (wrapH - stackH) / 2);
     const gearS = 44;
     const gear = { x: innerWidth - Math.max(22, safeR) - gearS, y: Math.max(12, safeT), w: gearS, h: gearS };
@@ -376,11 +404,31 @@ export class Game {
     const ids = Object.keys(FighterClasses);
     const cardsW = (contentW - cardGap * (ids.length - 1)) / ids.length;
     const cardsY = stackY + labelH + gap;
-    const classes = ids.map((id, i) => ({
-      id, profile: FighterClasses[id],
-      x: contentX + i * (cardsW + cardGap), y: cardsY, w: cardsW, h: cardH,
-    }));
-    const segY = cardsY + cardH + gap + labelH + gap;
+    const zoneH = cardH * 0.6;
+    const classes = ids.map((id, i) => {
+      const cardX = contentX + i * (cardsW + cardGap);
+      const spec = titleIdleSpec(id) || titleIdleSpec('freehand');
+      const maxW = Math.max(8, cardsW - 8);
+      const maxH = Math.max(8, zoneH - 2);
+      let scaleCss = spec.box.h ? maxH / spec.box.h : 1;
+      if (spec.box.w * scaleCss > maxW) scaleCss = maxW / spec.box.w;
+      const drawW = spec.box.w * scaleCss;
+      const drawH = spec.box.h * scaleCss;
+      const imgLeft = cardX + cardsW / 2 - spec.anchor * scaleCss;
+      const imgTop = cardsY + zoneH - drawH;
+      const clip = { x: cardX + 2, y: cardsY + 2, w: Math.max(4, cardsW - 4), h: Math.max(4, zoneH - 2) };
+      const left = Math.max(clip.x, imgLeft);
+      const top = Math.max(clip.y, imgTop);
+      const sprite = {
+        x: left, y: top,
+        w: Math.max(0, Math.min(imgLeft + drawW, clip.x + clip.w) - left),
+        h: Math.max(0, Math.min(imgTop + drawH, clip.y + clip.h) - top),
+      };
+      const nameBox = { x: cardX, y: cardsY + zoneH + 4, w: cardsW, h: 12 };
+      return { id, profile: FighterClasses[id], x: cardX, y: cardsY, w: cardsW, h: cardH, sprite, nameBox };
+    });
+    const diffY = cardsY + cardH + aboveDifficulty;
+    const segY = diffY + labelH + belowDifficulty;
     const seg = { x: contentX, y: segY, w: contentW, h: segH };
     const segPad = 4;
     const itemW = (contentW - segPad * 2) / Game.levels.length;
@@ -403,6 +451,8 @@ export class Game {
       if (r.text) o.text = r.text;
       if (r.profile) o.profile = r.profile;
       if (r.shadow) o.shadow = r.shadow / sc;
+      if (r.sprite) o.sprite = { x: r.sprite.x / sc, y: r.sprite.y / sc, w: r.sprite.w / sc, h: r.sprite.h / sc };
+      if (r.nameBox) o.nameBox = { x: r.nameBox.x / sc, y: r.nameBox.y / sc, w: r.nameBox.w / sc, h: r.nameBox.h / sc };
       return o;
     };
     return {
@@ -412,7 +462,7 @@ export class Game {
       segment: g(seg), practice: g(practice), start: g(start), gear: g(gear),
       labels: {
         fighter: g({ x: contentX, y: stackY, w: contentW, h: labelH, text: 'FIGHTER' }),
-        difficulty: g({ x: contentX, y: cardsY + cardH + gap, w: contentW, h: labelH, text: 'DIFFICULTY' }),
+        difficulty: g({ x: contentX, y: diffY, w: contentW, h: labelH, text: 'DIFFICULTY' }),
       },
     };
   }
@@ -863,7 +913,7 @@ export class Game {
       } else if (b.kind === 'actionRow') {
         const rowGap = small ? 8 : 10;
         const homeW = (innerW - rowGap) / 3;
-        out.home = g(x0, y + (priH - secH), homeW, secH, { text: '⌂' });
+        out.home = g(x0, y + (priH - secH), homeW, secH, { text: '⌂ MENU' });
         out.primary = g(x0 + homeW + rowGap, y, innerW - rowGap - homeW, priH, { text: opts.primary, shadow: Game.px(4) });
       }
       y += b.h;
@@ -893,7 +943,7 @@ export class Game {
     return Game.sheetLayout({
       title: cleared ? (finalClear ? 'CAMPAIGN COMPLETE' : 'STAGE ' + BeatEmUp.stage + ' CLEAR') : 'STAGE ' + BeatEmUp.stage + ' FAILED',
       titleColor: cleared ? '#FFE0A0' : '#F2826A',
-      sub1: cleared ? 'DEFEATED · ' + (boss || '') : 'Regroup and fight through ' + chapter.title.toLowerCase() + ' again.',
+      sub1: cleared ? 'DEFEATED · ' + (boss || '') : Game.failFlavor(chapter.title),
       sub2: cleared && !finalClear && next ? 'NEXT · ' + next.title : '',
       stats: true,
       primary: !cleared ? '↻ RETRY STAGE' : finalClear ? 'PLAY AGAIN ▶' : 'NEXT STAGE ▶',
@@ -1113,27 +1163,34 @@ export class Game {
       const selected = card.id === Game.selectedClass;
       const art = classIdleSource(card.id, selected ? (fighters[0].animT || 0) * PACE.spriteFps : 0);
       if (!art || !art.image) return;
-      const spriteH = Game.px(layout.small ? 52 : 62);
-      const scale = spriteH / art.box.h;
-      const footX = card.x + card.w / 2;
-      const footY = card.y + spriteH;
+      const zoneH = card.h * 0.6;
+      const maxW = Math.max(Game.px(8), card.w - Game.px(8));
+      const maxH = Math.max(Game.px(8), zoneH - Game.px(2));
+      let scale = maxH / art.box.h;
+      if (art.box.w * scale > maxW) scale = maxW / art.box.w;
+      const drawW = art.box.w * scale;
+      const drawH = art.box.h * scale;
+      const imgLeft = card.x + card.w / 2 - art.anchor * scale;
+      const imgTop = card.y + zoneH - drawH;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(card.x + Game.px(2), card.y + Game.px(2), card.w - Game.px(4), Math.max(4, spriteH - Game.px(2)));
+      ctx.rect(card.x + Game.px(2), card.y + Game.px(2), card.w - Game.px(4), Math.max(Game.px(4), zoneH - Game.px(2)));
       ctx.clip();
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(art.image, footX - art.anchor * scale, footY - art.box.baseline * scale, art.box.w * scale, art.box.h * scale);
+      ctx.drawImage(art.image, imgLeft, imgTop, drawW, drawH);
       ctx.restore();
     };
+    ctx.globalAlpha = 1;
     for (const label of [layout.labels.fighter, layout.labels.difficulty]) {
-      Game.textAt(ctx, label.text, label.x, label.y + label.h / 2, 11, 'bold', '#B86E32', 0.18, 'left');
+      Game.textAt(ctx, label.text, label.x, label.y + label.h / 2, 12, '700', '#E8A552', 0.18, 'left');
     }
     for (const card of layout.classes) {
       const selected = card.id === Game.selectedClass;
       if (selected) Game.fillRound(ctx, card.x - Game.px(2), card.y - Game.px(2), card.w + Game.px(4), card.h + Game.px(4), 14, 'rgba(232,165,82,.25)');
       Game.fillRound(ctx, card.x, card.y, card.w, card.h, 12, selected ? 'rgba(116,67,31,.85)' : 'rgba(58,36,24,.78)', 2, selected ? '#E8A552' : '#5A3A26');
       drawCardSprite(card);
-      Game.textAt(ctx, card.profile.name, card.x + card.w / 2, card.y + card.h - Game.px(12), 14, 'bold', '#FFE0A0', 0);
+      const name = card.nameBox;
+      Game.textAt(ctx, card.profile.name, name.x + name.w / 2, name.y + name.h / 2, 12, '700', '#FFE0A0', 0);
     }
     const seg = layout.segment;
     Game.fillRound(ctx, seg.x, seg.y, seg.w, seg.h, 12, 'rgba(58,36,24,.78)');
@@ -1248,6 +1305,7 @@ export class Game {
       ctx.font = 'bold ' + (Game.banner === 'Fight!' ? 28 : 21) / sc + 'px ui-monospace,monospace';
       ctx.fillText(Game.banner, Game.W / 2, Game.H * .42);
     }
+    if (layer !== 'world') Game.syncControls();
     if (Game.paused) Game.drawPauseOverlay(ctx);
     else if (Game.mode === 'beatemup' && BeatEmUp.stageTransitionLeft > 0) Game.drawStageClearOverlay(ctx);
     else if (Game.mode === 'beatemup' && BeatEmUp.stageOver) Game.drawResultsSheet(ctx);
