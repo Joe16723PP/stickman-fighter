@@ -377,12 +377,9 @@ function stageEnemy(fighter) {
   return entry;
 }
 
-// Title has no cast, and stageEnemy bails while phase is 'title', so the right fighter
-// used to fall through to the vector plate. The entry only picks the Brawler idle clip.
-// Title scale is the shared menu scale, not enemyBodyScale.
-function titleBrawlerEntry(fighter) {
-  if (Game.phase !== 'title' || fighter !== fighters[1]) return null;
-  return { f: fighter, role: 'enemy', kind: 'brawler', scaleMul: 1, depth: fighter.depth };
+// The title draws the selected fighter on the canvas. No rival stands on the menu.
+function titleBrawlerEntry() {
+  return null;
 }
 
 // Same corpse window BeatEmUp.draw uses: a KO stays up for 2s, then leaves with its shadow.
@@ -876,6 +873,11 @@ function paint(scene) {
     live.add(fighter);
     let view = views.get(fighter);
     if (!view) { view = {}; views.set(fighter, view); }
+    if (Game.phase === 'title') {
+      if (view.body) view.body.setVisible(false);
+      if (view.plate) view.plate.setVisible(false);
+      continue;
+    }
     const rival = titleBrawlerEntry(fighter);
     const entry = rival || stageEnemy(fighter);
     if (entry && !enemyOnStage(entry)) {
