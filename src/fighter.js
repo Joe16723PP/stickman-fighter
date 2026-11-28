@@ -1,7 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses } from './config.js';
+import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses, SPECIAL_GAIN_MULT } from './config.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
 import { Input } from './input.js';
@@ -67,7 +67,11 @@ export class Fighter {
   groundY() { return Depth.toY(this.depth, Depth.areaTop(), Depth.areaBot()); }
   depthScale() { return Game.mode === 'practice' ? Depth.toScale(this.depth, Depth.SCALE_1V1_MIN, Depth.SCALE_1V1_MAX) : 1; }
   drawS() { return Fighter.S * this.depthScale(); }
-  gainMeter(n) { this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1) * this.meterGainMultiplier); }
+  gainMeter(n) {
+    // Beat 'em up only. Practice keeps the full rate. Float product, then the same cap of 100.
+    if (Game.mode === 'beatemup') n *= SPECIAL_GAIN_MULT;
+    this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1) * this.meterGainMultiplier);
+  }
   confirmHit(kind, damage) {
     if ((kind !== 'hit' && kind !== 'armored') || damage <= 0) return false;
     this.hitConfirmed = 1;
