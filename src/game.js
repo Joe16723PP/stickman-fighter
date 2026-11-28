@@ -663,7 +663,7 @@ export class Game {
         const slot = Fx.karateSuperSlot(me.bones(), foe.bones());
         Fx.karateSuperText(me, me.atk, slot.x, slot.y, damage, criticalHit, '', me.classProfile);
       } else {
-        Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit);
+        Fx.damage(cx, cy - 12, damage, kind === 'block', criticalHit, foe);
       }
       if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
       if (box.special && me.classProfile?.style === 'ward') {
