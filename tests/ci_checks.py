@@ -3,6 +3,8 @@
 
 Beat 'em up and Practice harnesses, plus edge clearance at 667x375 and 844x390:
 Beat 'em up fighters must stay inside the 2%..98% screen band.
+Beat 'em up player sprites (Karate, Staff, Blade) must match a scaleMul-1 Brawler's
+on-screen height within 2% at the same depth. Practice keeps drawS().
 
 The seeded 1v1 parity digest was retired with 1v1 mode.
 
@@ -2528,6 +2530,100 @@ TITLE_ART = r'''() => {
   return out;
 }'''
 
+BODY_SCALE = r'''() => {
+  const BODY = 188;
+  const classes = [['freehand', 'karate'], ['staff', 'staff'], ['blade', 'blade']];
+  const depths = [0.2, 0.85];
+  const out = { pass: true, rows: [], practice: [] };
+  const screenOf = () => (Game.scale || 1) * (Game.fitDpr || 1);
+  const enemyScale = (depth) => (96 * (BeatEmUp.baseS || 1) * BeatEmUp.depthToScale(depth)) / BODY * screenOf();
+  const snap = (f) => ({
+    x: f.x, depth: f.depth, hp: f.hp, meter: f.meter,
+    hx: f.hitbox.x, hy: f.hitbox.y, hw: f.hitbox.w, hh: f.hitbox.h,
+  });
+  const same = (a, b) => a.x === b.x && a.depth === b.depth && a.hp === b.hp && a.meter === b.meter
+    && a.hx === b.hx && a.hy === b.hy && a.hw === b.hw && a.hh === b.hh;
+  const visible = () => Game.phaserScene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
+  try {
+    if (!Game.paintPhaser || !Game.phaserScene) { out.pass = false; out.error = 'paint missing'; return out; }
+    Game.frame = function(){};
+    Game.fit();
+    Game.selectClass('freehand');
+    BeatEmUp.begin();
+    Game.frame = function(){};
+    const player = BeatEmUp.playerEntry();
+    const brawler = BeatEmUp.makeEnemy('brawler', player.f.x + 180, 0.55);
+    brawler.scaleMul = 1;
+    BeatEmUp.cast = [player, brawler];
+    BeatEmUp.boss = null;
+    BeatEmUp.cameraX = 0;
+    BeatEmUp.waveSpawnQueue = [];
+    BeatEmUp.eventT = 0;
+    BeatEmUp.showGo = 0;
+    Game.banner = '';
+    Game.phase = 'fight';
+    Game.fighting = 1;
+    for (const pair of classes) {
+      const id = pair[0], folder = pair[1];
+      Game.selectClass(id);
+      player.f.setClass(id);
+      for (const depth of depths) {
+        player.depth = depth; player.f.depth = depth; player.scaleMul = 1;
+        brawler.depth = depth; brawler.f.depth = depth; brawler.scaleMul = 1;
+        player.f.state = 'idle'; brawler.f.state = 'idle';
+        player.f.atk = null; brawler.f.atk = null;
+        player.f.animT = 0; brawler.f.animT = 0;
+        player.f.hp = 100; player.f.y = 0; player.f.ragdollActive = false;
+        const before = snap(player.f);
+        const beforeEnemy = snap(brawler.f);
+        Game.paintPhaser();
+        const images = visible();
+        const left = images.find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
+        const right = images.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
+        const playerH = left ? left.getBounds().height : 0;
+        const enemyH = right ? right.getBounds().height : 0;
+        const ratio = enemyH ? playerH / enemyH : 0;
+        const expected = enemyScale(depth);
+        const scaleOk = !!(left && right
+          && Math.abs(Math.abs(left.scaleY) - expected) < 1e-3
+          && Math.abs(Math.abs(right.scaleY) - expected) < 1e-3);
+        const heightOk = !!(left && right && Math.abs(ratio - 1) <= 0.02);
+        const gameplayOk = same(before, snap(player.f)) && same(beforeEnemy, snap(brawler.f));
+        const row = {
+          id, depth, playerH: +playerH.toFixed(2), enemyH: +enemyH.toFixed(2), ratio: +ratio.toFixed(4),
+          playerScale: left ? +Math.abs(left.scaleY).toFixed(5) : 0,
+          enemyScale: right ? +Math.abs(right.scaleY).toFixed(5) : 0,
+          expected: +expected.toFixed(5),
+          scaleOk, heightOk, gameplayOk,
+          left: left && left.texture.key, right: right && right.texture.key,
+        };
+        out.rows.push(row);
+        if (!scaleOk || !heightOk || !gameplayOk) out.pass = false;
+      }
+    }
+    Game.mode = 'practice';
+    Game.startPractice();
+    Game.frame = function(){};
+    Game.phase = 'fight';
+    for (const pair of classes) {
+      const id = pair[0], folder = pair[1];
+      Game.selectClass(id);
+      const f = fighters[0];
+      f.state = 'idle'; f.atk = null; f.animT = 0; f.hp = 100; f.ragdollActive = false;
+      Game.paintPhaser();
+      const img = visible().find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
+      const expected = (96 * f.drawS()) / BODY * screenOf();
+      const scale = img ? Math.abs(img.scaleY) : 0;
+      const ok = !!(img && Math.abs(scale - expected) < 1e-3);
+      out.practice.push({ id, scale: +scale.toFixed(5), expected: +expected.toFixed(5), drawS: +f.drawS().toFixed(4), ok });
+      if (!ok) out.pass = false;
+    }
+  } catch (err) {
+    out.pass = false; out.error = String(err && err.stack || err);
+  }
+  return out;
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -2591,6 +2687,12 @@ def main():
                 if not title_art.get('pass'):
                     failures.append('Title sprites failed: class cards and both title fighters must draw idle sprite textures via a real title tap (selected class on the left, mirrored Brawler idle on the right, other cards held on frame 00 at 60% opacity), sharing one menu scale whose full crops stay 8px under the cards at 667x375 and 844x390: '
                                     + json.dumps(title_art['views']))
+                load_page.set_viewport_size({'width': 844, 'height': 390})
+                body_scale = load_page.evaluate(BODY_SCALE)
+                print('player body scale', json.dumps({k: v for k, v in body_scale.items() if k != 'pass'}))
+                if not body_scale.get('pass'):
+                    failures.append('Player body scale failed: Karate, Staff and Blade on-screen heights must match a scaleMul-1 Brawler within 2% at the same Beat \'em up depth (lane scale included), and practice must keep drawS(): '
+                                    + json.dumps({k: v for k, v in body_scale.items() if k != 'pass'}))
             load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
             def note_response(response):
