@@ -890,12 +890,22 @@ function dedupeFrames(frames) {
 }
 
 /**
- * Boot preload. The menu draws all three heroes' idles, and each idle lives inside
- * that hero's atlas, so the smallest set that keeps the menu correct is the three
- * hero atlases (karate, staff, blade) plus the menu background.
+ * Boot preload. The menu draws idle frames from the shared `menu-idle` atlas
+ * (texture key menu-idle, not the full hero textures) plus the menu background.
+ * The full hero atlases are too large to block the menu.
  */
 export function bootPreloadList() {
-  return [...HERO_PACKS.map((id) => atlasEntry(id)), ...MENU_FRAMES];
+  return [atlasEntry('menu-idle'), ...MENU_FRAMES];
+}
+
+/** Full hero atlases streamed once the menu is visible. */
+export function heroBackgroundList() {
+  return HERO_PACKS.map((id) => atlasEntry(id));
+}
+
+/** Picked fighter atlas plus that stage's enemy and boss atlases. */
+export function entryAssetList(classId, stage) {
+  return dedupeFrames([...packFrames(heroPackId(classId)), ...stageEntryList(stage)]);
 }
 
 function heroPackId(classId) {
@@ -925,9 +935,8 @@ export function stageEntryList(stage) {
 }
 
 function gameplayAssetList() {
-  const hero = packFrames(heroPackId(Game.selectedClass));
-  if (Game.mode !== 'beatemup') return hero;
-  return dedupeFrames([...hero, ...stageEntryList(BeatEmUp.stage || 1)]);
+  if (Game.mode !== 'beatemup') return packFrames(heroPackId(Game.selectedClass));
+  return entryAssetList(Game.selectedClass, BeatEmUp.stage || 1);
 }
 
 const queuedKeys = new Set();
@@ -960,25 +969,27 @@ function productionScheduling() {
     if (new URLSearchParams(location.search).get('load') === 'production') return true;
   } catch (e) {}
   // The texture harness paints brawler and heavy without walking each stage.
-  // Under automation those atlases are queued once the menu atlases are in.
-  // Production loads only the picked fighter and the current stage, at stage entry.
+  // Under automation those atlases are queued with the hero atlases.
+  // Production streams the three hero atlases after the menu, and loads a
+  // stage's enemies only at stage entry.
   return !(typeof navigator !== 'undefined' && navigator.webdriver);
 }
 
-/** Test pages prefetch every enemy atlas. Production does not load ahead of the stage. */
+/** Stream full hero atlases after the menu. Does not raise the loading bar. */
 export function startBackgroundLoads(scene) {
-  if (productionScheduling()) return;
-  const seen = new Set();
-  const enemies = [];
-  const settings = typeof ARCADE_STAGE_SETTINGS !== 'undefined' ? ARCADE_STAGE_SETTINGS : [];
-  for (let stage = 1; stage <= settings.length; stage++) {
-    for (const frame of stageEntryList(stage)) {
-      if (seen.has(frame.key)) continue;
-      seen.add(frame.key);
-      enemies.push(frame);
+  const list = heroBackgroundList();
+  if (!productionScheduling()) {
+    const seen = new Set(list.map((frame) => frame.key));
+    const settings = typeof ARCADE_STAGE_SETTINGS !== 'undefined' ? ARCADE_STAGE_SETTINGS : [];
+    for (let stage = 1; stage <= settings.length; stage++) {
+      for (const frame of stageEntryList(stage)) {
+        if (seen.has(frame.key)) continue;
+        seen.add(frame.key);
+        list.push(frame);
+      }
     }
   }
-  queueFrames(scene, enemies, true);
+  queueFrames(scene, list, true);
 }
 
 let loadUi = null;
@@ -1266,8 +1277,11 @@ export function classIdleSource(classId, index) {
   const key = spec.folder + '-idle-' + frameIndex;
   const scene = Game.phaserScene;
   let image = null;
-  if (frameReady(scene, key)) {
-    const frame = scene.textures.get(spec.folder).get(key);
+  // Menu idles come from texture menu-idle. Gameplay idles use the character atlas,
+  // which has the same frame names on a different texture key.
+  const menu = scene && scene.textures.exists('menu-idle') ? scene.textures.get('menu-idle') : null;
+  if (menu && menu.has(key)) {
+    const frame = menu.get(key);
     if (frame && frame.realWidth > 0) image = idleBitmap(frame);
   }
   return { folder: spec.folder, count, box: spec.box, anchor: spec.anchor, frame: frameIndex, key, image, body: BODY };

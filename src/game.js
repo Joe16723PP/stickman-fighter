@@ -7,7 +7,7 @@ import { Fx } from './fx.js';
 import { Input } from './input.js';
 import { Pose } from './pose.js';
 import { startPhaser } from './phaser-host.js';
-import { classIdleSource, holdForAssets, titleIdleSpec } from './phaser-actors.js';
+import { classIdleSource, holdForAssets, startBackgroundLoads, titleIdleSpec } from './phaser-actors.js';
 
 export let fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
@@ -1299,12 +1299,15 @@ export class Game {
       Game.drawTitle(ctx, 'chrome');
       ctx.restore();
       const scene = Game.phaserScene;
-      const atlasIdle = (pack) => scene.textures.exists(pack) && scene.textures.get(pack).has(pack + '-idle-0');
+      const menuIdle = scene && scene.textures.exists('menu-idle') ? scene.textures.get('menu-idle') : null;
+      const idle = (name) => !!(menuIdle && menuIdle.has(name));
       if (!window.__menuShown && Game.spriteBodies && scene
-        && scene.textures.exists('menu-bg') && atlasIdle('karate')
-        && atlasIdle('staff') && atlasIdle('blade')) {
+        && scene.textures.exists('menu-bg') && idle('karate-idle-0')
+        && idle('staff-idle-0') && idle('blade-idle-0')) {
         window.__menuShown = true;
         window.__menuShownAt = performance.now();
+        // Full hero atlases start only after this timestamp, so they are not part of boot.
+        startBackgroundLoads(scene);
       }
       return;
     }

@@ -2897,22 +2897,38 @@ ASSET_SCHEDULE = r'''() => {
   if (!boot.length) problems.push('boot list empty');
   if (manifest.join('\n') !== again.join('\n')) problems.push('boot manifest is not bootPreloadList');
   const heroes = ['karate', 'staff', 'blade'];
-  const allowed = new Set(heroes.concat(['menu-bg']));
+  const allowed = new Set(['menu-idle', 'menu-bg']);
   if (boot.length !== allowed.size) problems.push('boot count ' + boot.length + ' expected ' + allowed.size);
   for (const frame of boot) {
     if (!allowed.has(frame.key)) problems.push('boot extra ' + frame.key);
+    if (heroes.indexOf(frame.key) >= 0) problems.push('boot loaded full hero ' + frame.key);
     if (frame.key === 'menu-bg') {
       if (frame.kind !== 'image') problems.push('menu kind ' + frame.kind);
       if (String(frame.url).indexOf('assets/backgrounds/main-menu.webp') !== 0) problems.push('menu url ' + frame.url);
-    } else {
+    } else if (frame.key === 'menu-idle') {
       if (frame.kind !== 'atlas') problems.push('boot kind ' + frame.key);
-      const expectUrl = 'assets/characters/' + frame.key + '/atlas.webp';
-      const expectJson = 'assets/characters/' + frame.key + '/atlas.json';
-      if (frame.url !== expectUrl) problems.push('atlas url ' + frame.url);
-      if (frame.json !== expectJson) problems.push('atlas json ' + frame.json);
+      if (frame.url !== 'assets/characters/menu-idle/atlas.webp') problems.push('atlas url ' + frame.url);
+      if (frame.json !== 'assets/characters/menu-idle/atlas.json') problems.push('atlas json ' + frame.json);
     }
   }
   allowed.forEach(key => { if (!boot.some(f => f.key === key)) problems.push('boot missing ' + key); });
+  if (typeof heroBackgroundList !== 'function') problems.push('heroBackgroundList missing');
+  else {
+    const bg = heroBackgroundList();
+    const gotBg = bg.map(f => f.key).sort();
+    if (gotBg.join(',') !== heroes.slice().sort().join(',')) problems.push('background heroes ' + gotBg.join(','));
+    bg.forEach(f => {
+      if (f.kind !== 'atlas' || f.key === 'menu-idle') problems.push('background entry ' + f.key);
+      if (f.url !== 'assets/characters/' + f.key + '/atlas.webp') problems.push('background url ' + f.url);
+      if (f.json !== 'assets/characters/' + f.key + '/atlas.json') problems.push('background json ' + f.json);
+    });
+  }
+  if (typeof entryAssetList !== 'function') problems.push('entryAssetList missing');
+  else {
+    const block = entryAssetList('staff', 2).map(f => f.key).sort();
+    const expectBlock = ['brawler', 'dockmaster', 'grappler', 'staff'];
+    if (block.join(',') !== expectBlock.join(',')) problems.push('stage entry block ' + block.join(','));
+  }
   const posed = new Set(['brawler', 'rusher', 'grappler', 'heavy', 'block-captain', 'dockmaster']);
   const bossPack = { bossBlockParty: 'block-captain', bossDockHaulIn: 'dockmaster' };
   if (typeof stageEntryList !== 'function') problems.push('stageEntryList missing');
@@ -2969,7 +2985,39 @@ ATLAS_FRAMES = r'''async () => {
     }
     have.forEach(name => problems.push('unreferenced ' + name));
   }
-  return { pass: problems.length === 0, problems, packs: Object.keys(listed).length, frames: count };
+  let menu = null;
+  try {
+    const res = await fetch('assets/characters/menu-idle/atlas.json');
+    if (!res.ok) problems.push('menu-idle json ' + res.status);
+    else menu = await res.json();
+  } catch (err) {
+    problems.push('menu-idle json ' + err);
+  }
+  const menuFrames = (menu && menu.frames) || {};
+  const menuNames = Object.keys(menuFrames);
+  const want = [];
+  for (const id of ['karate', 'staff', 'blade']) {
+    for (let i = 0; i < 6; i++) want.push(id + '-idle-' + i);
+  }
+  if (menuNames.length !== want.length) problems.push('menu-idle count ' + menuNames.length);
+  for (const name of want) {
+    const idle = menuFrames[name];
+    if (!idle) { problems.push('menu-idle missing ' + name); continue; }
+    const pack = name.slice(0, name.indexOf('-idle-'));
+    let full = null;
+    try {
+      const res = await fetch('assets/characters/' + pack + '/atlas.json');
+      full = res.ok ? await res.json() : null;
+    } catch (err) { full = null; }
+    const src = full && full.frames && full.frames[name];
+    if (!src) problems.push('full atlas missing ' + name);
+    else if (JSON.stringify(src.sourceSize) !== JSON.stringify(idle.sourceSize)
+      || JSON.stringify(src.spriteSourceSize) !== JSON.stringify(idle.spriteSourceSize)) {
+      problems.push('menu-idle trim ' + name);
+    }
+  }
+  menuNames.forEach(name => { if (want.indexOf(name) < 0) problems.push('menu-idle extra ' + name); });
+  return { pass: problems.length === 0, problems, packs: Object.keys(listed).length, frames: count, menu: menuNames.length };
 }'''
 
 def free_port():
@@ -3033,7 +3081,7 @@ def main():
                 schedule = {'pass': False, 'problems': [str(exc)]}
             print('asset schedule', json.dumps({k: v for k, v in schedule.items() if k != 'pass'}))
             if not schedule.get('pass'):
-                failures.append('Asset schedule failed: boot preload must be the three hero atlases plus the menu background, and each stage\'s posed enemies and boss must be one atlas on the stage-entry list: '
+                failures.append('Asset schedule failed: boot preload must be only the menu-idle atlas plus the menu background, full hero atlases must stream after the menu, and each stage\'s posed enemies and boss must be one atlas on the stage-entry list: '
                                 + json.dumps(schedule.get('problems')))
             try:
                 atlas_frames = load_page.evaluate(ATLAS_FRAMES)

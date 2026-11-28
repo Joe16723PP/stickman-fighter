@@ -1,5 +1,5 @@
 import { Game } from './game.js';
-import { queueBoot, prepareKarate, setLoadUi, startBackgroundLoads } from './phaser-actors.js';
+import { queueBoot, prepareKarate, setLoadUi } from './phaser-actors.js';
 
 function onBootProgress(value) { setLoadUi(value, 'LOADING'); }
 
@@ -28,8 +28,6 @@ export function startPhaser(canvas) {
         setLoadUi(null);
         Game.phaserScene = this;
         prepareKarate(this);
-        // Menu is this scene. Production waits until stage entry for enemy atlases.
-        startBackgroundLoads(this);
       },
       update(time) { if (Game.ready) Game.frame(time); },
     },
