@@ -2886,6 +2886,59 @@ HEAVY_SPRITES = r'''() => {
   return out;
 }'''
 
+ASSET_SCHEDULE = r'''() => {
+  const problems = [];
+  const boot = (typeof bootPreloadList === 'function') ? bootPreloadList() : [];
+  const manifest = (Game.bootManifest || []).map(f => f.key + '|' + f.url);
+  const again = boot.map(f => f.key + '|' + f.url);
+  if (!boot.length) problems.push('boot list empty');
+  if (manifest.join('\n') !== again.join('\n')) problems.push('boot manifest is not bootPreloadList');
+  const allowed = new Set(['menu-bg']);
+  for (const id of ['karate', 'staff', 'blade']) {
+    for (let i = 0; i < 6; i++) allowed.add(id + '-idle-' + i);
+  }
+  if (boot.length !== allowed.size) problems.push('boot count ' + boot.length + ' expected ' + allowed.size);
+  for (const frame of boot) {
+    if (!allowed.has(frame.key)) problems.push('boot extra ' + frame.key);
+    if (frame.clip && frame.clip !== 'idle' && frame.clip !== 'menu') problems.push('boot clip ' + frame.key);
+    if (frame.key === 'menu-bg') {
+      if (String(frame.url).indexOf('assets/backgrounds/main-menu.webp') !== 0) problems.push('menu url ' + frame.url);
+    } else {
+      const parts = frame.key.split('-');
+      const index = parts.pop();
+      const id = parts[0];
+      const file = String(index).padStart(2, '0');
+      const expect = 'assets/characters/' + id + '/frames/clips/idle/' + file + '.png';
+      if (String(frame.url).indexOf(expect) !== 0) problems.push('idle url ' + frame.url);
+    }
+  }
+  allowed.forEach(key => { if (!boot.some(f => f.key === key)) problems.push('boot missing ' + key); });
+  const posed = new Set(['brawler', 'rusher', 'grappler', 'heavy', 'block-captain', 'dockmaster']);
+  const bossPack = { bossBlockParty: 'block-captain', bossDockHaulIn: 'dockmaster' };
+  if (typeof stageEntryList !== 'function') problems.push('stageEntryList missing');
+  (ARCADE_STAGE_SETTINGS || []).forEach((chapter, index) => {
+    const stage = index + 1;
+    const list = stageEntryList(stage) || [];
+    const expect = new Set();
+    (chapter.waves || []).forEach(wave => (wave.enemyFocus || []).forEach(kind => { if (posed.has(kind)) expect.add(kind); }));
+    const sig = chapter.boss && chapter.boss.profile && chapter.boss.profile.signature && chapter.boss.profile.signature.key;
+    if (bossPack[sig]) expect.add(bossPack[sig]);
+    const got = new Set(list.map(f => f.pack));
+    expect.forEach(kind => {
+      const frames = list.filter(f => f.pack === kind);
+      if (!frames.length) problems.push('stage ' + stage + ' missing ' + kind);
+      if (!frames.some(f => f.key === kind + '-idle-0')) problems.push('stage ' + stage + ' no idle ' + kind);
+      frames.forEach(f => {
+        if (String(f.url).indexOf('assets/characters/' + kind + '/frames/clips/') !== 0) problems.push('stage url ' + f.url);
+      });
+    });
+    got.forEach(pack => { if (!expect.has(pack)) problems.push('stage ' + stage + ' extra ' + pack); });
+    if (stage === 1 && (!expect.has('brawler') || !expect.has('rusher') || !expect.has('block-captain'))) problems.push('stage 1 packs');
+    if (stage === 2 && (!expect.has('grappler') || !expect.has('dockmaster') || !expect.has('brawler'))) problems.push('stage 2 packs');
+  });
+  return { pass: problems.length === 0, problems, boot: boot.length };
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -2935,6 +2988,14 @@ def main():
             except Exception as exc:
                 loaded = {'pass': False, 'error': str(exc)}
             print('karate texture load', json.dumps({k: v for k, v in loaded.items() if k != 'pass'}))
+            try:
+                schedule = load_page.evaluate(ASSET_SCHEDULE)
+            except Exception as exc:
+                schedule = {'pass': False, 'problems': [str(exc)]}
+            print('asset schedule', json.dumps({k: v for k, v in schedule.items() if k != 'pass'}))
+            if not schedule.get('pass'):
+                failures.append('Asset schedule failed: boot preload must be only the three heroes\' idle frames plus the menu background, and each stage\'s posed enemies and boss must be the stage-entry list: '
+                                + json.dumps(schedule.get('problems')))
             if not loaded.get('pass') or load_problems:
                 failures.append('Texture load failed: game preload left Karate frames missing, loaded a combo texture, or reported a missing file: '
                                 + json.dumps({'loaded': {k: v for k, v in loaded.items() if k != 'pass'}, 'http': load_problems[:8]}))

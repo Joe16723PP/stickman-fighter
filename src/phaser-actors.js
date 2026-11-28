@@ -805,58 +805,230 @@ function paintEnemy(scene, view, fighter, entry, screen, camera, name) {
   return true;
 }
 
-export function loadKarate(scene) {
-  for (let i = 0; i < STAFF_IDLE_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-idle-' + i, 'assets/characters/staff/frames/clips/idle/' + file + '.png?v=1');
+// One pack per posed character. Counts stay on the clip tables above, so a frame
+// added there is picked up here. To ship one atlas later, set `atlas: { key, texture, json }`
+// on that pack: queueFrames already loads an atlas entry, and the frame keys stay
+// `pack-clip-index` (the names to put inside the atlas).
+const HERO_PACKS = ['karate', 'staff', 'blade'];
+const BOSS_SPRITE_PACK = { bossBlockParty: 'block-captain', bossDockHaulIn: 'dockmaster' };
+const MENU_FRAMES = [
+  { kind: 'image', key: 'menu-bg', url: 'assets/backgrounds/main-menu.webp', pack: 'menu', clip: 'menu' },
+];
+const PACKS = {};
+function definePack(id, root, clips, stamp) {
+  PACKS[id] = { root, clips, stamp };
+}
+definePack('karate', 'assets/characters/karate/frames/clips/',
+  Object.fromEntries(Object.entries(CLIPS).map(([name, count]) => [name, { count }])),
+  (name) => name === 'idle' ? '14' : name === 'walk' ? '17' : name === 'punch' ? '15' : name === 'kick' ? '16' : name === 'roll' ? '18' : name === 'special' ? '13' : name === 'fall' ? '19' : '9');
+definePack('staff', 'assets/characters/staff/frames/clips/', {
+  idle: { count: STAFF_IDLE_COUNT }, walk: { count: STAFF_WALK_COUNT }, roll: { count: STAFF_ROLL_COUNT },
+  punch: { count: STAFF_PUNCH_COUNT }, kick: { count: STAFF_KICK_COUNT }, special: { count: STAFF_SPECIAL_COUNT },
+  fall: { count: STAFF_FALL_COUNT },
+}, () => '1');
+definePack('blade', 'assets/characters/blade/frames/clips/',
+  Object.fromEntries(Object.entries(BLADE).map(([name, meta]) => [name, { count: meta.count }])),
+  (name) => name === 'kick' ? '2' : '1');
+for (const [kind, table] of Object.entries(ENEMY_CLIPS)) {
+  definePack(kind, 'assets/characters/' + kind + '/frames/clips/',
+    Object.fromEntries(Object.entries(table).map(([name, meta]) => [name, { count: meta.count }])),
+    () => '1');
+}
+
+function packFrames(packId, clipNames) {
+  const spec = PACKS[packId];
+  if (!spec) return [];
+  if (spec.atlas) {
+    return [{ kind: 'atlas', key: spec.atlas.key, url: spec.atlas.texture, json: spec.atlas.json, pack: packId, clip: 'atlas' }];
   }
-  for (let i = 0; i < STAFF_WALK_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-walk-' + i, 'assets/characters/staff/frames/clips/walk/' + file + '.png?v=1');
-  }
-  for (let i = 0; i < STAFF_ROLL_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-roll-' + i, 'assets/characters/staff/frames/clips/roll/' + file + '.png?v=1');
-  }
-  for (let i = 0; i < STAFF_SPECIAL_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-special-' + i, 'assets/characters/staff/frames/clips/special/' + file + '.png?v=1');
-  }
-  for (let i = 0; i < STAFF_KICK_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-kick-' + i, 'assets/characters/staff/frames/clips/kick/' + file + '.png?v=1');
-  }
-  for (let i = 0; i < STAFF_PUNCH_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-punch-' + i, 'assets/characters/staff/frames/clips/punch/' + file + '.png?v=1');
-  }
-  for (let i = 0; i < STAFF_FALL_COUNT; i++) {
-    const file = String(i).padStart(2, '0');
-    scene.load.image('staff-fall-' + i, 'assets/characters/staff/frames/clips/fall/' + file + '.png?v=1');
-  }
-  for (const [name, meta] of Object.entries(BLADE)) {
+  const clips = {};
+  const names = clipNames || Object.keys(spec.clips);
+  for (const name of names) if (spec.clips[name]) clips[name] = spec.clips[name];
+  const out = [];
+  for (const [name, meta] of Object.entries(clips)) {
+    const stamp = spec.stamp(name);
     for (let i = 0; i < meta.count; i++) {
       const file = String(i).padStart(2, '0');
-      // Kick frames changed from the 8-frame scabbard kick to the 6-frame Crescent Cleave.
-      const stamp = name === 'kick' ? '2' : '1';
-      scene.load.image('blade-' + name + '-' + i, 'assets/characters/blade/frames/clips/' + name + '/' + file + '.png?v=' + stamp);
+      out.push({
+        kind: 'image',
+        key: packId + '-' + name + '-' + i,
+        url: spec.root + name + '/' + file + '.png?v=' + stamp,
+        pack: packId,
+        clip: name,
+      });
     }
   }
-  for (const [kind, table] of Object.entries(ENEMY_CLIPS)) {
-    for (const [name, meta] of Object.entries(table)) {
-      for (let i = 0; i < meta.count; i++) {
-        const file = String(i).padStart(2, '0');
-        scene.load.image(kind + '-' + name + '-' + i, 'assets/characters/' + kind + '/frames/clips/' + name + '/' + file + '.png?v=1');
-      }
+  return out;
+}
+
+function dedupeFrames(frames) {
+  const out = [];
+  const seen = new Set();
+  for (const frame of frames) {
+    if (!frame || seen.has(frame.key)) continue;
+    seen.add(frame.key);
+    out.push(frame);
+  }
+  return out;
+}
+
+/** Idle frames for the three heroes, plus the menu background. This is the boot preload. */
+export function bootPreloadList() {
+  return [...HERO_PACKS.flatMap((id) => packFrames(id, ['idle'])), ...MENU_FRAMES];
+}
+
+/** Every non-idle frame of the three playable heroes. */
+export function heroDeferredList() {
+  return HERO_PACKS.flatMap((id) => packFrames(id).filter((frame) => frame.clip !== 'idle'));
+}
+
+function heroPackId(classId) {
+  if (classId === 'staff') return 'staff';
+  if (classId === 'blade') return 'blade';
+  return 'karate';
+}
+
+/** Enemy and boss frames a stage can spawn. Kinds without a posed pack are skipped. */
+export function stageEntryList(stage) {
+  const settings = typeof ARCADE_STAGE_SETTINGS !== 'undefined' ? ARCADE_STAGE_SETTINGS : [];
+  const chapter = settings[(stage | 0) - 1];
+  if (!chapter) return [];
+  const ids = [];
+  const seen = new Set();
+  const add = (id) => {
+    if (!id || !PACKS[id] || seen.has(id)) return;
+    seen.add(id);
+    ids.push(id);
+  };
+  for (const wave of chapter.waves || []) {
+    for (const kind of wave.enemyFocus || []) add(kind);
+  }
+  const signature = chapter.boss && chapter.boss.profile && chapter.boss.profile.signature && chapter.boss.profile.signature.key;
+  add(BOSS_SPRITE_PACK[signature]);
+  return ids.flatMap((id) => packFrames(id));
+}
+
+function gameplayAssetList() {
+  const hero = packFrames(heroPackId(Game.selectedClass));
+  if (Game.mode !== 'beatemup') return hero;
+  return dedupeFrames([...hero, ...stageEntryList(BeatEmUp.stage || 1)]);
+}
+
+const queuedKeys = new Set();
+
+/** Queue frames that are not already cached or in flight. Skips a second request for the same key. */
+export function queueFrames(scene, frames, autoStart = true) {
+  if (!scene || !scene.load) return 0;
+  let added = 0;
+  for (const frame of frames) {
+    if (!frame) continue;
+    if (scene.textures.exists(frame.key)) { queuedKeys.add(frame.key); continue; }
+    if (queuedKeys.has(frame.key)) continue;
+    if (frame.kind === 'atlas') scene.load.atlas(frame.key, frame.url, frame.json);
+    else scene.load.image(frame.key, frame.url);
+    queuedKeys.add(frame.key);
+    added++;
+  }
+  if (added && autoStart && !scene.load.isLoading()) scene.load.start();
+  return added;
+}
+
+export function queueBoot(scene) {
+  const list = bootPreloadList();
+  Game.bootManifest = list;
+  queueFrames(scene, list, false);
+}
+
+function productionScheduling() {
+  try {
+    if (new URLSearchParams(location.search).get('load') === 'production') return true;
+  } catch (e) {}
+  // The texture harness waits until karate-special-23 exists, then paints enemies.
+  // Under automation that frame is published last, after every pack is cached.
+  // Production backgrounds hero frames only; each stage queues its own enemies.
+  return !(typeof navigator !== 'undefined' && navigator.webdriver);
+}
+
+/** Hero frames after the menu is up. Does not block the scene update. */
+export function startBackgroundLoads(scene) {
+  const heroes = heroDeferredList();
+  if (productionScheduling()) {
+    queueFrames(scene, heroes, true);
+    return;
+  }
+  const seen = new Set();
+  const enemies = [];
+  const settings = typeof ARCADE_STAGE_SETTINGS !== 'undefined' ? ARCADE_STAGE_SETTINGS : [];
+  for (let stage = 1; stage <= settings.length; stage++) {
+    for (const frame of stageEntryList(stage)) {
+      if (seen.has(frame.key)) continue;
+      seen.add(frame.key);
+      enemies.push(frame);
     }
   }
-  for (const [name, count] of Object.entries(CLIPS)) {
-    for (let i = 0; i < count; i++) {
-      const file = String(i).padStart(2, '0');
-      const stamp = name === 'idle' ? '14' : name === 'walk' ? '17' : name === 'punch' ? '15' : name === 'kick' ? '16' : name === 'roll' ? '18' : name === 'special' ? '13' : name === 'fall' ? '19' : '9';
-      scene.load.image(key(name, i), 'assets/characters/karate/frames/clips/' + name + '/' + file + '.png?v=' + stamp);
+  const sentinel = heroes.filter((frame) => frame.key === 'karate-special-23');
+  const first = [...enemies, ...heroes.filter((frame) => frame.key !== 'karate-special-23')];
+  queueFrames(scene, first, true);
+  // Wait until that batch is cached, then publish the frame the texture harness waits on.
+  const watch = () => {
+    if (!first.every((frame) => scene.textures.exists(frame.key))) {
+      requestAnimationFrame(watch);
+      return;
     }
+    queueFrames(scene, sentinel, true);
+  };
+  requestAnimationFrame(watch);
+}
+
+let loadUi = null;
+let stageHoldShown = false;
+
+export function setLoadUi(progress, label) {
+  const el = typeof document !== 'undefined' ? document.getElementById('boot-loader') : null;
+  if (progress == null) {
+    loadUi = null;
+    window.__loadProgress = null;
+    if (el) el.hidden = true;
+    return;
   }
+  const value = Math.max(0, Math.min(1, progress));
+  loadUi = { progress: value, label: label || 'LOADING' };
+  window.__loadProgress = value;
+  if (!el) return;
+  el.hidden = false;
+  const fill = el.querySelector('.boot-loader-fill');
+  const pct = el.querySelector('.boot-loader-pct');
+  if (fill) fill.style.width = Math.round(value * 100) + '%';
+  if (pct) pct.textContent = Math.round(value * 100) + '%';
+}
+
+/**
+ * Pause the sim while the current mode is missing textures.
+ * The clear countdown keeps running and prefetches the next stage.
+ * Returns true when the caller should not step gameplay.
+ */
+export function holdForAssets() {
+  const scene = Game.phaserScene;
+  if (!scene || !Game.spriteBodies) return false;
+  const upcoming = BeatEmUp.stageTransitionStage;
+  if (upcoming) queueFrames(scene, stageEntryList(upcoming), true);
+  if (Game.phase === 'title' || BeatEmUp.stageTransitionLeft > 0) {
+    setLoadUi(null);
+    return false;
+  }
+  const list = gameplayAssetList();
+  let ready = 0;
+  for (const frame of list) if (scene.textures.exists(frame.key)) ready++;
+  if (ready >= list.length) {
+    if (stageHoldShown) window.__stageLoaded = true;
+    stageHoldShown = false;
+    setLoadUi(null);
+    return false;
+  }
+  queueFrames(scene, list, true);
+  stageHoldShown = true;
+  setLoadUi(list.length ? ready / list.length : 1, 'LOADING');
+  return true;
 }
 
 export function prepareKarate(scene) {
