@@ -4,6 +4,9 @@ import { Moves } from './moves.js';
 
 export class Fx {
   static list = [];
+  /** Seconds since the last Fx.clear. Damage popups use it to stack per target. */
+  static damageClock = 0;
+  static damageStacks = new WeakMap();
   /** Cosmetic-only PRNG (mulberry32). Effects must never draw from Math.random,
    *  or the control layout (via Fx.allowed) would shift gameplay randomness. */
   static seed = 0x5EED1234;
@@ -13,7 +16,11 @@ export class Fx {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
-  static clear() { Fx.list = []; }
+  static clear() {
+    Fx.list = [];
+    Fx.damageClock = 0;
+    Fx.damageStacks = new WeakMap();
+  }
   static hudBottom() {
     const sc = Game.scale;
     const safe = Game.safeTop;
@@ -233,10 +240,29 @@ export class Fx {
     Fx.list.push({kind:'ring',x,y,r0:10 / sc,r1:30 / sc,life:.2,max:.2,color,width:3 / sc});
     Fx.sparks(x,y,5,color,.55,.12);
   }
-  static damage(x, y, amount, blocked, critical = false) {
+  /**
+   * Floating "-N" for one hit. N is a whole number, at least 1.
+   * A repeat on the same target within 0.25s of that target's previous popup
+   * steps -14px in y per popup in the chain and alternates x by +8 / -8.
+   * A later popup starts at x, y again. target is the fighter that was hit.
+   */
+  static damage(x, y, amount, blocked, critical = false, target = null) {
     if (amount <= 0 || !Fx.allowed(x, y)) return;
-    const value = Math.round(amount * 10) / 10;
-    Fx.list.push({kind:'damage', text:(critical ? 'CRITICAL!  ' : '') + '-' + value, x, y, life:critical ? .95 : .7, max:critical ? .95 : .7, color:critical ? '#FFE16B' : blocked ? '#FBBF24' : '#FFFFFF', critical});
+    const value = Math.max(1, Math.round(amount));
+    let ox = 0, oy = 0;
+    if (target) {
+      const now = Fx.damageClock;
+      const prev = Fx.damageStacks.get(target);
+      if (!prev || now - prev.t > 0.25) Fx.damageStacks.set(target, { t: now, n: 0 });
+      else {
+        const n = prev.n + 1;
+        prev.n = n;
+        prev.t = now;
+        ox = n % 2 ? 8 : -8;
+        oy = -14 * n;
+      }
+    }
+    Fx.list.push({kind:'damage', text:(critical ? 'CRITICAL!  ' : '') + '-' + value, x: x + ox, y: y + oy, life:critical ? .95 : .7, max:critical ? .95 : .7, color:critical ? '#FFE16B' : blocked ? '#FBBF24' : '#FFFFFF', critical});
   }
   static heal(x, y, amount) {
     if (Fx.allowed(x, y)) Fx.list.push({kind:'damage', text:'+' + amount + ' HP', x, y, life:.95, max:.95, color:'#76FFAE'});
@@ -325,6 +351,7 @@ export class Fx {
     }
   }
   static update(dt) {
+    Fx.damageClock += dt;
     let write = 0;
     for (let i = 0; i < Fx.list.length; i++) {
       const e = Fx.list[i];

@@ -663,7 +663,7 @@ export class EnemyProjectile {
       const hpBefore = player.f.hp;
       const kind = BeatEmUp.withDepth(player, () => player.f.takeHit(hit, p.owner));
       const damage = Math.round((hpBefore - player.f.hp) * 10) / 10;
-      Fx.damage(box.x + box.w / 2 - BeatEmUp.cameraX, box.y, damage, kind === 'block');
+      Fx.damage(box.x + box.w / 2 - BeatEmUp.cameraX, box.y, damage, kind === 'block', false, player.f);
       if (kind === 'block') Fx.blocked(box.x + box.w / 2 - BeatEmUp.cameraX, box.y);
       else {
         Fx.hit(box.x + box.w / 2 - BeatEmUp.cameraX, box.y);
@@ -1054,7 +1054,7 @@ export const EnemyGrab = {
     if (te) {
       const hb = BeatEmUp.withDepth(te, () => { victim.clamp(); return { ...victim.hitbox }; });
       const cx = hb.x + hb.w / 2 - BeatEmUp.cameraX, cy = hb.y + hb.h * .2;
-      Fx.hit(cx, cy); Fx.damage(cx, cy - 12, Math.round(a.headbuttDmg * 10) / 10, kind === 'block');
+      Fx.hit(cx, cy); Fx.damage(cx, cy - 12, Math.round(a.headbuttDmg * 10) / 10, kind === 'block', false, victim);
     }
     Sfx.play('player-heavy-hit', victim.classProfile);
   },
@@ -1173,7 +1173,7 @@ export const ShockZones = {
       if (kind !== 'hit' && kind !== 'armored') continue; // invulnerable / held: stays armed
       z.hit = true; z.hitFrame = z.t;
       const cx = pf.x - BeatEmUp.cameraX, cy = BeatEmUp.floorDepthPx(player.depth) - 30;
-      Fx.hit(cx, cy); Fx.damage(cx, cy - 20, Math.round((hpBefore - pf.hp) * 10) / 10, false);
+      Fx.hit(cx, cy); Fx.damage(cx, cy - 20, Math.round((hpBefore - pf.hp) * 10) / 10, false, false, pf);
       Sfx.play('player-heavy-hit', pf.classProfile);
     }
   },

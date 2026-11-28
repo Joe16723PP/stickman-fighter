@@ -157,7 +157,7 @@ export class BladeSuper {
     const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
     const groundY = Game.mode === 'beatemup' ? BeatEmUp.floorDepthPx(target.depth) : fighter.groundY();
     const x = fighter.x - cameraX, y = groundY + fighter.y - 62 * fighter.drawS();
-    Fx.damage(x, y, damage, kind === 'block', attack.critical && kind !== 'block');
+    Fx.damage(x, y, damage, kind === 'block', attack.critical && kind !== 'block', fighter);
     if (wave && kind === 'hit') {
       BladeSuper.contactFx(0, x, y, fighter.drawS() / 1.2, kind);
       Game.stop = specialHitStop(pulse, 1); Game.shake = 4 / 60; Game.shMag = 4;

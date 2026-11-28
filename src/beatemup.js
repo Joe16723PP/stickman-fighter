@@ -1297,7 +1297,7 @@ export class BeatEmUp {
           const slot = Fx.karateSuperSlot(ba, bt);
           Fx.karateSuperText(attacker.f, attacker.f.atk, slot.x - BeatEmUp.cameraX, slot.y, damage, criticalHit, '', attacker.f.classProfile);
         } else {
-          Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block' || kind === 'parry', criticalHit);
+          Fx.damage(cx - BeatEmUp.cameraX, cy - 12, damage, kind === 'block' || kind === 'parry', criticalHit, target.f);
         }
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && attacker.f.classProfile?.style === 'ward') {

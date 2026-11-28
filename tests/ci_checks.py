@@ -9,6 +9,7 @@ A downed fighter (knockdown or KO) must draw its own fall clip, play it once, an
 hold the last frame. Walk clips must show at least two frames and loop (repeat -1).
 
 The seeded 1v1 parity digest was retired with 1v1 mode.
+Damage popups show a whole number and stack per target inside 0.25s.
 The YOU tag keeps a white fill, a 2px #1A1210 stroke, and weight 700.
 The MOVE / LANE hint uses fill #FFF6E4, that same stroke, and 85% opacity.
 
@@ -3394,6 +3395,48 @@ PLAYER_DEFENSE_SIM = r'''() => {
   return r;
 }'''
 
+DAMAGE_POPUPS = '''() => {
+  // Whole-number "-N" text, and a per-target stack: a second popup inside 0.25s is offset, one after 0.3s is not.
+  const grab = () => {
+    const e = Fx.list[Fx.list.length - 1];
+    return { text: e.text, x: e.x, y: e.y };
+  };
+  let x = 0, y = 0, anchor = false;
+  for (let yy = 100; yy < Game.H - 40 && !anchor; yy += 10) {
+    for (let xx = 60; xx < Game.W - 60 && !anchor; xx += 20) {
+      if (Fx.allowed(xx, yy)) { x = xx; y = yy; anchor = true; }
+    }
+  }
+  Fx.clear();
+  const roundTarget = {};
+  const shown = [1.7, 0.3, 74].map(dmg => {
+    Fx.damage(x, y, dmg, false, false, roundTarget);
+    return grab().text;
+  });
+  Fx.clear();
+  const t1 = {}, t2 = {};
+  Fx.damage(x, y, 5, false, false, t1);
+  const first = grab();
+  Fx.update(0.2);
+  Fx.damage(x, y, 6, false, false, t1);
+  const second = grab();
+  Fx.damage(x, y, 4, false, false, t2);
+  const other = grab();
+  Fx.update(0.3);
+  Fx.damage(x, y, 9, false, false, t1);
+  const reset = grab();
+  Fx.clear();
+  const stacked = first.x !== second.x || first.y !== second.y;
+  const pass = !!(anchor
+    && shown[0] === '-2' && shown[1] === '-1' && shown[2] === '-74'
+    && first.x === x && first.y === y
+    && second.x === x + 8 && second.y === y - 14
+    && stacked
+    && other.x === x && other.y === y && other.text === '-4'
+    && reset.x === x && reset.y === y && reset.text === '-9');
+  return { shown, first, second, other, reset, anchor: { x, y, ok: anchor }, stacked, pass };
+}'''
+
 def free_port():
     s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 
@@ -3605,6 +3648,10 @@ def main():
             print('special gain sequence', json.dumps(special_gain.get('sequence')))
             if not special_gain['pass']:
                 failures.append('Special gain failed: expected a fixed punch/punch/kick/taken-punch sequence to fill the meter at exactly half the pre-multiplier award (dmg*2.5 dealt, dmg*1.5 taken, flat 12 on a special or Blade Wave, class meter and archetype specialGain unchanged), cap 100, a full meter still spent on special, and practice left at the full rate')
+            popups = page.evaluate(DAMAGE_POPUPS)
+            print('damage popups', json.dumps({k: v for k, v in popups.items() if k != 'pass'}))
+            if not popups['pass']:
+                failures.append('Damage popups failed: expected 1.7 to show 2, 0.3 to show 1, and 74 to show 74, a second popup within 0.25s offset by +8,-14, a different target left at the anchor, and a popup 0.3s later back at the anchor')
             page.close()
             for (w, h) in [(667, 375), (844, 390)]:
                 pg = browser.new_page(viewport={'width': w, 'height': h}, has_touch=True, is_mobile=True, device_scale_factor=2)
