@@ -131,9 +131,9 @@ function frameOf(fighter, name) {
   }
   if (name === 'special') {
     const attack = fighter.atk;
-    const su = attack ? attack.su : 12;
-    const ac = attack ? attack.ac : 18;
-    const re = attack ? attack.re : 22;
+    const su = attack ? attack.su : 16;
+    const ac = attack ? attack.ac : 24;
+    const re = attack ? attack.re : 30;
     const t = fighter.atkT || 0;
     const wind = 4;
     const strike = 15;
@@ -206,8 +206,8 @@ function staffClip(fighter) {
 
 function staffSpecialFrame(fighter) {
   const su = fighter.atk ? fighter.atk.su : 32;
-  const delays = fighter.atk?.hitDelays || [0, 14, 28];
-  const durations = fighter.atk?.hitDurations || [8, 8, 10];
+  const delays = fighter.atk?.hitDelays || [0, 24, 48];
+  const durations = fighter.atk?.hitDurations || [10, 10, 14];
   const t = fighter.atkT || 0;
   if (t <= su) return t <= su * 0.55 ? 0 : 1;
   const off = t - su - 1;
@@ -273,10 +273,10 @@ function bladeClip(fighter) {
   return 'idle';
 }
 
-// 12 special frames across the 60-frame Crescent Storm. The travelling Blade Wave and
+// 12 special frames across the 80-frame Crescent Storm. The travelling Blade Wave and
 // slash/noto FX stay on the existing Fx / BladeSuper draw path, beside this clip.
-//   0-1 charge (1-12) · 2 wind-up (13-20) · 3 active slash (21-24, wave leaves on 21)
-//   4-6 hold (25-36) · 7 chiburi (37-50) · 8-11 sheath (51-60)
+//   0-1 charge (1-16) · 2 wind-up (17-27) · 3 active slash (28-32, wave leaves on 28)
+//   4-6 hold (33-48) · 7 chiburi (49-67) · 8-11 sheath (68-80)
 function bladeSpecialFrame(fighter) {
   const t = fighter.atkT || 0;
   const phase = BladeSuper.phaseAt(t).part;

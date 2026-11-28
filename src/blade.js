@@ -1,6 +1,6 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
-import { Depth } from './config.js';
+import { Depth, PACE, specialHitStop } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
@@ -8,32 +8,37 @@ import { Game, fighters } from './game.js';
 export class BladeSuper {
   static sequences = [];
   static waves = [];
-  // "IAI Crescent Storm" (single slash + travelling Blade Wave): 60 frames (1.0 s) at 60 fps.
-  //   charge 12 (1-12) · draw wind-up 8 (13-20) · active slash 4 (21-24, the Wave leaves on 21) · follow-through hold 12 (25-36)
-  //   · recovery 14 (37-50) · sheath finish 10 (51-60). atk.su = charge, atk.ac = wind-up + active + hold, atk.re = recovery + sheath.
+  // "IAI Crescent Storm" (single slash + travelling Blade Wave): 80 frames at 60 fps.
+  // Old 60-frame beats scaled by PACE.special (1.35) and rounded. Sheath takes the remainder so recovery + sheath stays 32.
+  //   charge 16 (1-16) · draw wind-up 11 (17-27) · active slash 5 (28-32, the Wave leaves on 28) · follow-through hold 16 (33-48)
+  //   · recovery 19 (49-67) · sheath finish 13 (68-80). atk.su = charge, atk.ac = wind-up + active + hold, atk.re = recovery + sheath.
   // One damage event per target: the slash and the Wave share one hit set, 74 damage. Each hit target stays stunned
-  // STUN_FRAMES and is knocked down when that stun ends (per target), long after Blade is free (frame 61).
-  static CHARGE_FRAMES = 12;
-  static STRIKES = [
-    {name:'iaiDraw', windup:8, active:4, hold:12, gap:0, damage:74},
-  ];
-  static RECOVERY_FRAMES = 14;
-  static SHEATH_FRAMES = 10;
+  // STUN_FRAMES and is knocked down when that stun ends (per target), long after Blade is free (frame 81).
+  static get CHARGE_FRAMES() { return Math.round(12 * PACE.special); } // 16
+  static get STRIKES() {
+    if (!this._strikes) {
+      const s = PACE.special;
+      this._strikes = [{name:'iaiDraw', windup:Math.round(8 * s), active:Math.round(4 * s), hold:Math.round(12 * s), gap:0, damage:74}];
+    }
+    return this._strikes;
+  }
+  static get RECOVERY_FRAMES() { return Math.round(14 * PACE.special); } // 19
+  static get END_FRAMES() { return Math.round(24 * PACE.special); } // 32
+  static get SHEATH_FRAMES() { return this.END_FRAMES - this.RECOVERY_FRAMES; } // 13
   static STUN_FRAMES = 210; // per target, from its hit; the knockdown fires when it ends
   static strikeLength(k) { const s = this.STRIKES[k]; return s.windup + s.active + s.hold + s.gap; }
   /** First atkT frame (1-based) of strike k's window. */
   static strikeStart(k) { let f = this.CHARGE_FRAMES + 1; for (let i = 0; i < k; i++) f += this.strikeLength(i); return f; }
   static activeStart(k) { return this.strikeStart(k) + this.STRIKES[k].windup; }
-  static STRIKE_FRAMES = this.STRIKES.reduce((sum, _s, k) => sum + this.strikeLength(k), 0);
-  static END_FRAMES = this.RECOVERY_FRAMES + this.SHEATH_FRAMES; // atk.re
-  static NOTO_FRAME = this.CHARGE_FRAMES + this.STRIKE_FRAMES + this.END_FRAMES; // sheath click = last action frame (60)
-  static SHEATH_START = this.NOTO_FRAME - this.SHEATH_FRAMES + 1;
-  static FACE_LOCK_FRAME = this.activeStart(0);
-  static LAUNCH_FRAME = this.activeStart(0); // the Blade Wave leaves on the slash's first active frame
-  static TOTAL_DAMAGE = this.STRIKES.reduce((sum, s) => sum + s.damage, 0);
-  static WAVE_DAMAGE = this.TOTAL_DAMAGE; // the Wave is the slash's extended hit shape: same single hit
+  static get STRIKE_FRAMES() { return this.STRIKES.reduce((sum, _s, k) => sum + this.strikeLength(k), 0); } // 32
+  static get NOTO_FRAME() { return this.CHARGE_FRAMES + this.STRIKE_FRAMES + this.END_FRAMES; } // sheath click = last action frame (80)
+  static get SHEATH_START() { return this.NOTO_FRAME - this.SHEATH_FRAMES + 1; }
+  static get FACE_LOCK_FRAME() { return this.activeStart(0); }
+  static get LAUNCH_FRAME() { return this.activeStart(0); } // the Blade Wave leaves on the slash's first active frame
+  static get TOTAL_DAMAGE() { return this.STRIKES.reduce((sum, s) => sum + s.damage, 0); }
+  static get WAVE_DAMAGE() { return this.TOTAL_DAMAGE; } // the Wave is the slash's extended hit shape: same single hit
   static RANGE = 420;
-  static SPEED = 900;
+  static SPEED = 670;
   static frameNo = 0; // BladeSuper.update steps (knockdown clock)
   static inUpdate = false;
   static pulseForFrame(frame) {
@@ -155,9 +160,9 @@ export class BladeSuper {
     Fx.damage(x, y, damage, kind === 'block', attack.critical && kind !== 'block');
     if (wave && kind === 'hit') {
       BladeSuper.contactFx(0, x, y, fighter.drawS() / 1.2, kind);
-      Game.stop = 2 / 60; Game.shake = 4 / 60; Game.shMag = 4;
+      Game.stop = specialHitStop(pulse, 1); Game.shake = 4 / 60; Game.shMag = 4;
     } else if (!wave && kind === 'hit') {
-      Game.stop = 3 / 60; Game.shake = 3 / 60; Game.shMag = 2;
+      Game.stop = specialHitStop(pulse, 1); Game.shake = 3 / 60; Game.shMag = 2;
     }
     if (kind === 'block') Fx.blocked(x, y);
     if (!owner.specialEffectDone) {
@@ -226,7 +231,7 @@ export class BladeSuper {
       if (Math.abs(wave.x - wave.startX) >= BladeSuper.RANGE || wave.x === wave.edge) wave.active = false;
     }
     BladeSuper.waves = BladeSuper.waves.filter(wave => wave.active);
-    // Sequences outlive the 60-frame action while any target's knockdown is pending or its Wave still travels.
+    // Sequences outlive the 80-frame action while any target's knockdown is pending or its Wave still travels.
     BladeSuper.sequences = BladeSuper.sequences.filter(sequence => !sequence.notoDone || sequence.knockdowns.size > 0
       || BladeSuper.waves.some(wave => wave.sequence === sequence));
     BladeSuper.inUpdate = false;
