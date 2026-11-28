@@ -1,7 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { ArcadeDiff, CpuHotColors, Depth, FighterClasses, PlayerCoolColor } from './config.js';
+import { ArcadeDiff, CpuHotColors, Depth, FighterClasses, PACE, PlayerCoolColor } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Input } from './input.js';
@@ -469,14 +469,14 @@ export class Game {
       if (!box || foe.hp <= 0) continue;
       if (box.special && me.hitTargets.get(foe) === box.pulse) continue;
       if (box.special && me.bladeSuper?.hits.has(foe)) continue; // Wave already hit it
-      if (box.special && (!foe.grounded || foe.dodgeT > 0)) continue;
+      if (box.special && (!foe.grounded || foe.inDodgeIFrames())) continue;
       const specialLane = box.special ? Depth.specialLaneTolerance(me) : null;
       const laneShift = me.groundY() - foe.groundY();
       if (!box.radial && Math.abs(laneShift) > (specialLane ?? Depth.hitTolerance(me.playerControlled)) + 1e-9) continue; // depth miss = normal whiff (epsilon absorbs float error at exactly 14px)
       // Player Special lanes are checked above; compare the hurtbox in the attacker's lane so off-lane targets get the same reach.
       const foeBox = specialLane != null ? { x:foe.hitbox.x, y:foe.hitbox.y + laneShift, w:foe.hitbox.w, h:foe.hitbox.h } : foe.hitbox;
       if (box.radial ? !Fighter.staffRadialHits(box, me, foe) : !Game.hitTest(box, foeBox)) continue;
-      if (foe.dodgeT > 0) continue;
+      if (foe.inDodgeIFrames()) continue;
       if (foe.playerControlled && foe.invincibleT > 0) continue;
       me.hitDone = 1;
       if (box.special) me.hitTargets.set(foe, box.pulse);
@@ -490,7 +490,7 @@ export class Game {
         Game.practiceComboHits++;
         Game.practiceComboDamage += damage;
         Game.practiceComboT = 1.25;
-        Game.practiceLastMove = me.state === 'kick' ? 'HEAVY STRIKE' : me.state === 'punch' ? 'PUNCH' : me.state.toUpperCase();
+        Game.practiceLastMove = me.state === 'kick' ? (me.classProfile?.kickMove || 'FINISHER') : me.state === 'punch' ? (me.classProfile?.punchMove || 'ATTACK') : me.state.toUpperCase();
       }
       me.gainMeter(box.special ? 0 : box.dmg * 2.5);
       if (!box.special || !me.specialMeterTargets.has(foe)) foe.gainMeter(box.special ? 12 : box.dmg * 1.5);
@@ -529,8 +529,11 @@ export class Game {
         else if (!criticalHit) Fx.hit(cx, cy);
         Game.stop = .06; Game.shake = .12; Game.shMag = 4;
       }
-      if (me.playerControlled && !box.special && kind === 'hit' && damage > 0)
+      if (me.playerControlled && !box.special && kind === 'hit' && damage > 0) {
+        const frames = box.knockdown || me.state === 'kick' ? PACE.hitstop.finisher : PACE.hitstop.chain;
+        Game.stop = frames / 60;
         Sfx.play(me.state === 'kick' ? 'player-heavy-hit' : 'player-normal-hit', me.classProfile);
+      }
       if (kind === 'hit') foe.vy = -120;
       if (foe.hp <= 0 && Game.mode === 'practice' && i === 0) Game.resetPracticeDummy(false);
     }
@@ -550,11 +553,13 @@ export class Game {
   static syncDodgeBtn() {
     const btn = Game.actionButtons.roll || document.querySelector('#controls button.roll');
     if (!btn) return;
-    const cooldown = Math.max(0, Math.min(1.05, fighters[0].dodgeCooldown));
-    const progress = Game.fighting ? `${Math.round((1 - cooldown / 1.05) * 50) * 2}%` : '0%';
+    const total = PACE.dodgeCooldown;
+    const cooldown = Math.max(0, Math.min(total, fighters[0].dodgeCooldown));
+    const progress = Game.fighting ? `${Math.round((1 - cooldown / total) * 50) * 2}%` : '0%';
     const ready = Game.fighting && cooldown <= 0;
     if (btn.style.getPropertyValue('--action-progress') !== progress) btn.style.setProperty('--action-progress', progress);
     if (btn.classList.contains('ready') !== ready) btn.classList.toggle('ready', ready);
+    btn.classList.toggle('flash', fighters[0].dodgeReadyFlash > 0);
     const label = ready ? 'Dodge roll ready' : Game.fighting
       ? `Dodge roll cooling down (${cooldown.toFixed(1)} seconds)` : 'Dodge roll available when fight starts';
     if (btn.getAttribute('aria-label') !== label) btn.setAttribute('aria-label', label);
@@ -576,8 +581,9 @@ export class Game {
     Fx.update(dt);
     if (Game.stop > 0) { Game.stop -= dt; Game.present(); return; }
     Game.acc += dt;
-    while (Game.acc >= Game.STEP) {
+      while (Game.acc >= Game.STEP) {
       const step = Game.STEP;
+      if (Input.pollGamepad) Input.pollGamepad();
       if (BeatEmUp.stageTransitionLeft > 0) {
         BeatEmUp.tickStageTransition();
         Game.acc -= step;
@@ -1023,6 +1029,8 @@ export class Game {
         ctx.beginPath();
         ctx.ellipse(f.x, f.groundY() + 1, 23 * f.depthScale(), 4 * f.depthScale(), 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 1;
+        BeatEmUp.drawDodgeArc(ctx, f, f.x, f.groundY() + 1, 23 * f.depthScale());
         ctx.restore();
       }
       for (const f of fighters.slice().sort((a, b) => a.depth - b.depth)) {

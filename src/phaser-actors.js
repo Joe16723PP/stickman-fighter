@@ -1,7 +1,7 @@
 import { Game, fighters } from './game.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { BossSignatures } from './config.js';
+import { BossSignatures, PACE } from './config.js';
 
 const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, combo: 18, roll: 8, special: 24 };
 const FRAME_W = 174;
@@ -117,6 +117,7 @@ function clipOf(fighter) {
   if (fighter.state === 'roll') return 'roll';
   if (fighter.state === 'special' && fighter.classId === 'freehand') return 'special';
   if (fighter.state === 'kick') return 'kick';
+  if (fighter.state === 'punch' && (fighter.atk?.chain || 0) === 1) return 'combo';
   if (fighter.state === 'punch') return 'punch';
   if (fighter.state === 'walk') return 'walk';
   return 'idle';
@@ -124,13 +125,13 @@ function clipOf(fighter) {
 
 function frameOf(fighter, name) {
   const count = CLIPS[name];
-  if (name === 'walk') {
-    const cyclePx = 148;
-    return Math.floor((fighter.walkPx || 0) / (cyclePx / count)) % count;
+  if (name === 'walk' || name === 'idle') return Math.floor((fighter.animT || 0) * PACE.spriteFps) % count;
+  if (name === 'combo') {
+    // Karate hit 2 is the cross only: combo frames 5–8, mapped like the Blade punch 3–5 slice.
+    return chainSlice(fighter, 5, 4);
   }
-  if (name === 'idle') return Math.floor((fighter.animT || 0) * 12) % count;
   if (name === 'roll') {
-    const duration = 0.48;
+    const duration = PACE.dodgeDuration;
     const elapsed = Math.max(0, duration - (fighter.dodgeT || 0));
     return Math.max(0, Math.min(count - 1, Math.floor(elapsed / duration * count)));
   }
@@ -263,21 +264,7 @@ function staffFrame(fighter, name) {
   if (name === 'fall') {
     return Math.max(0, Math.min(STAFF_FALL_COUNT - 1, Math.floor(((fighter.animT || 0) - fighter._staffClipStart) * 12)));
   }
-  if (name === 'punch') {
-    const attack = fighter.atk;
-    const su = attack ? attack.su : 17;
-    const ac = attack ? attack.ac : 4;
-    const re = attack ? attack.re : 29;
-    const t = fighter.atkT || 0;
-    const wind = 3;
-    const strike = 1;
-    const recover = STAFF_PUNCH_COUNT - wind - strike;
-    let index;
-    if (t <= su) index = Math.min(wind - 1, Math.floor((su ? t / su : 1) * wind));
-    else if (t <= su + ac) index = wind;
-    else index = wind + strike + Math.min(recover - 1, Math.floor((re ? Math.min(1, (t - su - ac) / re) : 1) * recover));
-    return Math.max(0, Math.min(STAFF_PUNCH_COUNT - 1, index));
-  }
+  if (name === 'punch') return chainSlice(fighter, (fighter.atk?.chain || 0) <= 0 ? 0 : 3, 3);
   if (name === 'kick') {
     const attack = fighter.atk;
     const su = attack ? attack.su : 23;
@@ -294,16 +281,13 @@ function staffFrame(fighter, name) {
     return Math.max(0, Math.min(STAFF_KICK_COUNT - 1, index));
   }
   if (name === 'special') return staffSpecialFrame(fighter);
-  if (name === 'walk') {
-    const cyclePx = 148;
-    return Math.floor((fighter.walkPx || 0) / (cyclePx / STAFF_WALK_COUNT)) % STAFF_WALK_COUNT;
-  }
+  if (name === 'walk') return Math.floor((fighter.animT || 0) * PACE.spriteFps) % STAFF_WALK_COUNT;
   if (name === 'roll') {
-    const duration = 0.48;
+    const duration = PACE.dodgeDuration;
     const elapsed = Math.max(0, duration - (fighter.dodgeT || 0));
     return Math.max(0, Math.min(STAFF_ROLL_COUNT - 1, Math.floor(elapsed / duration * STAFF_ROLL_COUNT)));
   }
-  return Math.floor((fighter.animT || 0) * 12) % STAFF_IDLE_COUNT;
+  return Math.floor((fighter.animT || 0) * PACE.spriteFps) % STAFF_IDLE_COUNT;
 }
 
 function bladeClip(fighter) {
@@ -363,22 +347,44 @@ function bladeFrame(fighter, name) {
   if (name === 'fall') {
     return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._bladeClipStart) * 12)));
   }
-  // Quick Draw: sheathed grip, then the draw, then the two slash frames on the active window.
-  if (name === 'punch') return bladeAttackFrame(fighter, name, 2, 2);
+  // Quick Draw is frames 0–2; the second Attack press uses frames 3–5 of the same clip.
+  if (name === 'punch') return chainSlice(fighter, (fighter.atk?.chain || 0) <= 0 ? 0 : 3, 3);
   // Crescent Cleave (6): overhead wind-up in startup, crescent slash across the active window, then recovery.
   //   0-1 raise to overhead · 2-4 slash arc · 5 return
   if (name === 'kick') return bladeAttackFrame(fighter, name, 2, 3);
   if (name === 'special') return bladeSpecialFrame(fighter);
-  if (name === 'walk') {
-    const cyclePx = 148;
-    return Math.floor((fighter.walkPx || 0) / (cyclePx / count)) % count;
-  }
+  if (name === 'walk') return Math.floor((fighter.animT || 0) * PACE.spriteFps) % count;
   if (name === 'roll') {
-    const duration = 0.48;
+    const duration = PACE.dodgeDuration;
     const elapsed = Math.max(0, duration - (fighter.dodgeT || 0));
     return Math.max(0, Math.min(count - 1, Math.floor(elapsed / duration * count)));
   }
-  return Math.floor((fighter.animT || 0) * 12) % count;
+  return Math.floor((fighter.animT || 0) * PACE.spriteFps) % count;
+}
+
+/** Three-frame slice of a six-frame punch clip. base 0 is hit 1, base 3 is hit 2. */
+function chainSlice(fighter, base, count) {
+  const attack = fighter.atk;
+  const su = attack ? attack.su : 12;
+  const ac = attack ? attack.ac : 4;
+  const t = fighter.atkT || 0;
+  const wind = Math.max(1, count - 1);
+  const local = t <= su ? Math.min(wind - 1, Math.floor((su ? t / su : 1) * wind)) : Math.min(count - 1, wind);
+  return base + local;
+}
+
+/** Clip and frame the posed sprite is showing. Tests read this for the 3-hit chain. */
+export function attackClip(fighter) {
+  if (fighter.classId === 'blade') {
+    const clip = bladeClip(fighter) || 'idle';
+    return { clip, frame: bladeFrame(fighter, clip) };
+  }
+  if (fighter.classId === 'staff') {
+    const clip = staffClip(fighter) || 'idle';
+    return { clip, frame: staffFrame(fighter, clip) };
+  }
+  const clip = clipOf(fighter);
+  return { clip, frame: frameOf(fighter, clip) };
 }
 
 // Posed-sprite id for a cast entry. Brawler, Rusher, and Grappler use their archetype kind.

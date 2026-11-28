@@ -342,9 +342,9 @@ BRAWLER = r"""
     && r.noProfile && r.drawUnchanged && r.brawlerProfileDrawn
     && r.rookiePunch.hits.length === 1 && r.jabCross.hits.length === 2
     // Pacing pass 2026-11-15: jab 9/3/8, cross 10/3/18 (startup/recovery x1.3, active unchanged).
-    && r.jabCross.hits[0].frame === 10 && r.jabCross.hits[1].frame === 31
+    && r.jabCross.hits[0].frame === 13 && r.jabCross.hits[1].frame === 40
     && Math.abs(r.jabCross.total - r.rookiePunch.total) < 1e-6 && r.rookiePunch.total > 0
-    && r.timeline.su === 9 && r.timeline.ac === 24 && r.timeline.re === 18 && r.timeline.total === 51
+    && r.timeline.su === 12 && r.timeline.ac === 31 && r.timeline.re === 23 && r.timeline.total === 66
     && r.spawns.stage1.includes('brawler') && r.spawns.swapped === 1 && r.spawns.rookies === 3 && r.spawns.inPlace && !r.spawns.laterBrawlers;
   return r;
 }
@@ -430,15 +430,15 @@ RUSHER = r"""
     && s.dmgMul === EnemyWeaponProfiles.freehand.damage && s.tag === 'RUSHER' && s.rush === 'shoulder' && s.combo === null && s.profile
     && r.runnerGone && r.runnerSpawns === 0 && r.rusherSpawns === 18
     && r.hurtboxSame && r.profileDrawn && r.gameplayBonesSame
-    && tl.su === 27 && tl.ac === 7 && tl.re === 42 && tl.dashStart === 17 && tl.dashEnd === 34 && tl.total === 76
-    // Whiff: full fixed dash + braking skid, live box only on the last 7 dash frames, full stumble recovery.
-    && w.hits.length === 0 && Math.abs(w.travelled - (sp.distance + sp.brake)) < 1e-6 && w.frames === tl.total && w.live === '28-34'
+    && tl.su === 35 && tl.ac === 9 && tl.re === 55 && tl.dashStart === 22 && tl.dashEnd === 44 && tl.total === 99
+    // Whiff: full fixed dash + braking skid, live box only on the last paced dash frames, full stumble recovery.
+    && w.hits.length === 0 && Math.abs(w.travelled - (sp.distance + sp.brake)) < 1e-6 && w.frames === tl.total && w.live === '36-44'
     && !w.chain && w.faces.length === 1 && w.faces[0] === -1
     // Direction is locked at rush start even if the player jumps behind.
     && r.behind.hits.length === 0 && Math.abs(r.behind.travelled - (sp.distance + sp.brake)) < 1e-6 && r.behind.faces.length === 1
     // Approach never hits; every hit is one ROOKIE punch, stops the dash, and recovers in hitRecovery frames.
     && hitsAll.length >= 5 && r.sweep.every(o => o.n <= 1 && (o.n === 0 || (o.hit >= tl.su + 1 && o.hit <= tl.su + tl.ac)))
-    && hitsAll.every(o => Math.abs(o.dmg - r.rookiePunch) < 1e-6 && o.travelled <= sp.distance + 1e-6 && o.frames === o.hit + sp.hitRecovery)
+    && hitsAll.every(o => Math.abs(o.dmg - r.rookiePunch) < 1e-6 && o.travelled <= sp.distance + 1e-6 && o.frames === o.hit + Math.max(1, Math.round(sp.hitRecovery * PACE.enemy)))
     && r.sweep.every(o => o.travelled <= sp.distance + sp.brake + 1e-6) && r.rookiePunch > 0;
   return r;
 }
@@ -527,9 +527,9 @@ HEAVY = r"""
   r.pass = s.hp === s.expectHp && s.speedMul === .74 && s.scaleMul === 1.12 && s.weapon === 'sledgehammer' && r.hammers === 60
     && s.dmgMul === 1 && s.tag === 'HEAVY' && s.slam === 'overhead' && s.rush === null && s.combo === null && s.profile
     && r.heavySpawns > 0 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn
-    && tl.su === 30 && tl.ac === 4 && tl.re === 48 && tl.total === 82
+    && tl.su === 39 && tl.ac === 5 && tl.re === 62 && tl.total === 106
     // Whiff: full 82 frames, hitbox only on the 4 swing frames, planted, facing locked through the swing, cannot chain.
-    && w.hits.length === 0 && w.frames === 82 && w.live === '31-34' && w.tipMatch && w.profileFree && !w.chain && !w.moved && w.faces.length === 1
+    && w.hits.length === 0 && w.frames === 106 && w.live === '40-44' && w.tipMatch && w.profileFree && !w.chain && !w.moved && w.faces.length === 1
     && r.behind.every(o => o.n === 0 && o.faces.length === 1 && o.faces[0] === -1)
     // Zone: hits only in front, only on swing frames, never past the hammer tip; one hit of 12 per slam.
     && hitsAll.length >= 5 && r.sweep.every(o => o.n <= 1 && o.tipMatch && o.profileFree)
@@ -673,7 +673,7 @@ GRAPPLER = r"""
     // Catch on the first reach frame in range; hold exactly headbuttAt frames, headbutt = release, then hitRecovery.
     && su.caught === tl.su + 1 && su.held === sp.headbuttAt && su.pinned && su.release === 'headbutt' && su.releaseFrame === tl.su + 1 + sp.headbuttAt
     && Math.abs(su.hpLoss - su.expectDmg) < 1e-6 && su.noRegrab === sp.noRegrab && su.stun === sp.stun && su.vxAway && su.strikes === 0
-    && su.frames === tl.su + 1 + sp.headbuttAt + sp.hitRecovery && su.phases === 'xw,xh,xb,xs,xg' && su.coolT > 0
+    && su.frames === tl.su + 1 + sp.headbuttAt + Math.max(1, Math.round(sp.hitRecovery * PACE.enemy)) && su.phases === 'xw,xh,xb,xs,xg' && su.coolT > 0
     && r.noRegrabFrames === Math.round(sp.noRegrab * 60) && !r.regrabBlocked.caught && r.regrabBlocked.reasons.includes('no-regrab')
     && r.holderHit.release === 'holder-hit' && r.holderHit.hpLoss === 0 && r.holderHit.others === 'held' && r.holderHit.heldHp === 0 && Math.abs(r.holderHit.noRegrab - (sp.noRegrab - Game.STEP)) < 1e-9
     && r.holderKilled.release === 'holder-hit' && r.holderKilled.hpLoss === 0 && r.holderKilled.gpDead
@@ -920,7 +920,7 @@ RANGED = r"""
   player.reset(200, 1);
   r.kunaiDrawOps = (() => { const ops = []; BeatEmUp.enemyProjectiles = [{ x: 100, y: 100, face: 1 }]; EnemyProjectile.draw(proxy(ops)); BeatEmUp.enemyProjectiles = []; return ops.length; })();
   const s = r.stats, c = r.cycle;
-  r.pass = s.hp === s.expectHp && s.speedMul === 1 && s.scaleMul === 1 && s.weapon === null && s.special === 0 && s.profile && s.proj === '315,560,0.5,0.9,2.5'
+  r.pass = s.hp === s.expectHp && s.speedMul === 1 && s.scaleMul === 1 && s.weapon === null && s.special === 0 && s.profile && s.proj === '250,560,0.5,0.9,2.5'
     && r.throwerGone && r.throwerSpawns === 0 && r.rangedSpawns === 0 && r.hurtboxSame && r.gameplayBonesSame && r.profileDrawn && r.hoodDrawn && r.pouchDrawn && r.headLabel === 0
     // Release pose lands on exactly the projectile spawn frame (not before, fully posed on it); aim held long enough to read.
     && c.spawn > 0 && c.spawnPoseKey === 'enemy-throw-release' && c.spawnPoseExact && !c.prevPoseRelease && c.aimHeld && c.heldKunai && !c.heldAfter
@@ -959,7 +959,7 @@ PACING = r"""
     }
     return out;
   };
-  const classes = { freehand: 4, blade: 3, staff: 2 }, r = { frames: {}, liveSame: true, liveDiff: [], liveFrames: 0 };
+  const classes = { freehand: 2, blade: 2, staff: 2 }, r = { frames: {}, liveSame: true, liveDiff: [], liveFrames: 0 };
   for (const [cls, max] of Object.entries(classes)) {
     const moves = [];
     for (let c = 0; c < max; c++) moves.push(['punch', c]);
@@ -995,17 +995,17 @@ PACING = r"""
     + ' 14/5/48 27/6/48 24/1/30 0.5/0.9/2.5 10,15,24,24/22/10/22';
   Game.mode = prev.mode;
   const exp = {
-    'freehand punch0': '4/2/9', 'freehand punch1': '5/2/8', 'freehand punch2': '5/2/8', 'freehand punch3': '5/3/16', 'freehand kick': '9/3/16',
-    'blade punch0': '7/3/12', 'blade punch1': '5/3/10', 'blade punch2': '5/3/10', 'blade kick': '10/4/16',
-    'staff punch0': '17/4/29', 'staff punch1': '14/4/26', 'staff kick': '23/6/36',
+    'freehand punch0': '12/4/19', 'freehand punch1': '12/4/19', 'freehand kick': '19/7/31',
+    'blade punch0': '12/4/19', 'blade punch1': '12/4/19', 'blade kick': '19/7/31',
+    'staff punch0': '12/4/19', 'staff punch1': '12/4/19', 'staff kick': '19/7/31',
   };
   r.expectOk = Object.entries(exp).every(([k, v]) => fr[k] === v);
   const followSu = Object.keys(fr).filter(k => /punch[1-9]/.test(k)).every(k => su(k) >= 5);
   // Class order kept: Karate fastest, Blade middle, Staff slowest (first punch, full string and kick totals).
   const string = c => Object.keys(fr).filter(k => k.startsWith(c + ' punch')).reduce((n, k) => n + tot(k), 0) / Object.keys(fr).filter(k => k.startsWith(c + ' punch')).length;
   r.order = { punch0: [tot('freehand punch0'), tot('blade punch0'), tot('staff punch0')], avgString: [string('freehand'), string('blade'), string('staff')], kick: [tot('freehand kick'), tot('blade kick'), tot('staff kick')] };
-  const ord = a => a[0] < a[1] && a[1] < a[2];
-  r.pass = r.liveSame && r.liveFrames > 0 && r.expectOk && followSu && ord(r.order.punch0) && ord(r.order.avgString) && ord(r.order.kick)
+  const uniform = (a, n) => a[0] === n && a[1] === n && a[2] === n;
+  r.pass = r.liveSame && r.liveFrames > 0 && r.expectOk && followSu && uniform(r.order.punch0, 35) && uniform(r.order.avgString, 35) && uniform(r.order.kick, 57)
     && Math.abs(r.rollBlend - .08) < 1e-9 && r.move.accel === 1000 && r.move.brake === 1400 && r.move.turn === 1700 && r.untouched === r.expectUntouched;
   return r;
 }
@@ -1084,7 +1084,7 @@ BOSS_B2A = r"""
   r.laserLaneLock = laser(600, 15);            // stepped 15px out of the locked lane after the lock
   r.laserEdge = laser(600, 13);                // 13px: still inside the 14px window
   const lf = r.laserFar, expBolt = +(18 * BH * DIFF).toFixed(6);
-  r.laserOk = lf.su === 36 && lf.ac === 1 && lf.fired.length === 1 && lf.fired[0].frame === 37 && lf.dmg === expBolt && lf.depths[0] === .5
+  r.laserOk = lf.su === 47 && lf.ac === 1 && lf.fired.length === 1 && lf.fired[0].frame === 48 && lf.dmg === expBolt && lf.depths[0] === .5
     && r.laserLaneLock.dmg === 0 && r.laserLaneLock.fired[0].result === 'miss' && r.laserEdge.dmg === expBolt;
   // --- Laser Lock phase 3: lines 0/.5/1 together for 0.6 s, then random order 0.25 s (15 f) apart, each 14px
   const orders = new Set(); let p3ok = true;
@@ -1092,7 +1092,7 @@ BOSS_B2A = r"""
     const o = laser(600, 0, 3, .5);
     orders.add(o.fired.map(f => f.depth).join(','));
     const frames = o.fired.map(f => f.frame);
-    p3ok = p3ok && o.su === 36 && o.ac === 31 && o.togetherAtSu && o.depths.slice().sort().join(',') === '0,0.5,1' && frames.join(',') === '37,52,67'
+    p3ok = p3ok && o.su === 47 && o.ac === 40 && o.togetherAtSu && o.depths.slice().sort().join(',') === '0,0.5,1' && frames.join(',') === '48,63,78'
       && o.dmg === expBolt && o.fired.filter(f => f.result === 'hit').length === 1 && o.fired.find(f => f.result === 'hit').depth === .5;
     if (k === 0) { r.phase3Sample = o.fired; r.phase3Su = o.su; }
   }
@@ -1118,7 +1118,7 @@ BOSS_B2A = r"""
   };
   r.shadowFaceRight = shadow(1); r.shadowFaceLeft = shadow(-1); r.shadowLane = shadow(1, BeatEmUp.ENEMY_DEPTH_HIT_PX + 1);
   const sr = r.shadowFaceRight, sl = r.shadowFaceLeft, expCut = +(16 * BH * DIFF).toFixed(6);
-  r.shadowOk = sr.su === 30 && sr.tele && sr.tele.x === 610 && sl.tele.x === 790 && sr.hits.length === 1 && sr.hits[0].dmg === expCut && sl.hits.length === 1
+  r.shadowOk = sr.su === 39 && sr.tele && sr.tele.x === 610 && sl.tele.x === 790 && sr.hits.length === 1 && sr.hits[0].dmg === expCut && sl.hits.length === 1
     && sr.hits[0].frame >= 32 && sr.tip && sr.tip.match && sr.tip.reach === 200 && r.shadowLane.hits.length === 0 && r.shadowLane.tele.depth === .5;
   // --- Kage counter stance
   const counterRun = (attack) => {
@@ -1138,8 +1138,8 @@ BOSS_B2A = r"""
   };
   r.counterUnused = counterRun(false); r.counterParry = counterRun(true);
   const cu = r.counterUnused, cp = r.counterParry, expRip = +(BossCounters.kage.dmg * BH * DIFF).toFixed(6);
-  r.counterOk = cu.counter && cu.stance === 48 && cu.end === 48 && cu.hits.length === 0
-    && cp.parryFrame > 0 && cp.parryFrame <= 48 && cp.bossDmg === 0 && cp.hits.length === 1 && cp.hits[0].dmg === expRip && cp.hits[0].frame === cp.parryFrame + 7;
+  r.counterOk = cu.counter && cu.stance === 62 && cu.end === 62 && cu.hits.length === 0
+    && cp.parryFrame > 0 && cp.parryFrame <= 62 && cp.bossDmg === 0 && cp.hits.length === 1 && cp.hits[0].dmg === expRip && cp.hits[0].frame === cp.parryFrame + 7;
   // AI: only a boss with a counter rolls for it (Math.random pinned low so the roll passes).
   const aiPick = stage => {
     setup(stage, 900, 830); e.f.meter = 0; e.ai.cool = 0; e.ai.mode = 'attack'; Math.random = () => .1;
@@ -1175,7 +1175,7 @@ BOSS_B2A = r"""
   };
   r.roadHit = road(); r.roadOffLane = road(20);
   const rh = r.roadHit, ro = r.roadOffLane, expCharge = +(20 * BH * DIFF).toFixed(6), half = BossSignatures.bossRoadblock.barricadeHalfW + BossSignatures.bossRoadblock.bodyHalf;
-  r.roadOk = rh.su === 36 && rh.bar && rh.bar.x === 620 && rh.bar.side === 1 && rh.bar.created === 37 && rh.barFrames === 240
+  r.roadOk = rh.su === 47 && rh.bar && rh.bar.x === 620 && rh.bar.side === 1 && rh.bar.created === 48 && rh.barFrames === 240
     && rh.hits.length === 1 && rh.hits[0].dmg === expCharge && rh.hits[0].frame >= 56 && rh.hits[0].frame <= 75 && rh.tip && rh.tip.match && rh.tip.reach === 210
     && rh.minX >= 620 + half - 6 - 1e-6 && rh.passedAfter === true
     && ro.hits.length === 0 && ro.charge === 400 && ro.passedAfter === true;
@@ -1555,7 +1555,7 @@ BOSS_B2B = r"""
   r.normalDmg = Object.keys(base).map(k => Moves[k].dmg).join(',');
   // --- Normals: key per phase, hitbox ends at the weapon tip, reach = weapon reach
   const normalRun = (stage, kind, phase) => {
-    setup(stage, 900, 600, 1, phase); start(kind); const o = { key: Object.keys(Moves).find(k => Moves[k].su === e.f.atk.su && Moves[k].re === e.f.atk.re && Moves[k].ac === e.f.atk.ac && k.startsWith(stage === 9 ? 'bossDirector' : 'bossChief')), weapon: e.f.weaponType };
+    setup(stage, 900, 600, 1, phase); start(kind); const o = { key: Object.keys(Moves).find(k => paceEnemy(Moves[k].su) === e.f.atk.su && paceEnemy(Moves[k].re) === e.f.atk.re && paceEnemy(Moves[k].ac) === e.f.atk.ac && k.startsWith(stage === 9 ? 'bossDirector' : 'bossChief')), weapon: e.f.weaponType };
     for (let i = 0; i < 80 && e.f.atk; i++) {
       frame();
       if (o.tip == null && e.f.atk && e.f.atkT === e.f.atk.su + 1) BeatEmUp.withDepth(e, () => {
@@ -1604,9 +1604,9 @@ BOSS_B2B = r"""
   };
   r.bcStay = broadcast(); r.bcGap = broadcast(760); r.bcSide = broadcast(850); r.bcLane = broadcast(null, 15); r.bcEdge = broadcast(null, 13);
   const bs = r.bcStay, expL = 14 * BH * DIFF;
-  r.broadcastOk = bs.su === 30 && bs.key === 'bossLiveBroadcast' && bs.glitchDuringSu && !bs.glitchAfter && bs.markFrame === 31 && bs.spots.length === 3
+  r.broadcastOk = bs.su === 39 && bs.key === 'bossLiveBroadcast' && bs.glitchDuringSu && !bs.glitchAfter && bs.markFrame === 40 && bs.spots.length === 3
     && bs.spots.map(s => s.x).join(',') === '700,550,850' && bs.spots.every(s => s.depth === .5 && s.fireAt - s.markedAt === 42)
-    && bs.fired.length === 3 && bs.fired.every(f => f.frame === 73) && bs.fired.filter(f => f.result === 'hit').length === 1 && near(bs.dmg, expL) && bs.stunAfter === 18
+    && bs.fired.length === 3 && bs.fired.every(f => f.frame === 82) && bs.fired.filter(f => f.result === 'hit').length === 1 && near(bs.dmg, expL) && bs.stunAfter === 18
     && r.bcGap.dmg === 0 && r.bcGap.fired.length === 3 && near(r.bcSide.dmg, expL) && r.bcSide.fired.find(f => f.result === 'hit').x === 850
     && r.bcLane.dmg === 0 && near(r.bcEdge.dmg, expL);
   // --- Chief phase loadouts follow the AI phase, never mid-attack
@@ -1636,7 +1636,7 @@ BOSS_B2B = r"""
       player.stun = 0; player.x = 820; player.vx = 0; if (player.ragdollActive || player.state === 'knockdown') resetPlayer(820);
       if (!e.f.atk) { o.done = e.f.state !== 'special'; break; }
     }
-    o.ok = o.key === key && o.su === (key === 'bossLaserLock' ? BossSignatures.bossLaserLock.lockFrames : Moves[key].su) && o.eff && o.done;
+    o.ok = o.key === key && o.su === paceEnemy(key === 'bossLaserLock' ? BossSignatures.bossLaserLock.lockFrames : Moves[key].su) && o.eff && o.done;
     r.replayRuns[key] = o.ok;
   }
   r.replayRunsOk = Object.values(r.replayRuns).length === 9 && Object.values(r.replayRuns).every(Boolean);
@@ -1651,7 +1651,7 @@ BOSS_B2B = r"""
   }
   r.finale = fin;
   const expF = [10, 10, 12, 14, 24];
-  r.finaleOk = fin.key === 'bossColiseumFinale' && fin.su === 30 && fin.ac === 35
+  r.finaleOk = fin.key === 'bossColiseumFinale' && fin.su === 39 && fin.ac === 46
     && fin.live.join(',') === '1:0,2:0,3:0,8:1,9:1,10:1,15:2,16:2,17:2,22:3,23:3,24:3,29:4K,30:4K,31:4K,32:4K'
     && fin.hits.length === 5 && fin.hits.every((h, i) => Math.abs(h.dmg - expF[i] * BH * DIFF) < 1e-6) && fin.hits.map(h => h.kd).join(',') === 'false,false,false,false,true';
   // --- Tells
@@ -1808,12 +1808,134 @@ GUARD = r"""
     && r.spaced.kind === 'block' && r.spaced.open === 0
     && r.noFalseHitbox && r.turnFrames === Math.round(G.turnDelay * 60)
     // Bash: 14f wind-up, live only on frames 15-19, 28px shove, 48f whiff recovery, locked facing; shield up in wind-up, down in recovery.
-    && tl.su === 14 && tl.ac === 5 && tl.re === 48 && tl.total === 67
-    && w.hits.length === 0 && w.frames === 67 && w.live === '15-19' && Math.abs(w.travelled - sp.step) < 1e-6 && w.faces.length === 1 && w.profileFree && !w.chain
+    && tl.su === 18 && tl.ac === 7 && tl.re === 62 && tl.total === 87
+    && w.hits.length === 0 && w.frames === 87 && w.live === '19-25' && Math.abs(w.travelled - sp.step) < 1e-6 && w.faces.length === 1 && w.profileFree && !w.chain
     && r.bashFlip.hits.length === 0 && r.bashFlip.faces.length === 1 && r.bashProbe.windBlock === true && r.bashProbe.recBlock === false
     && hitsAll.length >= 3 && r.sweep.every(o => o.pf && o.n <= 1 && o.travelled <= sp.step + 1e-6)
-    && hitsAll.every(o => o.frame >= tl.su + 1 && o.frame <= tl.su + tl.ac && Math.abs(o.dmg - rookiePunch) < 1e-6 && o.frames === o.frame + sp.hitRecovery);
+    && hitsAll.every(o => o.frame >= tl.su + 1 && o.frame <= tl.su + tl.ac && Math.abs(o.dmg - rookiePunch) < 1e-6 && o.frames === o.frame + Math.max(1, Math.round(sp.hitRecovery * PACE.enemy)));
   return r;
+}
+"""
+
+CHAIN = r"""
+() => {
+  const prev = { mode: Game.mode, random: Math.random, phase: Game.phase };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.minX = 0; Game.maxX = 4000;
+  Math.random = () => 0.99;
+  const f = fighters[0], foe = fighters[1], out = {};
+  const inRange = (frames, lo, hi) => frames.length > 0 && frames.every(s => { const n = +s.split(':')[1]; return n >= lo && n <= hi; });
+  for (const cls of ['blade', 'freehand', 'staff']) {
+    const hits = [];
+    const play = (which) => {
+      f.setClass(cls); f.reset(300, 1); f.playerControlled = true; f.depth = .5; f.hp = 500; f.attackBoostT = 0; f.chain = 0; f.chainArmed = 0;
+      foe.setClass(null); foe.reset(348, -1); foe.playerControlled = false; foe.depth = .5; foe.hp = 500;
+      foe.ragdollActive = false; foe.damageBurst = 0; foe.damageBurstT = 0; foe.stun = 0; foe.y = 0; foe.grounded = true;
+      if (which === 1) { f.chain = 0; f.chainArmed = 1; }
+      f.startAtk(which === 2 ? 'kick' : 'punch');
+      const a = f.atk, seen = [];
+      for (let i = 0; i < a.su + a.ac + a.re + 2 && f.atk === a; i++) {
+        f.update(Game.STEP, foe, 0); f.x = 300;
+        if (f.atk === a && f.atkT > 0 && f.atkT <= a.su + a.ac + a.re) seen.push(attackClip(f).clip + ':' + attackClip(f).frame);
+        foe.x = 348; foe.stun = 0; foe.invincibleT = 0; foe.vx = 0;
+        if (!foe.ragdollActive) { foe.state = 'idle'; foe.y = 0; foe.grounded = true; }
+        const before = foe.hp, box = f.atk === a ? f.strike() : null;
+        if (box && !f.hitDone) {
+          foe.takeHit(box, f);
+          if (foe.hp < before) { f.hitDone = 1; hits.push({ base: a.baseDmg, kd: !!foe.ragdollActive, clip: a.clip, frames: seen.slice() }); }
+        }
+      }
+    };
+    play(0); play(1); play(2);
+    out[cls] = hits;
+  }
+  const row = (cls, clips) => {
+    const h = out[cls];
+    return h.length === 3 && h.map(x => x.base).join() === '5,7,9' && h.map(x => x.clip).join() === clips && h[2].kd === true && h[0].kd === false && h[1].kd === false;
+  };
+  const b = out.blade, s = out.staff, k = out.freehand;
+  out.pass = row('blade', 'punch,punch,kick') && row('freehand', 'punch,combo,kick') && row('staff', 'punch,punch,kick')
+    && inRange(b[0].frames, 0, 2) && inRange(b[1].frames, 3, 5) && b[2].frames.every(x => x.startsWith('kick:'))
+    && inRange(s[0].frames, 0, 2) && inRange(s[1].frames, 3, 5) && s[2].frames.every(x => x.startsWith('kick:'))
+    && k[0].frames.every(x => x.startsWith('punch:')) && k[1].frames.every(x => x.startsWith('combo:')) && inRange(k[1].frames, 5, 8) && k[2].frames.every(x => x.startsWith('kick:'));
+  Game.mode = prev.mode; Game.phase = prev.phase; Math.random = prev.random;
+  return out;
+}
+"""
+
+DODGE = r"""
+() => {
+  const prev = { mode: Game.mode, phase: Game.phase };
+  Game.mode = 'beatemup'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.minX = -1000; Game.maxX = 4000;
+  const f = fighters[0], foe = fighters[1];
+  f.setClass('freehand'); f.playerControlled = true; foe.playerControlled = false;
+  const poke = (special) => {
+    const before = f.hp;
+    const kind = f.takeHit({ dmg: 4, kb: 0, stun: 0, chip: 0, special: !!special, chain: 0, knockdown: false }, foe);
+    const landed = f.hp < before;
+    f.hp = before; f.stun = 0; f.vx = 0; f.ragdollActive = false;
+    if (f.dodgeT > 0) f.state = 'roll';
+    return { kind, landed };
+  };
+  const rollTo = (steps) => {
+    f.reset(300, 1); foe.reset(500, -1); f.hp = 200; f.dodgeT = 0; f.dodgeCooldown = 0; f.invincibleT = 0;
+    f.startRoll(0, foe);
+    for (let i = 0; i < steps; i++) f.update(Game.STEP, foe, 0);
+    return f.dodgeT;
+  };
+  rollTo(18);
+  const at30 = poke(false), at30super = poke(true);
+  rollTo(27);
+  const at45 = poke(false), at45super = poke(true);
+  f.reset(300, 1); foe.reset(500, -1); f.hp = 200; f.dodgeT = 0; f.dodgeCooldown = 0;
+  Input.pad[0].roll = 0; Input.was[0].roll = 0; Input.tapped[0].roll = 0;
+  f.startRoll(0, foe);
+  const cd0 = f.dodgeCooldown;
+  let ignored = true;
+  for (let i = 0; i < 90; i++) f.update(Game.STEP, foe, 0);
+  Input.pad[0].roll = 1; Input.was[0].roll = 0; Input.tapped[0].roll = 0;
+  const cdBefore = f.dodgeCooldown;
+  f.update(Game.STEP, foe, 0);
+  if (f.dodgeCooldown > 1.2) ignored = false;
+  Input.pad[0].roll = 0; Input.was[0].roll = 0;
+  while (f.dodgeCooldown > 0) f.update(Game.STEP, foe, 0);
+  Input.pad[0].roll = 1; Input.was[0].roll = 0; Input.tapped[0].roll = 0;
+  f.update(Game.STEP, foe, 0);
+  const restarted = f.dodgeT > 0.5 && Math.abs(f.dodgeCooldown - PACE.dodgeCooldown) < 1e-6;
+  Game.mode = prev.mode; Game.phase = prev.phase;
+  Input.pad[0].roll = 0; Input.was[0].roll = 0;
+  const pass = at30.kind === 'evade' && !at30.landed && at30super.kind === 'evade' && !at30super.landed
+    && at45.landed && at45super.landed && ignored && restarted && Math.abs(cd0 - 1.6) < 1e-9 && cdBefore > 0;
+  return { at30, at30super, at45, at45super, cd0, cdBefore, ignored, restarted, pass };
+}
+"""
+
+PACECFG = r"""
+() => {
+  const f = fighters[0];
+  f.setClass('blade'); f.playerControlled = true; f.chain = 0; f.chainArmed = 0; f.attackBoostT = 0;
+  Math.random = () => 0.99;
+  f.startAtk('punch');
+  const punch = [f.atk.su, f.atk.ac, f.atk.re, f.atk.chainWindow];
+  f.chainArmed = 0; f.startAtk('kick');
+  const fin = [f.atk.su, f.atk.ac, f.atk.re, f.atk.knockdown ? 1 : 0];
+  const prev = BeatEmUp.stage;
+  BeatEmUp.stage = 1; BeatEmUp.baseS = 1.5;
+  const enemy = BeatEmUp.makeEnemy('regular', 400, .5);
+  enemy.f.startAtk('punch');
+  const scaled = enemy.f.atk.su === paceEnemy(Moves.punch.su) && enemy.f.atk.ac === paceEnemy(Moves.punch.ac) && enemy.f.atk.re === paceEnemy(Moves.punch.re);
+  const boss = BeatEmUp.makeEnemy('boss', 900, .5);
+  boss.f.startAtk('punch');
+  const bossScaled = boss.f.atk.su === paceEnemy(Moves[boss.f.bossProfile.normal1.key].su);
+  BeatEmUp.stage = prev;
+  const fromBlock = punch[0] === PACE.punch.su && punch[1] === PACE.punch.ac && punch[2] === PACE.punch.re && punch[3] === PACE.punch.chainWindow
+    && fin[0] === PACE.finisher.su && fin[1] === PACE.finisher.ac && fin[2] === PACE.finisher.re
+    && BeatEmUp.PACE === PACE.move && EnemyProjectile.speed === PACE.projectileSpeed;
+  const pass = fromBlock && punch.join() === '12,4,19,14' && fin.join() === '19,7,31,1'
+    && BeatEmUp.PACE === 0.55 && EnemyProjectile.speed === 250 && PACE.enemy === 1.3 && scaled && bossScaled
+    && PACE.hitstop.chain === 4 && PACE.hitstop.finisher === 8
+    && PACE.dodgeDuration === 0.6 && PACE.dodgeIFrames === 0.36 && PACE.dodgeCooldown === 1.6 && PACE.getUp === 0.8
+    && Fighter.GROUND_ACCEL === 1000 && Fighter.GROUND_BRAKE === 1400;
+  return { punch, fin, move: BeatEmUp.PACE, speed: EnemyProjectile.speed, scaled, bossScaled, pass };
 }
 """
 
@@ -2208,7 +2330,19 @@ def main():
             pacing = page.evaluate(PACING)
             print('pacing pass', json.dumps({k: v for k, v in pacing.items() if k != 'pass'}))
             if not pacing['pass']:
-                failures.append('Pacing pass failed: expected class normals at the x1.3 startup/recovery tables (active unchanged, follow-ups >= 5f after attackSpeed), Karate < Blade < Staff, blend floor .08 outside active frames with identical strike boxes/combat bones on every active frame vs the old .04 floor, accel 1000 / brake 1400 / turn 1700, and supers, SLAM, enemy specials, boss signatures, ranged timings and stun unchanged')
+                failures.append('Pacing pass failed: expected every class punch at 12/4/19 and the kick finisher at 19/7/31, identical 35/35/57 totals, blend floor .08 outside active frames with identical strike boxes/combat bones on every active frame vs the old .04 floor, accel 1000 / brake 1400 / turn 1700, and supers, SLAM, enemy specials, boss signatures, ranged timings and stun unchanged')
+            chain = page.evaluate(CHAIN)
+            print('attack chain', json.dumps({k: v for k, v in chain.items() if k != 'pass'}))
+            if not chain['pass']:
+                failures.append('Attack chain failed: expected Blade, Karate and Staff to deal 5/7/9 base damage across punch, the class second clip, and the kick finisher, with hit 3 knocking the target down and Karate hit 2 staying on combo frames 5-8')
+            dodge = page.evaluate(DODGE)
+            print('dodge', json.dumps(dodge))
+            if not dodge['pass']:
+                failures.append('Dodge failed: expected a second roll within 1.6s of the start to be ignored, a roll after 1.6s to start, a hit at 0.30s to whiff and a hit at 0.45s to land, supers included')
+            pace = page.evaluate(PACECFG)
+            print('pace block', json.dumps(pace))
+            if not pace['pass']:
+                failures.append('PACE block failed: expected punch 12/4/19, finisher 19/7/31, chainWindow 14, hitstop 4/8, PACE 0.55, roll 0.60, i-frames 0.36, cooldown 1.6, get-up 0.8, enemy x1.3 and projectile speed 250 from the single PACE block')
             ranged = page.evaluate(RANGED)
             print('ranged archetype', json.dumps({k: v for k, v in ranged.items() if k != 'pass'}))
             if not ranged['pass'] or '"thrower"' in stage_src:

@@ -1,6 +1,6 @@
 import { Sfx } from './audio.js';
 import { BladeSuper } from './blade.js';
-import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones } from './config.js';
+import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
@@ -108,8 +108,8 @@ export class BeatEmUp {
   static bgSet(n) { BeatEmUp.bgX = BeatEmUp.bgTravelFrom = BeatEmUp.bgTravelTo = BeatEmUp.bgAnchor(n); }
   /** Share of the screen kept clear on each side. Inside the middle, the camera stays put. */
   static CAMERA_MARGIN = 0.18;
-  /** Player walk and lane change, relative to the old speed. */
-  static PACE = 0.68;
+  /** Player walk and lane change. Reads the shared PACE block. */
+  static get PACE() { return PACE.move; }
   /** How far the picture may scroll on this wave. Street waves stop on the next plate; the boss stays past the join. */
   static bgScrollRange() {
     const P = BeatEmUp.pano();
@@ -1116,6 +1116,9 @@ export class BeatEmUp {
             move = 'special';
             label = profile.signature.label;
             tell = Math.max(profile.signature.tellMin, profile.signature.tellBase * (ai.phase === 3 ? profile.signature.phase3TellMul : 1) / BossHardness.rate);
+            const sigMove = BossSignatures[profile.signature.key];
+            const breaksGuard = sigMove && (sigMove.guardBreak === true || (Array.isArray(sigMove.guardBreak) && sigMove.guardBreak.some(Boolean)));
+            if (breaksGuard) tell = Math.max(0.5, tell);
           } else {
             const useN1 = Math.random() < .55;
             move = useN1 ? profile.normal1.state : profile.normal2.state;
@@ -1227,7 +1230,7 @@ export class BeatEmUp {
         const pulse = atk ? attacker.f.superPulse() : 0;
         if (attacker.f.state === 'special' && attacker.f.hitTargets.get(target) === pulse) continue;
         if (attacker.f.state === 'special' && attacker.f.bladeSuper?.hits.has(target)) continue; // Wave already hit it
-        if (atk && attacker.f.state === 'special' && (!target.f.grounded || target.f.dodgeT > 0)) continue;
+        if (atk && attacker.f.state === 'special' && (!target.f.grounded || target.f.inDodgeIFrames())) continue;
         const staffRadialAttack = attacker.f.state === 'special' && attacker.f.classProfile?.weapon === 'staff';
         const specialLane = attacker.f.state === 'special' && attacker.role === 'player' ? Depth.specialLaneTolerance(attacker.f) : null;
         if (!staffRadialAttack && !BeatEmUp.depthClose(attacker.depth, target.depth, (specialLane ?? BeatEmUp.depthHitTolerance(attacker, target)) + 1e-9)) continue;
@@ -1241,7 +1244,7 @@ export class BeatEmUp {
         if (!th || (hit.radial
           ? !Fighter.staffRadialHits(hit, attacker.f, target)
           : !Game.hitTest(hit, th))) continue;
-        if (target.f.dodgeT > 0) continue;
+        if (target.f.inDodgeIFrames()) continue;
         if (target.f.playerControlled && target.f.invincibleT > 0) continue;
         attacker.f.hitDone = 1;
         if (hit.special) attacker.f.hitTargets.set(target, hit.pulse);
@@ -1294,8 +1297,11 @@ export class BeatEmUp {
           else if (!criticalHit) Fx.hit(cx, cy);
           Game.stop = .05; Game.shake = .1; Game.shMag = 3;
         }
-        if (attacker.role === 'player' && !hit.special && kind === 'hit' && damage > 0)
+        if (attacker.role === 'player' && !hit.special && kind === 'hit' && damage > 0) {
+          const frames = hit.knockdown || attacker.f.state === 'kick' ? PACE.hitstop.finisher : PACE.hitstop.chain;
+          Game.stop = frames / 60;
           Sfx.play(attacker.f.state === 'kick' ? 'player-heavy-hit' : 'player-normal-hit', attacker.f.classProfile);
+        }
         if (kind === 'hit') target.f.vy = -100;
         if (attacker.role === 'player') {
           BeatEmUp.awardScore(damage * (kind === 'block' ? 35 : 100) + (specialFirst ? 300 : 0));
@@ -1604,6 +1610,19 @@ export class BeatEmUp {
     ctx.beginPath(); ctx.ellipse(x, y, rw * 1.55, rh * 1.55, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
+  /** Keyboard and gamepad: a small clockwise arc under the shadow while Dodge recharges. Phones use the button. */
+  static drawDodgeArc(ctx, fighter, x, y, rw) {
+    if (!fighter?.playerControlled || !(fighter.dodgeCooldown > 0)) return;
+    if (typeof matchMedia === 'function' && matchMedia('(max-height: 420px)').matches) return;
+    const p = 1 - fighter.dodgeCooldown / PACE.dodgeCooldown;
+    ctx.save();
+    ctx.strokeStyle = '#45dceb';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y + 6, Math.max(8, rw * 0.9), -Math.PI / 2, -Math.PI / 2 + Math.max(0.08, p) * Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   static drawFighter(ctx, entry) {
     BeatEmUp.withDepth(entry, () => {
       ctx.save();
@@ -1617,6 +1636,7 @@ export class BeatEmUp {
       ctx.ellipse(entry.f.x, Game.GROUND + 1, rw, rh, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
+      BeatEmUp.drawDodgeArc(ctx, entry.f, entry.f.x, Game.GROUND + 1, rw);
       if (entry.kind === 'boss' && entry.f.bossProfile && BeatEmUp.BOSS_CUE) BeatEmUp.drawBossCue(ctx, entry, rw, rh);
       const drawTag = entry.f.tag;
       const showAlert = entry.ai && (entry.ai.tellT > 0 || entry.ai.phaseCallout > 0);

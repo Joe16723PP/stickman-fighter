@@ -31,6 +31,7 @@ export class Sfx {
     else if (name === 'hit') Sfx.tone(125 * pitch, 48 * pitch, .11, 'square', .05);
     else if (name === 'block') Sfx.tone(480 * pitch, 180 * pitch, .1, 'triangle', .045);
     else if (name === 'dodge') Sfx.tone(360 * pitch, 110 * pitch, .16, 'sine', .055);
+    else if (name === 'dodge-ready') Sfx.tone(880 * pitch, 620 * pitch, .045, 'square', .035);
     else if (name === 'super-charge') { Sfx.tone(95 * pitch, 260 * pitch, .2, 'sawtooth', .055); setTimeout(() => Sfx.tone(240 * pitch, 520 * pitch, .13, 'triangle', .045), 95); }
     else if (name === 'super-dash') Sfx.tone(620 * pitch, 130 * pitch, .16, 'sawtooth', .075);
     else if (name === 'super-hit') { Sfx.tone(105 * pitch, 32 * pitch, .26, 'sawtooth', .1); setTimeout(() => Sfx.tone(390 * pitch, 80 * pitch, .18, 'triangle', .06), 55); }
