@@ -273,14 +273,20 @@ export class Fighter {
       // Player specials release quickly; CPU specials telegraph longer to give players a dodge window.
       if (kind === 'special') {
         if (this.classProfile?.weapon === 'blade') {
-          this.atk.su = BladeSuper.CHARGE_FRAMES;  // 12: charge (1-12)
-          this.atk.ac = BladeSuper.STRIKE_FRAMES;  // 24: draw wind-up + active slash + follow-through hold (13-36)
-          this.atk.re = BladeSuper.END_FRAMES;     // 24: recovery + sheath finish (37-60)
+          this.atk.su = BladeSuper.CHARGE_FRAMES;  // 16: charge (1-16)
+          this.atk.ac = BladeSuper.STRIKE_FRAMES;  // 32: draw wind-up + active slash + follow-through hold
+          this.atk.re = BladeSuper.END_FRAMES;     // 32: recovery + sheath finish
         } else if (this.classProfile?.style === 'ward') {
           const karateSu = this.playerControlled ? 10 : Math.round(1.25 / Game.STEP);
           this.atk.su = Math.round(karateSu * 1.2);
           this.atk.ac = Math.round(15 * 1.2);
           this.atk.re = Math.round(18 * 1.2);
+          // Player Iron Fist String only: 12/18/22 scaled by PACE.special -> 16/24/30. CPU telegraph is unchanged.
+          if (this.playerControlled) {
+            this.atk.su = Math.round(this.atk.su * PACE.special);
+            this.atk.ac = Math.round(this.atk.ac * PACE.special);
+            this.atk.re = Math.round(this.atk.re * PACE.special);
+          }
         } else if (this.classProfile?.weapon !== 'staff') {
           this.atk.su = Math.round((this.playerControlled ? .5 : 1.25) / Game.STEP);
         }
@@ -782,8 +788,8 @@ export class Fighter {
         return;
       }
       if (this.classProfile?.weapon === 'staff') {
-        const staffDelays = a.hitDelays || [0, 14, 28];
-        const staffDurs = a.hitDurations || [8, 8, 10];
+        const staffDelays = a.hitDelays || [0, 24, 48];
+        const staffDurs = a.hitDurations || [10, 10, 14];
         const staffOff = t - a.su - 1;
         const staffHit1 = staffDelays[0] + staffDurs[0] - 1;
         const staffGap = staffDelays[1] - 1;

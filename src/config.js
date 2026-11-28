@@ -9,7 +9,9 @@ import { Pose } from './pose.js';
 /** LF2 pacing. Every approved timing reads this block so it can be tuned in one place. */
 export const PACE = {
   enemy: 1.3,
-  hitstop: { chain: 4, finisher: 8 },
+  /** Player specials scale by this (Karate su/ac/re, Blade beats). Staff hit spacing is authored beside it. */
+  special: 1.35,
+  hitstop: { chain: 4, finisher: 8, special: 6, specialLast: 10 },
   dodgeDuration: 0.60,
   dodgeIFrames: 0.36,
   dodgeCooldown: 1.6,
@@ -23,6 +25,11 @@ export const PACE = {
 /** Extra ×PACE.enemy on enemy and boss startup, active, and recovery frames. Distances stay put. */
 export function paceEnemy(n) {
   return Math.max(1, Math.round(n * PACE.enemy));
+}
+/** Seconds of hit-stop for one special contact. The last pulse of the move holds longer. */
+export function specialHitStop(pulse, hitCount) {
+  const last = Math.max(0, (hitCount || 1) - 1);
+  return (pulse >= last ? PACE.hitstop.specialLast : PACE.hitstop.special) / 60;
 }
 
 export const ArcadeDiff = {

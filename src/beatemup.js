@@ -1,6 +1,6 @@
 import { Sfx } from './audio.js';
 import { BladeSuper } from './blade.js';
-import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones } from './config.js';
+import { ArcadeDiff, ArchetypeSkeleton, BossCounters, BossFields, BossHardness, BossPhases, BossSignature, BossSignatures, BossWeapons, CpuHotColors, Depth, EnemyArchetypes, EnemyBash, EnemyBashes, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, EnemyWeaponProfiles, FighterClasses, PACE, PlayerCoolColor, STAGE_TRANSITION_DELAY, ShockZones, specialHitStop } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
@@ -1276,17 +1276,19 @@ export class BeatEmUp {
         if (criticalHit) { Fx.critical(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile); Sfx.play('critical', attacker.f.classProfile); }
         if (hit.special && attacker.f.classProfile?.style === 'ward') {
           const camX = cx - BeatEmUp.cameraX, k = BeatEmUp.withDepth(attacker, () => attacker.f.drawS() / 1.2);
-          if (hit.pulse <= 1) { Fx.karateSuperPunch(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-          else if (hit.pulse === 2) { Fx.karateSuperKickMid(camX, cy, attacker.f.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-          else { Fx.karateSuperKickHigh(camX, cy, attacker.f.face, k, BeatEmUp.withDepth(target, () => target.f.groundY())); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
+          const specialStop = specialHitStop(hit.pulse, attacker.f.atk.hitCount);
+          if (hit.pulse <= 1) { Fx.karateSuperPunch(camX, cy, attacker.f.face, k); Game.stop = specialStop; Game.shake = 0; }
+          else if (hit.pulse === 2) { Fx.karateSuperKickMid(camX, cy, attacker.f.face, k); Game.stop = specialStop; Game.shake = 0; }
+          else { Fx.karateSuperKickHigh(camX, cy, attacker.f.face, k, BeatEmUp.withDepth(target, () => target.f.groundY())); Game.stop = specialStop; Game.shake = 8 / 60; Game.shMag = 4; }
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
         } else if (hit.special && attacker.f.classProfile?.weapon === 'staff') {
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
+          Game.stop = specialHitStop(hit.pulse, attacker.f.atk.hitCount);
         } else if (hit.special && attacker.f.bladeSuper) {
           BladeSuper.contactFx(hit.pulse, cx - BeatEmUp.cameraX, cy, BeatEmUp.withDepth(attacker, () => attacker.f.drawS() / 1.2), kind);
           if (kind === 'block') Fx.blocked(cx - BeatEmUp.cameraX, cy);
           if (!attacker.f.specialEffectDone) { Sfx.play(attacker.role === 'player' ? 'player-special-hit' : 'super-hit', attacker.f.classProfile); attacker.f.specialEffectDone = 1; }
-          Game.stop = .05; Game.shake = .1; Game.shMag = 3; // unchanged contact hit-stop; impact holds add none
+          Game.stop = specialHitStop(hit.pulse, attacker.f.atk.hitCount); Game.shake = .1; Game.shMag = 3;
         } else {
           if (hit.special && !attacker.f.specialEffectDone) {
             Fx.special(cx - BeatEmUp.cameraX, cy, attacker.f.classProfile);

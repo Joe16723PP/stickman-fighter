@@ -42,11 +42,12 @@ export const Moves = {
     knockdown: true,
   },
   staffSpecial: {
-    su: 16, ac: 19, re: 22,
+    // Total stays 57. ac grew 19 -> 31 so the last hit (delay 24 + duration 7, off 24..30) fits inside active; re shrank 22 -> 10 by those same 12 frames.
+    su: 16, ac: 31, re: 10,
     dmg: 22, chip: 6, kb: 390, stun: 22,
     hitCount: 3,
-    hitDurations: [4, 4, 5],
-    hitDelays: [0, 7, 14],
+    hitDurations: [5, 5, 7],
+    hitDelays: [0, 12, 24],
     hitDamages: [24, 24, 38],
     reach: 210, spinFront: 130, slamFront: 180,
     slamGroundCrackReach: 52,

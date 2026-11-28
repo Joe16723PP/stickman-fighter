@@ -63,7 +63,7 @@ CLEARANCE = '''() => {
 }'''
 
 BLADE_SUPER = '''() => {
-  // IAI Crescent Storm: single slash + travelling Blade Wave, 60 frames. Scripted frame by frame (practice lane, fixed step), no sims.
+  // IAI Crescent Storm: single slash + travelling Blade Wave, 80 frames. Scripted frame by frame (practice lane, fixed step), no sims.
   const prevRandom = Math.random; Math.random = () => 0.999; // keep the 74-damage assertion off a crit roll
   Game.mode = 'practice'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
   Game.minX = 0; Game.maxX = Game.W;
@@ -94,7 +94,7 @@ BLADE_SUPER = '''() => {
   };
   // --- A. frame table
   setup(200);
-  const a = owner.atk, phases = [12,13,20,21,24,25,36,37,50,51,60].map(f => { const p = BladeSuper.phaseAt(f); return p.part + (p.strike >= 0 ? p.strike : ''); }).join(',');
+  const a = owner.atk, phases = [16,17,27,28,32,33,48,49,67,68,80].map(f => { const p = BladeSuper.phaseAt(f); return p.part + (p.strike >= 0 ? p.strike : ''); }).join(',');
   const windows = []; let cur = null;
   for (let f = 1; f <= a.su + a.ac + a.re; f++) {
     const p = BladeSuper.pulseForFrame(f);
@@ -105,12 +105,14 @@ BLADE_SUPER = '''() => {
     launch:BladeSuper.LAUNCH_FRAME, faceLock:BladeSuper.FACE_LOCK_FRAME, noto:BladeSuper.NOTO_FRAME, dmg:a.dmg, hitCount:a.hitCount, fractions:(a.superFractions || []).join(','),
     stun:a.stun, stunConst:BladeSuper.STUN_FRAMES, visual:owner.classProfile.superVisualDuration, superHits:owner.classProfile.superHits,
     waveDamage:BladeSuper.WAVE_DAMAGE, range:BladeSuper.RANGE, speed:BladeSuper.SPEED };
-  r.tableOk = r.table.su === 12 && r.table.ac === 24 && r.table.re === 24 && r.table.total === 60 && r.table.noto === 60
+  r.tableOk = r.table.su === 16 && r.table.ac === 32 && r.table.re === 32 && r.table.total === 80 && r.table.noto === 80
     && r.table.phases === 'charge,windup0,windup0,active0,active0,hold0,hold0,recovery,recovery,sheath,sheath'
-    && r.table.windows === '0-21-24' && r.table.strikes === 1 && r.table.parts === '8/4/12/0' && r.table.recovery === 14 && r.table.sheath === 10
-    && r.table.launch === 21 && r.table.faceLock === 21 && r.table.dmg === 74 && r.table.hitCount === 1 && r.table.fractions === '1'
+    && r.table.windows === '0-28-32' && r.table.strikes === 1 && r.table.parts === '11/5/16/0' && r.table.recovery === 19 && r.table.sheath === 13
+    && r.table.launch === 28 && r.table.faceLock === 28 && r.table.dmg === 74 && r.table.hitCount === 1 && r.table.fractions === '1'
     && r.table.stun === 210 && r.table.stunConst === 210 && r.table.visual === 1 && r.table.superHits === 1 && r.table.waveDamage === 74
-    && r.table.range === 420 && r.table.speed === 900;
+    && r.table.range === 420 && r.table.speed === 670
+    && r.table.su === Math.round(12 * PACE.special) && r.table.ac === Math.round(8 * PACE.special) + Math.round(4 * PACE.special) + Math.round(12 * PACE.special)
+    && r.table.re === Math.round(24 * PACE.special);
   // --- B. integrated runs: hit frame, single damage event, stun held to hit+210, knockdown at hit+210, owner free at 60
   const run = (dx, opts = {}) => {
     setup(dx);
@@ -133,13 +135,13 @@ BLADE_SUPER = '''() => {
     out.pending = BladeSuper.sequences.reduce((n, s) => n + s.knockdowns.size, 0);
     return out;
   };
-  // B1: close target, slash and Wave both overlap it -> one 74 hit on frame 21
+  // B1: close target, slash and Wave both overlap it -> one 74 hit on the launch frame (28)
   r.close = run(60, { slash:true });
   // B2: far target in lane, slash misses, the Wave hits on its way
   r.far = run(260);
   // B3: wave first, then a slash that also overlaps -> still one hit
-  setup(60); for (let f = 1; f <= 20; f++) step(f);
-  owner.update(STEP, target, 1 - 1); // atkT 21: Wave launched
+  setup(60); for (let f = 1; f < BladeSuper.LAUNCH_FRAME; f++) step(f);
+  owner.update(STEP, target, 0); // atkT === LAUNCH_FRAME (28): Wave launched
   BladeSuper.update(STEP); const afterWave = target.hp; overlapSlash(); Game.resolve(); r.waveFirst = { afterWave, afterSlash:target.hp, launched:!!owner.bladeSuper?.launched };
   // B4: pierce + off-lane: the Wave hits every in-lane target once, never an off-lane one
   setup(800);
@@ -153,21 +155,21 @@ BLADE_SUPER = '''() => {
   r.ownerHit = run(60, { slash:true, frames:240, at:{ 30:() => owner.takeHit({dmg:5, kb:100, stun:12, chip:0}, target) } });
   r.targetKilled = run(60, { slash:true, frames:240, at:{ 100:() => { target.hp = 0; } } });
   r.roundClear = run(60, { slash:true, frames:240, at:{ 100:() => BladeSuper.clear() } });
-  // A new super at frame 90 hits the still-stunned target again (its own 210 timer); the first knockdown still fires at 231.
+  // A new super at frame 90 hits the still-stunned target again (its own 210 timer); the first knockdown still fires at 238.
   r.secondSuper = run(60, { slash:true, frames:240, hp:500, at:{ 90:() => { owner.meter = 100; owner.startAtk('special'); } } });
   const c = r.close, fr = r.far;
   r.pass = !!(r.tableOk
-    && c.launchAt === 21 && c.hitFrame === 21 && c.hpEvents.length === 1 && c.damage === 74 && c.stunAtHit === 210 && !c.stunGap
-    && c.knockFrame === c.hitFrame + 210 && c.freeFrame === 60 && !c.ownerMoved && c.face === 1 && c.pending === 0
-    && fr.launchAt === 21 && fr.hitFrame > 21 && fr.hitFrame <= 21 + Math.ceil(BladeSuper.RANGE / BladeSuper.SPEED * 60) && fr.hpEvents.length === 1 && fr.damage === 74
-    && fr.stunAtHit === 210 && !fr.stunGap && fr.knockFrame === fr.hitFrame + 210 && fr.freeFrame === 60
+    && c.launchAt === 28 && c.hitFrame === 28 && c.hpEvents.length === 1 && c.damage === 74 && c.stunAtHit === 210 && !c.stunGap
+    && c.knockFrame === c.hitFrame + 210 && c.freeFrame === 80 && !c.ownerMoved && c.face === 1 && c.pending === 0
+    && fr.launchAt === 28 && fr.hitFrame > 28 && fr.hitFrame <= 28 + Math.ceil(BladeSuper.RANGE / BladeSuper.SPEED * 60) && fr.hpEvents.length === 1 && fr.damage === 74
+    && fr.stunAtHit === 210 && !fr.stunGap && fr.knockFrame === fr.hitFrame + 210 && fr.freeFrame === 80
     && r.waveFirst.launched && r.waveFirst.afterWave === 26 && r.waveFirst.afterSlash === 26
     && r.pierce.pierce === 26 && r.pierce.offLane === 100
-    && r.ownerHit.hitFrame === 21 && r.ownerHit.knockFrame === 231 && r.ownerHit.hpEvents.length === 1
-    && r.targetKilled.hitFrame === 21 && r.targetKilled.pending === 0
-    && r.roundClear.hitFrame === 21 && r.roundClear.knockFrame === 0 && r.roundClear.pending === 0
-    && r.secondSuper.hitFrame === 21 && r.secondSuper.knockFrame === 231 && r.secondSuper.hpEvents.length === 2
-    && r.secondSuper.hpEvents[1][0] === 110 && r.secondSuper.pending === 1);
+    && r.ownerHit.hitFrame === 28 && r.ownerHit.knockFrame === 238 && r.ownerHit.hpEvents.length === 1
+    && r.targetKilled.hitFrame === 28 && r.targetKilled.pending === 0
+    && r.roundClear.hitFrame === 28 && r.roundClear.knockFrame === 0 && r.roundClear.pending === 0
+    && r.secondSuper.hitFrame === 28 && r.secondSuper.knockFrame === 238 && r.secondSuper.hpEvents.length === 2
+    && r.secondSuper.hpEvents[1][0] === 117 && r.secondSuper.pending === 1);
   BladeSuper.clear(); owner.setClass(Game.selectedClass || null); owner.reset(Game.W * .3, 1); target.reset(Game.W * .7, -1);
   Math.random = prevRandom;
   return r;
@@ -981,7 +983,7 @@ PACING = r"""
   const brakeT = n => { let v = n, k = 0; while (v > 0) { v = Math.max(0, v - Fighter.GROUND_BRAKE * Game.STEP); k++; } return k; };
   r.move = { accel: Fighter.GROUND_ACCEL, brake: Fighter.GROUND_BRAKE, turn: Fighter.TURN_ACCEL, toTop220: accelT(220), stop220: brakeT(220) };
   const fr = r.frames, tot = k => fr[k].split('/').map(Number).reduce((a, b) => a + b, 0), su = k => +fr[k].split('/')[0];
-  // Untouched: supers, Heavy SLAM, enemy specials, boss signatures, stun.
+  // Generic special stays 14/10/18. Staff special base is now 16/31/10 (same 57-frame total). Heavy SLAM, enemy specials, boss signatures, stun stay put.
   const sig = k => [Moves[k].su, Moves[k].ac, Moves[k].re].join('/');
   r.untouched = [sig('special'), sig('staffSpecial'), sig('bossBlockParty'), sig('bossDockHaulIn'), sig('bossMarketToss'), sig('bossForgeQuake'), sig('bossShieldCharge'),
     [EnemySlams.overhead.windup, EnemySlams.overhead.active, EnemySlams.overhead.recovery].join('/'),
@@ -991,7 +993,7 @@ PACING = r"""
     [EnemyDeploys.shockZone.windup, EnemyDeploys.shockZone.active, EnemyDeploys.shockZone.recovery].join('/'),
     [EnemyProjectile.tell, EnemyProjectile.recovery, EnemyProjectile.cooldown].join('/'),
     [Moves.punch.chainStun.join(','), Moves.kick.stun, Moves.staffPunch.stun, Moves.staffKick.stun].join('/')].join(' ');
-  r.expectUntouched = '14/10/18 16/19/22 10/9/16 14/24/16 12/60/18 16/18/20 18/20/18 30/4/48 16/18/7/' + EnemyRushes.shoulder.whiffRecovery
+  r.expectUntouched = '14/10/18 16/31/10 10/9/16 14/24/16 12/60/18 16/18/20 18/20/18 30/4/48 16/18/7/' + EnemyRushes.shoulder.whiffRecovery
     + ' 14/5/48 27/6/48 24/1/30 0.5/0.9/2.5 10,15,24,24/22/10/22';
   Game.mode = prev.mode;
   const exp = {
@@ -1965,6 +1967,114 @@ DODGE = r"""
 }
 """
 
+SPECIAL_PACE = r"""
+() => {
+  const prev = { mode: Game.mode, phase: Game.phase, random: Math.random };
+  Math.random = () => 0.99;
+  Game.mode = 'practice'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  Game.minX = 0; Game.maxX = Game.W;
+  const owner = fighters[0], target = fighters[1], STEP = Game.STEP;
+  const pads = () => Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.was[0][a] = 0; Input.pad[1][a] = 0; Input.was[1][a] = 0; });
+  const film = (cls) => {
+    pads(); BladeSuper.clear();
+    owner.setClass(cls); owner.reset(Game.W * .35, 1); owner.playerControlled = true; owner.depth = 0; owner.meter = 100; owner.attackBoostT = 0;
+    target.setClass(null); target.reset(Game.W * .35 + 500, -1); target.depth = 0; target.hp = 500;
+    owner.startAtk('special');
+    const a = owner.atk, used = new Set();
+    const total = a.su + a.ac + a.re;
+    let clipOk = true;
+    for (let i = 0; i < total + 2 && owner.atk === a; i++) {
+      owner.update(STEP, target, 0); owner.x = Game.W * .35;
+      if (owner.atk === a && owner.atkT > 0) {
+        const shown = attackClip(owner);
+        if (shown.clip !== 'special') clipOk = false;
+        used.add(shown.frame);
+      }
+    }
+    const frames = [...used].sort((x, y) => x - y);
+    return { su: a.su, ac: a.ac, re: a.re, total, frames, clipOk };
+  };
+  const karate = film('freehand');
+  const staff = film('staff');
+  const blade = film('blade');
+  pads();
+  owner.setClass('freehand'); owner.reset(300, 1); owner.playerControlled = false; owner.bossProfile = null; owner.meter = 100;
+  owner.startAtk('special');
+  const cpuBaseSu = Math.round(Math.round(1.25 / STEP) * 1.2);
+  const cpu = { su: owner.atk.su, ac: owner.atk.ac, re: owner.atk.re };
+  const cpuOk = cpu.su === paceEnemy(cpuBaseSu) && cpu.ac === paceEnemy(18) && cpu.re === paceEnemy(22);
+  const scale = n => Math.round(n * PACE.special);
+  const fromPace = karate.su === scale(12) && karate.ac === scale(18) && karate.re === scale(22) && PACE.special === 1.35;
+  const staffBase = Moves.staffSpecial;
+  const delays = staffBase.hitDelays.join(',');
+  const durs = staffBase.hitDurations.join(',');
+  const covered = staffBase.hitDelays[2] + staffBase.hitDurations[2] <= staffBase.ac;
+  const staffTotal = staffBase.su + staffBase.ac + staffBase.re;
+  const overlap = (o, t) => {
+    t.depth = o.depth; t.y = 0; t.grounded = true; t.stun = 0; t.hp = 500;
+    t.ragdollActive = false; t.state = 'idle'; t.invincibleT = 0; t.dodgeT = 0;
+    const box = o.strike();
+    if (box && box.radial) { t.x = box.centerX; t.clamp(); return; }
+    t.x = o.x + 40; t.clamp();
+    if (!box) return;
+    if (box.segment) {
+      const seg = box.segment, x = (seg.x1 + seg.x2) / 2, y = (seg.y1 + seg.y2) / 2;
+      t.hitbox = { x: x - 8, y: y - 8, w: 16, h: 16 };
+    } else t.hitbox = { x: box.x, y: box.y, w: Math.max(1, box.w), h: Math.max(1, box.h) };
+  };
+  const land = (cls) => {
+    pads(); BladeSuper.clear(); Game.stop = 0;
+    owner.setClass(cls); owner.reset(300, 1); owner.playerControlled = true; owner.depth = 0; owner.meter = 100; owner.attackBoostT = 0;
+    target.setClass(null); target.reset(360, -1); target.playerControlled = false; target.depth = 0; target.hp = 500;
+    owner.startAtk('special');
+    const a = owner.atk, seen = [];
+    const total = a.su + a.ac + a.re;
+    for (let i = 0; i < total + 2 && owner.atk === a; i++) {
+      owner.update(STEP, target, 0);
+      if (owner.atk !== a) break;
+      owner.x = 300;
+      overlap(owner, target);
+      Game.stop = 0;
+      Game.resolve();
+      const slashStop = Game.stop;
+      BladeSuper.update(STEP);
+      const frames = Math.round((slashStop || Game.stop) * 60 + 1e-6);
+      if (frames > 0) seen.push(frames);
+    }
+    return seen;
+  };
+  const karateStops = land('freehand');
+  const staffStops = land('staff');
+  const bladeStops = land('blade');
+  const full = (row, n) => row.clipOk && row.frames.join(',') === [...Array(n).keys()].join(',');
+  const framesOk = full(karate, 24) && full(staff, 12) && full(blade, 12);
+  const hitstopOk = karateStops.includes(6) && karateStops.includes(10)
+    && staffStops.includes(6) && staffStops.includes(10)
+    && bladeStops.includes(10) && !bladeStops.includes(6);
+  const pass = !!(fromPace && karate.total === 70 && karate.su === 16 && karate.ac === 24 && karate.re === 30
+    && blade.total === 80 && blade.su === 16 && blade.ac === 32 && blade.re === 32
+    && BladeSuper.CHARGE_FRAMES === scale(12) && BladeSuper.STRIKE_FRAMES === 32
+    && BladeSuper.RECOVERY_FRAMES === 19 && BladeSuper.SHEATH_FRAMES === 13
+    && BladeSuper.END_FRAMES === scale(24) && BladeSuper.SPEED === 670 && BladeSuper.STUN_FRAMES === 210
+    && BladeSuper.LAUNCH_FRAME === BladeSuper.FACE_LOCK_FRAME
+    && delays === '0,12,24' && durs === '5,5,7' && covered && staffTotal === 57 && staff.total === 114
+    && PACE.hitstop.special === 6 && PACE.hitstop.specialLast === 10
+    && specialHitStop(0, 4) === 6 / 60 && specialHitStop(3, 4) === 10 / 60
+    && specialHitStop(1, 3) === 6 / 60 && specialHitStop(2, 3) === 10 / 60
+    && specialHitStop(0, 1) === 10 / 60
+    && cpuOk && framesOk && hitstopOk);
+  owner.playerControlled = true; owner.bossProfile = null; owner.setClass('freehand'); owner.reset(Game.W * .3, 1);
+  target.reset(Game.W * .7, -1); BladeSuper.clear();
+  Game.mode = prev.mode; Game.phase = prev.phase; Math.random = prev.random; Game.stop = 0;
+  const counts = arr => arr.reduce((m, n) => (m[n] = (m[n] || 0) + 1, m), {});
+  return { pass, fromPace, cpu, cpuOk, framesOk, hitstopOk,
+    karate: { su: karate.su, ac: karate.ac, re: karate.re, total: karate.total, frames: karate.frames.join(',') },
+    staff: { su: staff.su, ac: staff.ac, re: staff.re, total: staff.total, delays, durs, base: staffTotal, frames: staff.frames.join(',') },
+    blade: { su: blade.su, ac: blade.ac, re: blade.re, total: blade.total, frames: blade.frames.join(','), launch: BladeSuper.LAUNCH_FRAME, speed: BladeSuper.SPEED },
+    stops: { karate: counts(karateStops), staff: counts(staffStops), blade: counts(bladeStops) } };
+}
+"""
+
 PACECFG = r"""
 () => {
   const f = fighters[0];
@@ -2438,7 +2548,7 @@ def main():
             pacing = page.evaluate(PACING)
             print('pacing pass', json.dumps({k: v for k, v in pacing.items() if k != 'pass'}))
             if not pacing['pass']:
-                failures.append('Pacing pass failed: expected every class punch at 12/4/19 and the kick finisher at 19/7/31, identical 35/35/57 totals, blend floor .08 outside active frames with identical strike boxes/combat bones on every active frame vs the old .04 floor, accel 1000 / brake 1400 / turn 1700, and supers, SLAM, enemy specials, boss signatures, ranged timings and stun unchanged')
+                failures.append('Pacing pass failed: expected every class punch at 12/4/19 and the kick finisher at 19/7/31, identical 35/35/57 totals, blend floor .08 outside active frames with identical strike boxes/combat bones on every active frame vs the old .04 floor, accel 1000 / brake 1400 / turn 1700, generic special 14/10/18, staff special 16/31/10, and SLAM, enemy specials, boss signatures, ranged timings and stun unchanged')
             chain = page.evaluate(CHAIN)
             print('attack chain', json.dumps({k: v for k, v in chain.items() if k != 'pass'}))
             if not chain['pass']:
@@ -2460,7 +2570,11 @@ def main():
             blade_super = page.evaluate(BLADE_SUPER)
             print('blade Super harness', json.dumps(blade_super))
             if not blade_super['pass']:
-                failures.append('Blade Super harness failed: expected the 60-frame single-slash Crescent Storm (charge 12, draw 8, active 21-24 with the Wave launched on 21, hold 12, recovery 14, sheath 10; su/ac/re 12/24/24), one 74-damage event per target shared by slash and Wave (either order), stun 210 held until a per-target knockdown at hit+210, Blade free at frame 60 and planted/face-locked, Wave piercing in lane only, and safe knockdown timers when Blade is hit, the target dies, the round clears or a new super starts')
+                failures.append('Blade Super harness failed: expected the 80-frame single-slash Crescent Storm (charge 16, draw 11, active 28-32 with the Wave launched on 28, hold 16, recovery 19, sheath 13; su/ac/re 16/32/32, speed 670), one 74-damage event per target shared by slash and Wave (either order), stun 210 held until a per-target knockdown at hit+210, Blade free at frame 80 and planted/face-locked, Wave piercing in lane only, and safe knockdown timers when Blade is hit, the target dies, the round clears or a new super starts')
+            special_pace = page.evaluate(SPECIAL_PACE)
+            print('special pace', json.dumps(special_pace))
+            if not special_pace['pass']:
+                failures.append('Special pace failed: expected player Karate 16/24/30 (total 70) scaled from 12/18/22 by PACE.special 1.35, Blade total 80 from that same scale (charge 16, strike 32, recovery 19, sheath 13, speed 670, stun 210), Staff base hitDelays 0/12/24 and durations 5/5/7 with the last hit inside ac and total length kept, hitstop 6 on each special hit and 10 on the last, every special sprite frame used, and the CPU Karate telegraph unchanged')
             stage1_bg = page.evaluate(STAGE1_BG)
             print('panorama backdrops', json.dumps({k: v for k, v in stage1_bg.items() if k != 'pass'}))
             if not stage1_bg['pass']:

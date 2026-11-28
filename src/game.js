@@ -1,7 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { ArcadeDiff, CpuHotColors, Depth, FighterClasses, PACE, PlayerCoolColor } from './config.js';
+import { ArcadeDiff, CpuHotColors, Depth, FighterClasses, PACE, PlayerCoolColor, specialHitStop } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Input } from './input.js';
@@ -508,17 +508,19 @@ export class Game {
       if (criticalHit) { Fx.critical(cx, cy, me.classProfile); Sfx.play('critical', me.classProfile); }
       if (box.special && me.classProfile?.style === 'ward') {
         const k = me.drawS() / 1.2;
-        if (box.pulse <= 1) { Fx.karateSuperPunch(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-        else if (box.pulse === 2) { Fx.karateSuperKickMid(cx, cy, me.face, k); Game.stop = 1 / 60; Game.shake = 0; }
-        else { Fx.karateSuperKickHigh(cx, cy, me.face, k, foe.groundY()); Game.stop = 2 / 60; Game.shake = 8 / 60; Game.shMag = 4; }
+        const specialStop = specialHitStop(box.pulse, me.atk.hitCount);
+        if (box.pulse <= 1) { Fx.karateSuperPunch(cx, cy, me.face, k); Game.stop = specialStop; Game.shake = 0; }
+        else if (box.pulse === 2) { Fx.karateSuperKickMid(cx, cy, me.face, k); Game.stop = specialStop; Game.shake = 0; }
+        else { Fx.karateSuperKickHigh(cx, cy, me.face, k, foe.groundY()); Game.stop = specialStop; Game.shake = 8 / 60; Game.shMag = 4; }
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
       } else if (box.special && me.classProfile?.weapon === 'staff') {
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
+        Game.stop = specialHitStop(box.pulse, me.atk.hitCount);
       } else if (box.special && me.bladeSuper) {
         BladeSuper.contactFx(box.pulse, cx, cy, me.drawS() / 1.2, kind);
         if (kind === 'block') Fx.blocked(cx, cy);
         if (!me.specialEffectDone) { Sfx.play(me.playerControlled ? 'player-special-hit' : 'super-hit', me.classProfile); me.specialEffectDone = 1; }
-        Game.stop = .06; Game.shake = .12; Game.shMag = 4; // unchanged contact hit-stop; impact holds add none
+        Game.stop = specialHitStop(box.pulse, me.atk.hitCount); Game.shake = .12; Game.shMag = 4;
       } else {
         if (box.special && !me.specialEffectDone) {
           Fx.special(cx, cy, me.classProfile);
