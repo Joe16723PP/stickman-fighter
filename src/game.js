@@ -7,7 +7,7 @@ import { Fx } from './fx.js';
 import { Input } from './input.js';
 import { Pose } from './pose.js';
 import { startPhaser } from './phaser-host.js';
-import { classIdleSource, titleIdleSpec, titleMenuCanvasScale } from './phaser-actors.js';
+import { classIdleSource, titleIdleSpec } from './phaser-actors.js';
 
 export let fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
@@ -15,7 +15,7 @@ export class Game {
   static W = 960; static H = 540; static GROUND = 390; static STEP = 1 / 60;
   static minX = 192; static maxX = 768; static scale = 1; static ox = 0; static oy = 0;
   static hr = 16.5; static lw = 6; static btns = [];
-  static safeTop = 0; static safeL = 0; static safeR = 0; static menuRight = 0; static drawShakeY = 0;
+  static safeTop = 0; static safeL = 0; static safeR = 0; static safeB = 0; static menuRight = 0; static drawShakeY = 0;
   static actionButtons = { special: null, roll: null };
   static stop = 0; static shake = 0; static shMag = 0;
   static canvas; static ctx; static acc = 0; static last = 0;
@@ -153,7 +153,7 @@ export class Game {
       Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceComboT = 0; Game.practiceLastMove = '';
     }
   }
-  /** Title-only: idle fighters at ~10% / 90% width, facing in. Match spawn unchanged. */
+  /** Title-only: the selected fighter stands in the left hero. Match spawn unchanged. */
   static placeTitleFighters() {
     const placed = Game.titleFighterPositions();
     fighters[0].reset(placed[0], 1); fighters[1].reset(placed[1], -1);
@@ -164,42 +164,11 @@ export class Game {
     fighters[0].face = 1; fighters[1].face = -1;
     fighters[0].x = placed[0]; fighters[1].x = placed[1];
   }
-  // Default 10%/90% spots, then a horizontal nudge only when a full idle crop
-  // (weapon included) still crosses a class card. Feet stay on the ground line.
+  // Feet of the large hero. The rival is parked off the menu; the title no longer draws one.
   static titleFighterPositions() {
-    const sc = Game.scale || 1;
-    const inset = (16 + Math.max(Game.safeL, Game.safeR)) / sc;
-    const reach = 48;
-    let x0 = Game.W * .10, x1 = Game.W * .90;
-    x0 = Math.max(inset + reach, Math.min(Game.W / 2 - 80, x0));
-    x1 = Math.min(Game.W - inset - reach, Math.max(Game.W / 2 + 80, x1));
     const layout = Game.titleLayout();
-    const cards = layout && layout.classes;
-    const dpr = Game.fitDpr || 1;
-    const canvasScale = titleMenuCanvasScale();
-    const scaleGame = canvasScale > 0 ? canvasScale / (dpr * sc) : 0;
-    if (cards && cards.length && scaleGame > 0) {
-      x0 = Game.clearTitleSpriteX(x0, 1, titleIdleSpec(fighters[0].classId || Game.selectedClass), cards, scaleGame);
-      x1 = Game.clearTitleSpriteX(x1, -1, titleIdleSpec('brawler'), cards, scaleGame);
-    }
-    return [x0, x1];
-  }
-  static clearTitleSpriteX(x, face, spec, cards, scaleGame) {
-    if (!spec) return x;
-    const box = spec.box, anchor = spec.anchor;
-    const rear = (face > 0 ? anchor : box.w - anchor) * scaleGame;
-    const fore = (face > 0 ? box.w - anchor : anchor) * scaleGame;
-    const ground = fighters[0].groundY() + (fighters[0].y || 0);
-    const top = ground - box.baseline * scaleGame;
-    const bot = ground + (box.h - box.baseline) * scaleGame;
-    const hit = (px) => cards.some(c => px - rear < c.x + c.w && px + fore > c.x && top < c.y + c.h && bot > c.y);
-    if (!hit(x)) return x;
-    const left = Math.min(...cards.map(c => c.x)) - fore;
-    const right = Math.max(...cards.map(c => c.x + c.w)) + rear;
-    const choices = [left, right].filter(px => !hit(px));
-    if (!choices.length) return x;
-    choices.sort((a, b) => Math.abs(a - x) - Math.abs(b - x));
-    return choices[0];
+    const foot = layout && layout.heroFoot;
+    return [foot ? foot.x : Game.W * .22, -4000];
   }
   static startMatch() {
     Game.paused = false; Game.actionMenuOpen = false;
@@ -213,8 +182,15 @@ export class Game {
     if (el) el.classList.toggle('arcade-controls', Game.mode === 'beatemup' || Game.mode === 'practice');
     if (el) el.style.display = Game.paused || Game.phase === 'title' || (Game.mode === 'beatemup' && BeatEmUp.stageOver) ? 'none' : '';
     const menu = document.getElementById('main-menu-button');
-    if (menu) menu.style.display = Game.phase === 'title' ? 'none' : 'block';
-    Game.menuRight = menu && Game.phase !== 'title' ? menu.getBoundingClientRect().right : 0;
+    const hideMenu = Game.phase === 'title' || Game.overlayOpen();
+    if (menu) {
+      menu.style.display = hideMenu ? 'none' : 'block';
+      menu.style.pointerEvents = hideMenu ? 'none' : '';
+      if (hideMenu) menu.setAttribute('aria-hidden', 'true');
+      else menu.removeAttribute('aria-hidden');
+    }
+    if (hideMenu && Game.actionMenuOpen) Game.closeActionMenu();
+    Game.menuRight = !hideMenu && menu ? menu.getBoundingClientRect().right : 0;
     const reset = document.getElementById('practice-reset');
     if (reset) reset.style.display = !Game.paused && Game.mode === 'practice' && Game.phase !== 'title' ? 'block' : 'none';
     Game.actionButtons.special = document.querySelector('#controls button.special');
@@ -251,8 +227,27 @@ export class Game {
     return Game.phase !== 'title' && !Game.matchOver
       && !(Game.mode === 'beatemup' && BeatEmUp.stageOver);
   }
+  static overlayOpen() {
+    return !!(Game.paused || (Game.mode === 'beatemup' && (BeatEmUp.stageOver || BeatEmUp.stageTransitionLeft > 0)));
+  }
+  static titleCase(text) {
+    return String(text || '').toLowerCase().split(/\s+/).filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }
+  // One line. A long stage name that does not fit the sheet falls back to the short line.
+  static failFlavor(chapterTitle) {
+    const preferred = 'Regroup and retry ' + Game.titleCase(chapterTitle) + '.';
+    const small = innerWidth < 700;
+    const padX = small ? 16 : 20;
+    const safeL = Game.safeL || 0, safeR = Game.safeR || 0;
+    let sheetW = Math.min(420, innerWidth * 0.62);
+    sheetW = Math.min(sheetW, Math.max(180, innerWidth - safeL - safeR - 8));
+    const innerW = sheetW - padX * 2;
+    if (Game.cssTextWidth(preferred, 12, '400', 0.04) <= innerW + 0.5) return preferred;
+    return 'Regroup and try again.';
+  }
   static toggleActionMenu() {
-    if (Game.phase === 'title') return;
+    if (Game.phase === 'title' || Game.overlayOpen()) return;
     Game.actionMenuOpen = !Game.actionMenuOpen;
     const menu = document.getElementById('game-action-menu');
     const trigger = document.getElementById('main-menu-button');
@@ -302,70 +297,197 @@ export class Game {
       fighters[1].x = Game.practiceDummyX; fighters[1].vx = 0; fighters[1].clamp();
     }
   }
+  static px(css) { return css / (Game.scale || 1); }
+  static cssTextWidth(text, cssPx, weight, letterEm) {
+    const ctx = Game.ctx;
+    const fallback = String(text || '').length * cssPx * 0.62;
+    if (!ctx || !ctx.getTransform) return fallback;
+    const prev = ctx.getTransform();
+    const font = ctx.font;
+    const spacing = ctx.letterSpacing;
+    try {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.font = weight + ' ' + cssPx + 'px ui-monospace,monospace';
+      if ('letterSpacing' in ctx) ctx.letterSpacing = (letterEm || 0) + 'em';
+      return ctx.measureText(String(text)).width || fallback;
+    } finally {
+      if ('letterSpacing' in ctx) ctx.letterSpacing = spacing || '0px';
+      ctx.font = font;
+      ctx.setTransform(prev);
+    }
+  }
+  static wrapCss(text, cssPx, weight, letterEm, maxW) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+    for (const word of words) {
+      const next = line ? line + ' ' + word : word;
+      if (line && Game.cssTextWidth(next, cssPx, weight, letterEm) > maxW) { lines.push(line); line = word; }
+      else line = next;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+  static fillRound(ctx, x, y, w, h, radCss, fill, strokeCss, strokeColor) {
+    const r = Math.max(0, Math.min(Game.px(radCss), Math.abs(w) / 2, Math.abs(h) / 2));
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (strokeCss) { ctx.strokeStyle = strokeColor; ctx.lineWidth = Game.px(strokeCss); ctx.stroke(); }
+  }
+  static textAt(ctx, text, x, y, cssPx, weight, color, letterEm, align, baseline) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.font = weight + ' ' + Game.px(cssPx) + 'px ui-monospace,monospace';
+    ctx.letterSpacing = (letterEm || 0) + 'em';
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = baseline || 'middle';
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  }
+  // CSS-pixel menu rects, stored in game units. .sm (width < 700) uses the smaller sizes.
   static titleLayout() {
-    const sc = Game.scale;
-    const compact = sc < 1.5;
-    const tabs = Game.modeTabs();
-    if (Game.mode !== 'practice') {
-      const classCount = Object.keys(FighterClasses).length;
-      const gap = (compact ? 8 : 14) / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
-      const cardH = (compact ? 96 : 166) / sc;
-      const total = cardW * classCount + gap * (classCount - 1), x0 = (Game.W - total) / 2;
-      const levelGap = 8 / sc, levelW = Math.min(140 / sc, (Game.W - 48 / sc - levelGap * 2) / 3), levelH = Game.difficultyButtonHeight(sc);
-      const levelTotal = levelW * 3 + levelGap * 2, levelX = (Game.W - levelTotal) / 2;
-      const modeBottom = Math.max(...tabs.map(tab => tab.y + tab.h));
-      const levelY = compact ? modeBottom + 6 / sc : Game.H * .48 - levelH / 2;
-      const levels = Game.levels.map((id, i) => ({id, x:levelX + i * (levelW + levelGap), y:levelY, w:levelW, h:levelH, label:Game.levelLabels[id]}));
-      const y = compact ? levelY + levelH + 6 / sc : Game.H * .67 - cardH / 2;
-      const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({ id, profile, x: x0 + i * (cardW + gap), y, w: cardW, h: cardH, menuCompact: true }));
-      const bw = (compact ? 190 : 174) / sc, bh = (compact ? 42 : 52) / sc;
-      return { tabs, classes, levels, start: { id: 'start-run', x: (Game.W - bw) / 2, y: Game.H * (compact ? .88 : .88) - bh / 2, w: bw, h: bh, label: 'START RUN' } };
-    }
-    if (Game.mode === 'practice') {
-      const classCount = Object.keys(FighterClasses).length;
-      const gap = 14 / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
-      const cardH = (compact ? 118 : 150) / sc, total = cardW * classCount + gap * (classCount - 1);
-      const classes = Object.entries(FighterClasses).map(([id, profile], i) => ({id, profile, menuCompact:true,
-        x:(Game.W-total)/2 + i*(cardW+gap), y:Game.H*(compact ? .64 : .65)-cardH/2, w:cardW, h:cardH}));
-      const bw = 200 / sc, bh = 52 / sc;
-      return {tabs, classes, levels:[], start:{id:'start-practice',x:(Game.W-bw)/2,y:Game.H*(compact ? .87 : .87)-bh/2,w:bw,h:bh,label:'START PRACTICE'}};
-    }
+    const sc = Game.scale || 1;
+    const small = innerWidth < 700;
+    const safeT = Game.safeTop || 0, safeB = Game.safeB || 0, safeL = Game.safeL || 0, safeR = Game.safeR || 0;
+    const padT = Math.max(12, safeT), padB = Math.max(14, safeB);
+    const padL = Math.max(28, safeL), padR = Math.max(28, safeR);
+    const wrapX = padL, wrapY = padT;
+    const wrapW = Math.max(160, innerWidth - padL - padR);
+    const wrapH = Math.max(120, innerHeight - padT - padB);
+    const heroW = wrapW * 0.42;
+    const heroX = wrapX;
+    const panelX = wrapX + heroW;
+    const panelW = wrapW - heroW;
+    const gap = small ? 10 : 12;
+    const labelH = 12;
+    const aboveDifficulty = 12;
+    const belowDifficulty = 6;
+    const cardH = small ? 60 : 74;
+    const cardGap = 8;
+    const segH = 52;
+    const rowH = small ? 54 : 60;
+    const padIn = 10;
+    const contentX = panelX + padIn;
+    const contentW = Math.max(80, panelW - padIn);
+    const stackH = labelH + gap + cardH + aboveDifficulty + labelH + belowDifficulty + segH + gap + rowH;
+    let stackY = wrapY + Math.max(0, (wrapH - stackH) / 2);
+    const gearS = 44;
+    const gear = { x: innerWidth - Math.max(22, safeR) - gearS, y: Math.max(12, safeT), w: gearS, h: gearS };
+    if (contentX + contentW > gear.x && stackY < gear.y + gear.h + 8) stackY = gear.y + gear.h + 8;
+    const maxStack = wrapY + wrapH - stackH;
+    if (stackY > maxStack) stackY = Math.max(wrapY, maxStack);
+
+    const logoSize = small ? 19 : 22;
+    const logoText = 'STICKMAN FIGHTER';
+    const logo = { x: heroX, y: wrapY, w: Math.min(heroW, Game.cssTextWidth(logoText, logoSize, '900', 0) + 2), h: logoSize + 4, text: logoText };
+
+    const picked = FighterClasses[Game.selectedClass] || FighterClasses.freehand;
+    const specialText = 'SPECIAL · ' + (picked.super || '');
+    const specialH = 18;
+    const special = { x: heroX, y: wrapY + wrapH - specialH, w: heroW, h: specialH, text: specialText };
+    const spec = titleIdleSpec(Game.selectedClass) || titleIdleSpec('freehand');
+    let spriteH = innerHeight * 0.72;
+    const footY = special.y - 6;
+    let spriteTop = footY - spriteH;
+    const minTop = logo.y + logo.h + 8;
+    if (spriteTop < minTop) { spriteTop = minTop; spriteH = Math.max(48, footY - spriteTop); }
+    let scaleCss = spec && spec.box.h ? spriteH / spec.box.h : 1;
+    if (spec && spec.box.w * scaleCss > heroW - 8) scaleCss = (heroW - 8) / spec.box.w;
+    const usedW = spec ? spec.box.w * scaleCss : spriteH * 0.7;
+    const usedH = spec ? spec.box.h * scaleCss : spriteH;
+    const cropX = heroX + Math.max(0, (heroW - usedW) / 2);
+    const cropY = footY - (spec ? spec.box.baseline * scaleCss : usedH);
+    const hero = { x: cropX, y: cropY, w: usedW, h: usedH };
+    const heroFoot = { x: cropX + (spec ? spec.anchor * scaleCss : usedW * 0.5), y: footY };
+
+    const ids = Object.keys(FighterClasses);
+    const cardsW = (contentW - cardGap * (ids.length - 1)) / ids.length;
+    const cardsY = stackY + labelH + gap;
+    const zoneH = cardH * 0.6;
+    const classes = ids.map((id, i) => {
+      const cardX = contentX + i * (cardsW + cardGap);
+      const spec = titleIdleSpec(id) || titleIdleSpec('freehand');
+      const maxW = Math.max(8, cardsW - 8);
+      const maxH = Math.max(8, zoneH - 2);
+      let scaleCss = spec.box.h ? maxH / spec.box.h : 1;
+      if (spec.box.w * scaleCss > maxW) scaleCss = maxW / spec.box.w;
+      const drawW = spec.box.w * scaleCss;
+      const drawH = spec.box.h * scaleCss;
+      const imgLeft = cardX + cardsW / 2 - spec.anchor * scaleCss;
+      const imgTop = cardsY + zoneH - drawH;
+      const clip = { x: cardX + 2, y: cardsY + 2, w: Math.max(4, cardsW - 4), h: Math.max(4, zoneH - 2) };
+      const left = Math.max(clip.x, imgLeft);
+      const top = Math.max(clip.y, imgTop);
+      const sprite = {
+        x: left, y: top,
+        w: Math.max(0, Math.min(imgLeft + drawW, clip.x + clip.w) - left),
+        h: Math.max(0, Math.min(imgTop + drawH, clip.y + clip.h) - top),
+      };
+      const nameBox = { x: cardX, y: cardsY + zoneH + 4, w: cardsW, h: 12 };
+      return { id, profile: FighterClasses[id], x: cardX, y: cardsY, w: cardsW, h: cardH, sprite, nameBox };
+    });
+    const diffY = cardsY + cardH + aboveDifficulty;
+    const segY = diffY + labelH + belowDifficulty;
+    const seg = { x: contentX, y: segY, w: contentW, h: segH };
+    const segPad = 4;
+    const itemW = (contentW - segPad * 2) / Game.levels.length;
+    const levels = Game.levels.map((id, i) => ({
+      id, label: Game.levelLabels[id],
+      x: contentX + segPad + i * itemW, y: segY, w: itemW, h: segH,
+    }));
+    const rowY = segY + segH + gap;
+    let practiceW = 110;
+    if (practiceW + 10 + 80 > contentW) practiceW = Math.max(72, Math.round(contentW * 0.34));
+    const practice = { id: 'practice', x: contentX, y: rowY, w: practiceW, h: rowH, label: 'Practice' };
+    const start = {
+      id: 'start-run', x: contentX + practiceW + 10, y: rowY,
+      w: Math.max(80, contentW - practiceW - 10), h: rowH, label: 'START ▶', shadow: 4,
+    };
+    const g = (r) => {
+      const o = { x: r.x / sc, y: r.y / sc, w: r.w / sc, h: r.h / sc };
+      if (r.id) o.id = r.id;
+      if (r.label) o.label = r.label;
+      if (r.text) o.text = r.text;
+      if (r.profile) o.profile = r.profile;
+      if (r.shadow) o.shadow = r.shadow / sc;
+      if (r.sprite) o.sprite = { x: r.sprite.x / sc, y: r.sprite.y / sc, w: r.sprite.w / sc, h: r.sprite.h / sc };
+      if (r.nameBox) o.nameBox = { x: r.nameBox.x / sc, y: r.nameBox.y / sc, w: r.nameBox.w / sc, h: r.nameBox.h / sc };
+      return o;
+    };
+    return {
+      small, logo: g(logo), hero: g(hero),
+      heroFoot: { x: heroFoot.x / sc, y: heroFoot.y / sc },
+      special: g(special), classes: classes.map(g), levels: levels.map(g),
+      segment: g(seg), practice: g(practice), start: g(start), gear: g(gear),
+      labels: {
+        fighter: g({ x: contentX, y: stackY, w: contentW, h: labelH, text: 'FIGHTER' }),
+        difficulty: g({ x: contentX, y: diffY, w: contentW, h: labelH, text: 'DIFFICULTY' }),
+      },
+    };
   }
-  static modeTabs() {
-    const sc = Game.scale;
-    const compact = sc < 1.5;
-    const tw = 140 / sc, th = 44 / sc, tgap = 10 / sc;
-    const tTotal = 2 * tw + tgap;
-    const tx0 = (Game.W - tTotal) / 2;
-    const ty = Game.H * (compact ? .25 : .38) - th / 2;
-    return [
-      { id: 'practice', label: 'Practice', x: tx0, y: ty, w: tw, h: th },
-      { id: 'beatemup', label: "Beat 'em up", x: tx0 + tw + tgap, y: ty, w: tw, h: th },
-    ];
-  }
-  static difficultyButtonHeight(sc = Game.scale) { return (sc < 1.5 ? 38 : 40) / sc; }
   static titlePointer(e) {
-    if (Game.mode !== 'practice' && Game.mode !== 'beatemup') Game.selectMode('beatemup');
-    const sc = Game.scale;
-    const gx = e.clientX / sc, gy = e.clientY / sc;
+    const sc = Game.scale || 1;
+    const x = e.clientX / sc, y = e.clientY / sc;
     const layout = Game.titleLayout();
-    const tab = layout.tabs.find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
-    if (tab) { Game.selectMode(tab.id); return; }
-    if (Game.mode === 'beatemup') {
-      const level = (layout.levels || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
-      if (level) { Game.selectArcadeLevel(level.id); return; }
-      const card = (layout.classes || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
-      if (card) { Game.selectClass(card.id); return; }
-      const start = layout.start;
-      if (start && gx >= start.x && gx <= start.x + start.w && gy >= start.y && gy <= start.y + start.h) Game.startMatch();
-      return;
-    }
-    if (Game.mode === 'practice') {
-      const card = (layout.classes || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
-      if (card) { Game.selectClass(card.id); return; }
-      const start = layout.start;
-      if (start && gx >= start.x && gx <= start.x + start.w && gy >= start.y && gy <= start.y + start.h) Game.startMatch();
-    }
+    const hit = (b) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    if (hit(layout.gear)) { Game.toggleFullscreen(); return; }
+    const card = (layout.classes || []).find(hit);
+    if (card) { Game.selectClass(card.id); return; }
+    const level = (layout.levels || []).find(hit);
+    if (level) { Game.selectArcadeLevel(level.id); return; }
+    if (hit(layout.practice)) { Game.startPractice(); return; }
+    if (hit(layout.start)) { Game.selectMode('beatemup'); Game.startMatch(); }
+  }
+  static pausePointer(e) {
+    const sc = Game.scale || 1;
+    const x = e.clientX / sc, y = e.clientY / sc;
+    const layout = Game.pauseLayout();
+    const hit = (b) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    if (!layout) return;
+    if (hit(layout.resume)) { Game.togglePause(); return; }
+    if (hit(layout.fullscreen)) { Game.toggleFullscreen(); return; }
+    if (hit(layout.menu)) Game.goTitle();
   }
   static tryTitleKey(key) {
     if (Game.mode !== 'practice' && Game.mode !== 'beatemup') Game.selectMode('beatemup');
@@ -416,6 +538,7 @@ export class Game {
     Game.safeTop = parseFloat(rootStyle.getPropertyValue('--sai-t')) || 0;
     Game.safeL = parseFloat(rootStyle.getPropertyValue('--sai-l')) || 0;
     Game.safeR = parseFloat(rootStyle.getPropertyValue('--sai-r')) || 0;
+    Game.safeB = parseFloat(rootStyle.getPropertyValue('--sai-b')) || 0;
     Game.H = 540; Game.W = Math.max(640, Math.round(540 * innerWidth / innerHeight));
     Game.GROUND = Math.round(Game.H * .72);
     const scale = innerHeight / Game.H;
@@ -725,22 +848,166 @@ export class Game {
     if (Game.phase !== 'title') { Game.syncSpecialBtn(); Game.syncDodgeBtn(); }
     Game.present();
   }
-  static drawStageClearOverlay(ctx) {
+  // Warm sheet shared by pause, the clear countdown, and the stage results.
+  // TIME on the stats row is the remaining stage timer (Game.timer). The run does not store elapsed time.
+  static sheetLayout(opts) {
     const sc = Game.scale || 1;
-    const n = BeatEmUp.clearCountdownSeconds();
-    ctx.fillStyle = 'rgba(4,7,14,.62)';
-    ctx.fillRect(0, 0, Game.W, Game.H);
-    const w = Math.min(Game.W * .7, 300 / sc), h = 78 / sc;
-    const x = (Game.W - w) / 2, y = Game.H * .4 - h / 2;
-    Game.drawHudPanel(ctx, x, y, w, h, '#F6C453');
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold ' + 18 / sc + 'px ui-monospace,monospace';
-    ctx.fillStyle = '#FFE06B';
-    ctx.fillText('STAGE CLEAR', Game.W / 2, y + 26 / sc);
-    ctx.font = 'bold ' + 13 / sc + 'px ui-monospace,monospace';
-    ctx.fillStyle = '#E7EAF2';
-    ctx.fillText('Next stage in ' + n, Game.W / 2, y + 52 / sc);
-    ctx.textBaseline = 'alphabetic';
+    const small = innerWidth < 700;
+    const padX = small ? 16 : 20;
+    const padY = small ? 12 : 18;
+    const gap = small ? 8 : 10;
+    const h1Size = small ? 20 : 24;
+    const priH = small ? 50 : 56;
+    const secH = small ? 48 : 52;
+    const safeL = Game.safeL || 0, safeR = Game.safeR || 0, safeT = Game.safeTop || 0, safeB = Game.safeB || 0;
+    let sheetW = opts.countdown ? Math.min(300, innerWidth * 0.46) : Math.min(420, innerWidth * 0.62);
+    sheetW = Math.min(sheetW, Math.max(180, innerWidth - safeL - safeR - 8));
+    const innerW = sheetW - padX * 2;
+    const h1H = h1Size + 6;
+    const subLine = 16;
+    const blocks = [{ kind: 'title', h: h1H, text: opts.title, color: opts.titleColor, size: h1Size }];
+    if (opts.sub1) {
+      const lines = Game.wrapCss(opts.sub1, 12, '400', 0.04, innerW);
+      blocks.push({ kind: 'sub', h: lines.length * subLine, text: opts.sub1, lines, size: 12 });
+    }
+    if (opts.countdown) blocks.push({ kind: 'number', h: 72, text: String(opts.number), size: 64 });
+    if (opts.stats) blocks.push({ kind: 'stats', h: 44 });
+    if (opts.sub2) {
+      const lines = Game.wrapCss(opts.sub2, 12, '400', 0.04, innerW);
+      blocks.push({ kind: 'sub2', h: lines.length * subLine, text: opts.sub2, lines, size: 12 });
+    }
+    if (opts.buttons === 'pause') {
+      blocks.push({ kind: 'resume', h: priH });
+      blocks.push({ kind: 'pauseRow', h: secH });
+    } else if (opts.primary) blocks.push({ kind: 'actionRow', h: priH });
+    let contentH = 0;
+    blocks.forEach((b, i) => { contentH += b.h; if (i) contentH += gap; });
+    const sheetH = padY * 2 + contentH;
+    let sheetX = (innerWidth - sheetW) / 2;
+    if (sheetX < safeL) sheetX = safeL;
+    let sheetY = (innerHeight - sheetH) / 2;
+    if (sheetY < safeT) sheetY = safeT;
+    if (sheetY + sheetH > innerHeight - safeB) sheetY = Math.max(safeT, innerHeight - safeB - sheetH);
+    const g = (x, y, w, h, extra) => Object.assign({ x: x / sc, y: y / sc, w: w / sc, h: h / sc }, extra || {});
+    const out = { sheet: g(sheetX, sheetY, sheetW, sheetH), title: null, sub: null, sub2: null, number: null, stats: [], resume: null, fullscreen: null, menu: null, home: null, primary: null };
+    let y = sheetY + padY;
+    const x0 = sheetX + padX;
+    blocks.forEach((b, i) => {
+      if (i) y += gap;
+      if (b.kind === 'title') out.title = g(x0, y, innerW, b.h, { text: b.text, color: b.color, size: b.size });
+      else if (b.kind === 'sub') out.sub = g(x0, y, innerW, b.h, { text: b.text, lines: b.lines, size: b.size });
+      else if (b.kind === 'number') out.number = g(x0, y, innerW, b.h, { text: b.text, size: 64 });
+      else if (b.kind === 'stats') {
+        const tileGap = 6;
+        const tileW = (innerW - tileGap * 3) / 4;
+        const labels = ['SCORE', 'BEST', 'TIME', 'LIVES'];
+        const values = [String(BeatEmUp.score), String(BeatEmUp.bestScore), BeatEmUp.formatTime(Game.timer), String(BeatEmUp.lives)];
+        out.stats = labels.map((label, n) => g(x0 + n * (tileW + tileGap), y, tileW, b.h, { label, value: values[n] }));
+      } else if (b.kind === 'sub2') out.sub2 = g(x0, y, innerW, b.h, { text: b.text, lines: b.lines, size: b.size });
+      else if (b.kind === 'resume') out.resume = g(x0, y, innerW, b.h, { text: '▶ RESUME' });
+      else if (b.kind === 'pauseRow') {
+        const rowGap = small ? 8 : 10;
+        const bw = (innerW - rowGap) / 2;
+        out.fullscreen = g(x0, y, bw, b.h, { text: '⛶ FULLSCREEN' });
+        out.menu = g(x0 + bw + rowGap, y, bw, b.h, { text: '⌂ MAIN MENU' });
+      } else if (b.kind === 'actionRow') {
+        const rowGap = small ? 8 : 10;
+        const homeW = (innerW - rowGap) / 3;
+        out.home = g(x0, y + (priH - secH), homeW, secH, { text: '⌂ MENU' });
+        out.primary = g(x0 + homeW + rowGap, y, innerW - rowGap - homeW, priH, { text: opts.primary, shadow: Game.px(4) });
+      }
+      y += b.h;
+    });
+    return out;
+  }
+  static pauseLayout() {
+    const sub = Game.mode === 'practice' ? 'PRACTICE' : 'STAGE ' + BeatEmUp.stage + ' · WAVE ' + BeatEmUp.wave;
+    return Game.sheetLayout({ title: 'PAUSED', titleColor: '#FFE0A0', sub1: sub, buttons: 'pause' });
+  }
+  static countdownLayout() {
+    return Game.sheetLayout({
+      countdown: true,
+      title: 'STAGE ' + BeatEmUp.stage + ' CLEAR',
+      titleColor: '#FFE0A0',
+      sub1: 'NEXT STAGE IN',
+      number: BeatEmUp.clearCountdownSeconds(),
+    });
+  }
+  static resultsLayout() {
+    if (!BeatEmUp.stageOver || BeatEmUp.stageTransitionLeft > 0) return null;
+    const cleared = BeatEmUp.stageOver === 1;
+    const finalClear = cleared && BeatEmUp.stage >= BeatEmUp.stageTotal;
+    const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1] || BeatEmUp.chapters[0];
+    const boss = chapter.boss && chapter.boss.name;
+    const next = BeatEmUp.chapters[BeatEmUp.stage];
+    return Game.sheetLayout({
+      title: cleared ? (finalClear ? 'CAMPAIGN COMPLETE' : 'STAGE ' + BeatEmUp.stage + ' CLEAR') : 'STAGE ' + BeatEmUp.stage + ' FAILED',
+      titleColor: cleared ? '#FFE0A0' : '#F2826A',
+      sub1: cleared ? 'DEFEATED · ' + (boss || '') : Game.failFlavor(chapter.title),
+      sub2: cleared && !finalClear && next ? 'NEXT · ' + next.title : '',
+      stats: true,
+      primary: !cleared ? '↻ RETRY STAGE' : finalClear ? 'PLAY AGAIN ▶' : 'NEXT STAGE ▶',
+    });
+  }
+  static dimScreen(ctx) {
+    const sc = Game.scale || 1;
+    ctx.fillStyle = 'rgba(26,18,16,.72)';
+    ctx.fillRect(-8, -8, innerWidth / sc + 16, innerHeight / sc + 16);
+  }
+  static drawSubLines(ctx, block) {
+    if (!block) return;
+    const lines = block.lines || [block.text];
+    const lineH = block.h / lines.length;
+    lines.forEach((line, i) => {
+      Game.textAt(ctx, line, block.x + block.w / 2, block.y + lineH * (i + 0.5), block.size || 12, '400', '#E9CFB0', 0.04);
+    });
+  }
+  static drawPriButton(ctx, b, cssPx, weight, letterEm) {
+    if (!b) return;
+    const sh = b.shadow || Game.px(4);
+    Game.fillRound(ctx, b.x, b.y + sh, b.w, b.h, 14, '#8A4A1E');
+    const grad = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
+    grad.addColorStop(0, '#FFC768');
+    grad.addColorStop(1, '#E8902F');
+    Game.fillRound(ctx, b.x, b.y, b.w, b.h, 14, grad);
+    Game.textAt(ctx, b.text || b.label, b.x + b.w / 2, b.y + b.h / 2, cssPx, weight, '#2A1810', letterEm);
+  }
+  static drawSecButton(ctx, b) {
+    if (!b) return;
+    Game.fillRound(ctx, b.x, b.y, b.w, b.h, 14, null, 2, '#74431F');
+    Game.textAt(ctx, b.text, b.x + b.w / 2, b.y + b.h / 2, 17, 'bold', '#E9CFB0', 0.08);
+  }
+  static drawWarmSheet(ctx, layout) {
+    Game.dimScreen(ctx);
+    const s = layout.sheet;
+    Game.fillRound(ctx, s.x, s.y, s.w, s.h, 18, 'rgba(42,26,18,.96)', 2, '#5A3A26');
+    if (layout.title) Game.textAt(ctx, layout.title.text, layout.title.x + layout.title.w / 2, layout.title.y + layout.title.h / 2, layout.title.size, 'bold', layout.title.color, 0.08);
+    Game.drawSubLines(ctx, layout.sub);
+    if (layout.number) Game.textAt(ctx, layout.number.text, layout.number.x + layout.number.w / 2, layout.number.y + layout.number.h / 2, 64, '900', '#FFE0A0', 0);
+    for (const tile of layout.stats || []) {
+      Game.fillRound(ctx, tile.x, tile.y, tile.w, tile.h, 10, 'rgba(26,18,16,.6)');
+      Game.textAt(ctx, tile.label, tile.x + tile.w / 2, tile.y + Game.px(13), 9, 'bold', '#B86E32', 0.16);
+      Game.textAt(ctx, tile.value, tile.x + tile.w / 2, tile.y + Game.px(30), 15, 'bold', '#FFE0A0', 0);
+    }
+    Game.drawSubLines(ctx, layout.sub2);
+    if (layout.resume) Game.drawPriButton(ctx, layout.resume, 17, 'bold', 0.08);
+    Game.drawSecButton(ctx, layout.fullscreen);
+    Game.drawSecButton(ctx, layout.menu);
+    Game.drawSecButton(ctx, layout.home);
+    if (layout.primary) Game.drawPriButton(ctx, layout.primary, 17, 'bold', 0.08);
+  }
+  static drawStageClearOverlay(ctx) {
+    Game.drawWarmSheet(ctx, Game.countdownLayout());
+  }
+  static drawPauseOverlay(ctx) {
+    Game.drawWarmSheet(ctx, Game.pauseLayout());
+  }
+  static drawResultsSheet(ctx) {
+    const layout = Game.resultsLayout();
+    if (!layout) return;
+    Game.drawWarmSheet(ctx, layout);
+    BeatEmUp.resultNextBtn = layout.primary;
+    BeatEmUp.resultHomeBtn = layout.home;
   }
   static bars(ctx) {
     const sc = Game.scale, safe = Game.safeTop;
@@ -848,8 +1115,6 @@ export class Game {
     ctx.restore();
   }
   static drawTitle(ctx, part = 'all') {
-    const sc = Game.scale;
-    const compact = sc < 1.5;
     const layout = Game.titleLayout();
     Game.titleBtns = layout.levels;
     if (part !== 'chrome') {
@@ -865,166 +1130,82 @@ export class Game {
       fallback.addColorStop(0, '#081528'); fallback.addColorStop(1, '#11101B');
       ctx.fillStyle = fallback; ctx.fillRect(0, 0, Game.W, Game.H);
     }
-    const veil = ctx.createLinearGradient(0, 0, 0, Game.H);
-    veil.addColorStop(0, 'rgba(3,7,16,.48)'); veil.addColorStop(.48, 'rgba(3,7,16,.58)');
-    veil.addColorStop(1, 'rgba(3,7,16,.74)');
+    const veil = ctx.createLinearGradient(0, 0, Game.W, 0);
+    veil.addColorStop(0, 'rgba(26,18,16,.25)');
+    veil.addColorStop(.42, 'rgba(26,18,16,.55)');
+    veil.addColorStop(1, 'rgba(26,18,16,.88)');
     ctx.fillStyle = veil; ctx.fillRect(0, 0, Game.W, Game.H);
-    const centerShade = ctx.createRadialGradient(Game.W / 2, Game.H * .51, Game.W * .08, Game.W / 2, Game.H * .51, Game.W * .63);
-    centerShade.addColorStop(0, 'rgba(5,10,23,.10)'); centerShade.addColorStop(1, 'rgba(2,5,12,.52)');
-    ctx.fillStyle = centerShade; ctx.fillRect(0, 0, Game.W, Game.H);
     }
     if (part === 'backdrop') return;
-    // Keep the selected fighters visible behind the menu cards, as in the arcade mockup.
-    if (!Game.spriteBodies) fighters.forEach(fighter => fighter.draw(ctx));
 
-    // Fine scanlines and clipped corner marks make the image read like an arcade display.
-    ctx.save(); ctx.globalAlpha = .022; ctx.fillStyle = '#A8DFFF';
-    for (let y = 2 / sc; y < Game.H; y += 6 / sc) ctx.fillRect(0, y, Game.W, 1 / sc);
-    ctx.restore();
-    const edge = 10 / sc, corner = 24 / sc;
-    ctx.strokeStyle = 'rgba(86,196,255,.72)'; ctx.lineWidth = 2 / sc;
-    for (const side of [-1, 1]) {
-      const x = side < 0 ? edge : Game.W - edge;
-      const inward = side < 0 ? 1 : -1;
-      ctx.beginPath(); ctx.moveTo(x, edge + corner); ctx.lineTo(x, edge); ctx.lineTo(x + inward * corner, edge); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x, Game.H - edge - corner); ctx.lineTo(x, Game.H - edge); ctx.lineTo(x + inward * corner, Game.H - edge); ctx.stroke();
-    }
+    const logo = layout.logo;
+    const special = layout.special;
+    Game.textAt(ctx, logo.text, logo.x + Game.px(2), logo.y + logo.h / 2 + Game.px(2), layout.small ? 19 : 22, '900', '#3A2418', 0, 'left');
+    Game.textAt(ctx, logo.text, logo.x, logo.y + logo.h / 2, layout.small ? 19 : 22, '900', '#FFE0A0', 0, 'left');
 
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const titleY = Game.H * (compact ? .08 : .22);
-    ctx.font = '900 ' + (compact ? 27 : 42) / sc + 'px ui-monospace,monospace';
-    ctx.lineJoin = 'miter'; ctx.lineWidth = 5 / sc; ctx.strokeStyle = '#07101F';
-    ctx.strokeText('STICKMAN FIGHTER', Game.W / 2, titleY + 2 / sc);
-    ctx.globalAlpha = .82; ctx.fillStyle = '#FF3CBA';
-    ctx.fillText('STICKMAN FIGHTER', Game.W / 2 - 2 / sc, titleY - 1 / sc);
-    ctx.globalAlpha = 1; ctx.fillStyle = '#F4FAFF';
-    ctx.shadowColor = '#22D3EE'; ctx.shadowBlur = 6 / sc;
-    ctx.fillText('STICKMAN FIGHTER', Game.W / 2, titleY);
-    ctx.shadowBlur = 0;
-
-    const drawSelectionArrow = (x, y, color) => {
-      ctx.fillStyle = color; ctx.beginPath();
-      ctx.moveTo(x, y); ctx.lineTo(x + 8 / sc, y + 5 / sc); ctx.lineTo(x, y + 10 / sc); ctx.closePath(); ctx.fill();
-    };
-    const drawClassPreview = (profile, x, y) => {
-      const unit = 1 / sc, color = profile.color, weapon = profile.weapon;
-      ctx.save(); ctx.translate(x, y); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#07101A'; ctx.lineWidth = 6 * unit;
-      const strokePath = (points) => {
-        ctx.beginPath(); ctx.moveTo(points[0][0] * unit, points[0][1] * unit);
-        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * unit, points[i][1] * unit);
-        ctx.stroke();
-        ctx.strokeStyle = color; ctx.lineWidth = 3.5 * unit;
-        ctx.beginPath(); ctx.moveTo(points[0][0] * unit, points[0][1] * unit);
-        for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0] * unit, points[i][1] * unit);
-        ctx.stroke(); ctx.strokeStyle = '#07101A'; ctx.lineWidth = 6 * unit;
-      };
-      ctx.fillStyle = '#07101A'; ctx.beginPath(); ctx.arc(0, -20 * unit, 6.5 * unit, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(0, -20 * unit, 5 * unit, 0, Math.PI * 2); ctx.fill();
-      strokePath([[0,-14],[0,4]]);
-      if (weapon === 'staff') {
-        strokePath([[0,-10],[-10,-4],[-12,3]]); strokePath([[0,-10],[10,-7],[13,-1]]);
-        strokePath([[0,4],[-8,15],[-10,25]]); strokePath([[0,4],[8,14],[10,25]]);
-        ctx.strokeStyle = '#E2B96F'; ctx.lineWidth = 3 * unit; ctx.beginPath(); ctx.moveTo(-20 * unit, 4 * unit); ctx.lineTo(22 * unit, -16 * unit); ctx.stroke();
-        ctx.strokeStyle = '#F5D69B'; ctx.lineWidth = 1 * unit; ctx.beginPath(); ctx.moveTo(-20 * unit, 4 * unit); ctx.lineTo(22 * unit, -16 * unit); ctx.stroke();
-      } else if (weapon === 'blade') {
-        strokePath([[0,-10],[-10,-6],[-13,0]]); strokePath([[0,-10],[10,-5],[13,-1]]);
-        strokePath([[0,4],[-8,15],[-10,25]]); strokePath([[0,4],[8,14],[10,25]]);
-        ctx.strokeStyle = '#DCEBFA'; ctx.lineWidth = 3 * unit; ctx.beginPath(); ctx.moveTo(13 * unit, -1 * unit); ctx.lineTo(24 * unit, -25 * unit); ctx.stroke();
-        ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1 * unit; ctx.beginPath(); ctx.moveTo(13 * unit, -1 * unit); ctx.lineTo(24 * unit, -25 * unit); ctx.stroke();
-      } else {
-        strokePath([[0,-10],[-10,-5],[-14,-1]]); strokePath([[0,-10],[10,-8],[14,-4]]);
-        strokePath([[0,4],[-8,14],[-11,24]]); strokePath([[0,4],[9,14],[13,24]]);
-      }
+    const heroArt = classIdleSource(Game.selectedClass, (fighters[0].animT || 0) * PACE.spriteFps);
+    if (heroArt && heroArt.image) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, Game.W, special.y);
+      ctx.clip();
+      ctx.imageSmoothingEnabled = false;
+      ctx.shadowColor = 'rgba(0,0,0,.45)';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = Game.px(6);
+      ctx.drawImage(heroArt.image, layout.hero.x, layout.hero.y, layout.hero.w, layout.hero.h);
       ctx.restore();
-    };
-    // Idle crop box and anchor come from the gameplay clips (classIdleSource). The stick
-    // preview stays only until that frame's texture is ready, so a card is never empty.
-    const drawCardFighter = (card, profile) => {
+    }
+    Game.textAt(ctx, special.text, special.x, special.y + special.h / 2, 13, 'bold', '#E8A552', 0.08, 'left');
+
+    const drawCardSprite = (card) => {
       const selected = card.id === Game.selectedClass;
       const art = classIdleSource(card.id, selected ? (fighters[0].animT || 0) * PACE.spriteFps : 0);
-      const previewX = card.x + 23 / sc, previewY = card.y + card.h * .64;
-      if (!art || !art.image) { drawClassPreview(profile, previewX, previewY); return; }
-      const textLeft = card.x + 51 / sc;
-      let scale = card.h * .78 / art.body;
-      const reach = art.box.w - art.anchor;
-      if (reach > 0 && previewX + reach * scale > textLeft) scale = Math.max(0, (textLeft - previewX) / reach);
-      const footY = card.y + card.h - 6 / sc;
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = selected ? 1 : .6;
-      ctx.drawImage(art.image, previewX - art.anchor * scale, footY - art.box.baseline * scale, art.box.w * scale, art.box.h * scale);
+      if (!art || !art.image) return;
+      const zoneH = card.h * 0.6;
+      const maxW = Math.max(Game.px(8), card.w - Game.px(8));
+      const maxH = Math.max(Game.px(8), zoneH - Game.px(2));
+      let scale = maxH / art.box.h;
+      if (art.box.w * scale > maxW) scale = maxW / art.box.w;
+      const drawW = art.box.w * scale;
+      const drawH = art.box.h * scale;
+      const imgLeft = card.x + card.w / 2 - art.anchor * scale;
+      const imgTop = card.y + zoneH - drawH;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(card.x + Game.px(2), card.y + Game.px(2), card.w - Game.px(4), Math.max(Game.px(4), zoneH - Game.px(2)));
+      ctx.clip();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(art.image, imgLeft, imgTop, drawW, drawH);
       ctx.restore();
     };
-    for (const t of layout.tabs) {
-      const sel = t.id === Game.mode;
-      const accent = sel ? '#FFD34D' : '#38BDF8';
-      Game.drawHudPanel(ctx, t.x, t.y, t.w, t.h, accent); ctx.shadowBlur = 0;
-      if (sel) { ctx.fillStyle = 'rgba(255,211,77,.10)'; ctx.fillRect(t.x + 2 / sc, t.y + 2 / sc, t.w - 4 / sc, t.h - 4 / sc); }
-      ctx.fillStyle = sel ? '#FFE08A' : '#D4E6FA';
-      ctx.font = 'bold ' + 14 / sc + 'px ui-monospace,monospace';
-      ctx.fillText(t.label, t.x + t.w / 2, t.y + t.h / 2);
+    ctx.globalAlpha = 1;
+    for (const label of [layout.labels.fighter, layout.labels.difficulty]) {
+      Game.textAt(ctx, label.text, label.x, label.y + label.h / 2, 12, '700', '#E8A552', 0.18, 'left');
     }
+    for (const card of layout.classes) {
+      const selected = card.id === Game.selectedClass;
+      if (selected) Game.fillRound(ctx, card.x - Game.px(2), card.y - Game.px(2), card.w + Game.px(4), card.h + Game.px(4), 14, 'rgba(232,165,82,.25)');
+      Game.fillRound(ctx, card.x, card.y, card.w, card.h, 12, selected ? 'rgba(116,67,31,.85)' : 'rgba(58,36,24,.78)', 2, selected ? '#E8A552' : '#5A3A26');
+      drawCardSprite(card);
+      const name = card.nameBox;
+      Game.textAt(ctx, card.profile.name, name.x + name.w / 2, name.y + name.h / 2, 12, '700', '#FFE0A0', 0);
+    }
+    const seg = layout.segment;
+    Game.fillRound(ctx, seg.x, seg.y, seg.w, seg.h, 12, 'rgba(58,36,24,.78)');
     for (const b of layout.levels) {
       const sel = b.id === Game.arcadeLevel;
-      const accent = sel ? '#FFC936' : '#3679AE';
-      Game.drawHudPanel(ctx, b.x, b.y, b.w, b.h, accent); ctx.shadowBlur = 0;
-      if (sel) { ctx.fillStyle = 'rgba(255,201,54,.10)'; ctx.fillRect(b.x + 2 / sc, b.y + 2 / sc, b.w - 4 / sc, b.h - 4 / sc); }
-      ctx.fillStyle = sel ? '#FFE08A' : '#D4E6FA';
-      ctx.font = 'bold ' + 14 / sc + 'px ui-monospace,monospace';
-      ctx.fillText(b.label || Game.levelLabels[b.id] || b.id, b.x + b.w / 2, b.y + b.h / 2);
+      if (sel) Game.fillRound(ctx, b.x, seg.y + Game.px(4), b.w, seg.h - Game.px(8), 8, '#E8A552');
+      Game.textAt(ctx, b.label, b.x + b.w / 2, b.y + b.h / 2, 15, sel ? 'bold' : '400', sel ? '#2A1810' : '#E9CFB0', 0);
     }
-    if (Game.mode === 'beatemup') {
-      // At phone heights there is no clear row between difficulty and fighter
-      // cards; omitting this secondary line keeps it from showing through cards.
-      if (!compact) {
-        const detailY = Game.H * .55, detailW = Math.min(Game.W - 32 / sc, 500 / sc);
-        Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
-        ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#CDEBFF';
-        ctx.fillText(ArcadeDiff[Game.arcadeLevel].details, Game.W / 2, detailY, detailW - 18 / sc);
-      }
-    } else if (Game.mode === 'practice') {
-      const detailY = Game.H * (compact ? .43 : .45), detailW = Math.min(Game.W - 32 / sc, 440 / sc);
-      Game.drawHudPanel(ctx, Game.W / 2 - detailW / 2, detailY - 10 / sc, detailW, 20 / sc, '#38BDF8');
-      ctx.font = 'bold ' + 8 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#CDEBFF';
-      ctx.fillText('STATIONARY DUMMY · NO TIMER · RESET WITH R OR BUTTON', Game.W / 2, detailY, detailW - 18 / sc);
-    }
-    const start = layout.start;
-    if (start) {
-      ctx.shadowColor = '#FFB91F'; ctx.shadowBlur = 4 / sc;
-      Game.drawHudPanel(ctx, start.x, start.y, start.w, start.h, '#FFE06B'); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#FFE06B'; ctx.fillRect(start.x + 7 / sc, start.y + 7 / sc, start.w - 14 / sc, 2 / sc);
-      ctx.fillStyle = '#FFF0B6'; ctx.font = '900 ' + 17 / sc + 'px ui-monospace,monospace';
-      ctx.fillText(start.label, start.x + start.w / 2, start.y + start.h / 2);
-      ctx.shadowBlur = 0;
-    }
-    for (const card of layout.classes || []) {
-      const p = card.profile, selected = card.id === Game.selectedClass;
-      const accent = selected ? p.accent : '#3D4B68';
-      Game.drawHudPanel(ctx, card.x, card.y, card.w, card.h, accent); ctx.shadowBlur = 0;
-      ctx.fillStyle = selected ? 'rgba(35,54,83,.68)' : 'rgba(5,10,20,.46)';
-      ctx.fillRect(card.x + 2 / sc, card.y + 4 / sc, card.w - 4 / sc, card.h - 6 / sc);
-      if (selected) drawSelectionArrow(card.x - 10 / sc, card.y + card.h * .5 - 5 / sc, p.accent);
-      drawCardFighter(card, p);
-      const textX = card.x + Math.min(51 / sc, card.w * .29), textW = card.w - (textX - card.x) - 7 / sc;
-      if (card.menuCompact) {
-        const menuAt = (small,large) => card.y + (compact ? small : large) / sc;
-        ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 14 : 11) / sc, textW * .15) + 'px ui-monospace,monospace';
-        ctx.fillText(p.name, textX + textW / 2, menuAt(22,31), textW);
-        ctx.fillStyle = '#E7F1FF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 8) / sc, textW * .12) + 'px ui-monospace,monospace';
-        ctx.fillText('N · ' + p.punchMove, textX + textW / 2, menuAt(46,56), textW);
-        ctx.fillText('H · ' + p.kickMove, textX + textW / 2, menuAt(66,76), textW);
-        ctx.fillStyle = p.accent; ctx.font = 'bold ' + Math.min((compact ? 11 : 8) / sc, textW * .12) + 'px ui-monospace,monospace';
-        ctx.fillText('S · ' + p.super, textX + textW / 2, menuAt(86,96), textW);
-      } else {
-        const nameY = card.y + (compact ? 25 : 34) / sc;
-        ctx.textAlign = 'center'; ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold ' + Math.min((compact ? 11 : 14) / sc, textW * .11) + 'px ui-monospace,monospace';
-        ctx.fillText(p.name, textX + textW / 2, nameY, textW);
-        const rowGap = (compact ? 17 : 22) / sc, firstY = nameY + (compact ? 19 : 25) / sc;
-        ctx.fillStyle = '#E7F1FF'; ctx.font = 'bold ' + Math.min((compact ? 8 : 9) / sc, textW * .075) + 'px ui-monospace,monospace';
-        ctx.fillText('N · ' + p.punchMove, textX + textW / 2, firstY, textW);
-        ctx.fillText('H · ' + p.kickMove, textX + textW / 2, firstY + rowGap, textW);
-        ctx.fillStyle = p.accent; ctx.fillText('S · ' + p.super, textX + textW / 2, firstY + rowGap * 2, textW);
-      }
-    }
+    const practice = layout.practice;
+    Game.fillRound(ctx, practice.x, practice.y, practice.w, practice.h, 14, null, 2, Game.mode === 'practice' ? '#E8A552' : '#74431F');
+    Game.textAt(ctx, 'Practice', practice.x + practice.w / 2, practice.y + practice.h / 2, 14, 'bold', '#E9CFB0', 0);
+    Game.drawPriButton(ctx, layout.start, 22, '900', 0.1);
+    const gear = layout.gear;
+    Game.fillRound(ctx, gear.x, gear.y, gear.w, gear.h, 12, 'rgba(58,36,24,.7)');
+    Game.textAt(ctx, '⛶', gear.x + gear.w / 2, gear.y + gear.h / 2, 22, 'bold', '#E9CFB0', 0);
     ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
   }
   static drawKarateCharge(ctx) {
@@ -1076,7 +1257,6 @@ export class Game {
     if (Game.phase === 'title') Game.drawTitle(ctx, 'backdrop');
     else if (Game.mode === 'beatemup') {
     BeatEmUp.draw(ctx);
-    if (BeatEmUp.stageTransitionLeft > 0) Game.drawStageClearOverlay(ctx);
     } else if (Game.phase !== 'title') {
       Game.drawArena(ctx);
       // Contact shadows (drawn before fighters, back to front).
@@ -1116,7 +1296,8 @@ export class Game {
     if (Game.mode === 'practice') Game.bars(ctx);
     if (Game.mode === 'practice') Game.drawPracticeHud(ctx);
     const arcadeIntroPanelActive = Game.mode === 'beatemup' && Game.phase === 'intro' && BeatEmUp.eventT > 0;
-    if (Game.banner && !(BeatEmUp.stageTransitionLeft > 0) && !arcadeIntroPanelActive) {
+    const sheetUp = Game.paused || (Game.mode === 'beatemup' && (BeatEmUp.stageTransitionLeft > 0 || BeatEmUp.stageOver));
+    if (Game.banner && !sheetUp && !arcadeIntroPanelActive) {
       const sc = Game.scale, bannerY = Game.H * .42, bannerW = (Game.banner === 'Fight!' ? 210 : 260) / sc;
       const bannerH = Game.matchOver ? 74 / sc : 56 / sc;
       Game.drawHudPanel(ctx, Game.W / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, Game.matchOver ? '#F6C453' : '#6ECFFF');
@@ -1124,17 +1305,10 @@ export class Game {
       ctx.font = 'bold ' + (Game.banner === 'Fight!' ? 28 : 21) / sc + 'px ui-monospace,monospace';
       ctx.fillText(Game.banner, Game.W / 2, Game.H * .42);
     }
-    if (Game.paused) {
-      const sc = Game.scale || 1, w = Math.min(Game.W * .76, 300 / sc), h = 106 / sc;
-      ctx.fillStyle = 'rgba(4,7,14,.62)'; ctx.fillRect(0, 0, Game.W, Game.H);
-      Game.drawHudPanel(ctx, Game.W / 2 - w / 2, Game.H / 2 - h / 2, w, h, '#F6C453');
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.font = 'bold ' + 24 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFE06B';
-      ctx.fillText('PAUSED', Game.W / 2, Game.H / 2 - 13 / sc);
-      ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#C7D4E8';
-      ctx.fillText('OPEN THE TOP-LEFT MENU TO RESUME', Game.W / 2, Game.H / 2 + 18 / sc);
-      ctx.textBaseline = 'alphabetic';
-    }
+    if (layer !== 'world') Game.syncControls();
+    if (Game.paused) Game.drawPauseOverlay(ctx);
+    else if (Game.mode === 'beatemup' && BeatEmUp.stageTransitionLeft > 0) Game.drawStageClearOverlay(ctx);
+    else if (Game.mode === 'beatemup' && BeatEmUp.stageOver) Game.drawResultsSheet(ctx);
     ctx.restore();
   }
 }

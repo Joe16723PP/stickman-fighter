@@ -52,6 +52,7 @@ export class Input {
     addEventListener('pointerdown', e => {
       Sfx.unlock();
       if (Game.phase === 'title') { Game.titlePointer(e); return; }
+      if (Game.paused) { Game.pausePointer(e); return; }
       if (Game.matchOver) {
         if (Game.mode === 'beatemup' && BeatEmUp.onMatchOverTap(e)) return;
         Game.goTitle();

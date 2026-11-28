@@ -813,16 +813,18 @@ export class BeatEmUp {
     return true;
   }
   static onMatchOverTap(e) {
-    if (BeatEmUp.stageOver === 1 && BeatEmUp.stage < BeatEmUp.stageTotal) {
-      const btn = BeatEmUp.resultNextBtn;
-      if (btn) {
-        const x = (e.clientX - Game.ox) / Game.scale;
-        const y = (e.clientY - Game.oy) / Game.scale;
-        if (x >= btn.x && x <= btn.x + btn.w && y >= btn.y && y <= btn.y + btn.h) BeatEmUp.goNextStage();
-      }
-      return true;
+    const layout = Game.resultsLayout();
+    if (!layout) return true;
+    const sc = Game.scale || 1;
+    const x = (e.clientX - Game.ox) / sc;
+    const y = (e.clientY - Game.oy) / sc;
+    const hit = (b) => b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    if (hit(layout.home)) { Game.goTitle(); return true; }
+    if (hit(layout.primary)) {
+      if (BeatEmUp.stageOver < 0) BeatEmUp.startCampaignStage(BeatEmUp.stage, true);
+      else if (BeatEmUp.stage < BeatEmUp.stageTotal) BeatEmUp.goNextStage();
+      else BeatEmUp.begin();
     }
-    BeatEmUp.retryOrTitle(false);
     return true;
   }
   /** Whole seconds still shown on the stage-clear countdown (at least 1 while the delay is running). */
@@ -1762,7 +1764,6 @@ export class BeatEmUp {
       const corpses = BeatEmUp.cast.filter(e => e.f.ragdollKO && e.f.ragdollElapsed < 2).slice().sort((a, b) => a.depth - b.depth);
       for (const e of corpses) BeatEmUp.drawFighter(ctx, e);
       Fx.draw(ctx, 'back');
-      if (!(BeatEmUp.stageTransitionLeft > 0)) BeatEmUp.drawResults(ctx);
       return;
     }
     BeatEmUp.drawItems(ctx);
@@ -1818,56 +1819,7 @@ export class BeatEmUp {
   }
 
   static drawResults(ctx) {
-    const sc = Game.scale;
-    const w = Math.min(Game.W * .82, 620 / sc);
-    const cleared = BeatEmUp.stageOver === 1;
-    const h = (cleared ? 178 : 130) / sc;
-    const x = (Game.W - w) / 2, y = cleared ? Game.H * .38 : Game.H * .49;
-    Game.drawHudPanel(ctx, x, y, w, h, cleared ? '#F6C453' : '#FF655F');
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    const finalClear = cleared && BeatEmUp.stage >= BeatEmUp.stageTotal;
-    const chapter = BeatEmUp.chapters[BeatEmUp.stage - 1] || BeatEmUp.chapters[0];
-    const headline = cleared ? (finalClear ? 'CAMPAIGN COMPLETE' : 'STAGE ' + BeatEmUp.stage + ' CLEAR') : 'STAGE ' + BeatEmUp.stage + ' FAILED';
-    ctx.font = 'bold ' + 16 / sc + 'px ui-monospace,monospace';
-    ctx.fillStyle = cleared ? '#FBBF24' : '#F87171';
-    ctx.fillText(headline, Game.W / 2, y + 20 / sc);
-    if (cleared) {
-      ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#D7E1F0';
-      ctx.fillText('DEFEATED: ' + chapter.boss.name, Game.W / 2, y + 43 / sc, w - 24 / sc);
-      ctx.font = (9 / sc) + 'px ui-monospace,monospace'; ctx.fillStyle = '#E7EAF2';
-      ctx.fillText(chapter.clear, Game.W / 2, y + 61 / sc, w - 28 / sc);
-      if (!finalClear) {
-        const next = BeatEmUp.chapters[BeatEmUp.stage];
-        ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#8EDFFF';
-        ctx.fillText('NEXT: ' + next.title + ' · ' + next.location, Game.W / 2, y + 82 / sc, w - 28 / sc);
-      }
-      ctx.font = 'bold ' + 12 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText('SCORE  ' + String(BeatEmUp.score).padStart(6, '0'), Game.W / 2, y + 105 / sc);
-      ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FBBF24';
-      ctx.fillText('BEST  ' + String(BeatEmUp.bestScore).padStart(6, '0') + '   TIME ' + BeatEmUp.formatTime(Game.timer) + '   LIVES ×' + BeatEmUp.lives, Game.W / 2, y + 127 / sc);
-      BeatEmUp.resultNextBtn = null;
-      if (!finalClear) {
-        const btn = { x: Game.W / 2 - 100 / sc, y: y + 143 / sc, w: 200 / sc, h: 27 / sc };
-        BeatEmUp.resultNextBtn = btn;
-        ctx.shadowColor = '#F6C453'; ctx.shadowBlur = 7 / sc;
-        Game.drawHudPanel(ctx, btn.x, btn.y, btn.w, btn.h, '#F6C453'); ctx.shadowBlur = 0;
-        ctx.fillStyle = '#FFE06B'; ctx.fillRect(btn.x + 6 / sc, btn.y + 5 / sc, btn.w - 12 / sc, 2 / sc);
-        ctx.font = 'bold ' + 11 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFF0C2';
-        ctx.fillText('NEXT STAGE  →', Game.W / 2, btn.y + btn.h / 2 + 1 / sc);
-      }
-    } else {
-      ctx.font = 'bold ' + 10 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#D7E1F0';
-      ctx.fillText('Regroup and fight through ' + chapter.title.toLowerCase() + ' again.', Game.W / 2, y + 43 / sc, w - 24 / sc);
-      ctx.font = 'bold ' + 13 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFFFFF';
-      ctx.fillText('SCORE  ' + String(BeatEmUp.score).padStart(6, '0'), Game.W / 2, y + 70 / sc);
-      ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FBBF24';
-      ctx.fillText('BEST  ' + String(BeatEmUp.bestScore).padStart(6, '0') + '   TIME ' + BeatEmUp.formatTime(Game.timer) + '   LIVES ×' + BeatEmUp.lives, Game.W / 2, y + 96 / sc);
-      ctx.fillStyle = '#D7DCE9';
-      const promptW = Math.min(w - 36 / sc, 520 / sc), promptY = y + h + 7 / sc;
-      Game.drawHudPanel(ctx, Game.W / 2 - promptW / 2, promptY, promptW, 26 / sc, '#6ECFFF');
-      ctx.fillText('TAP OR PRESS ENTER TO RETRY THIS STAGE', Game.W / 2, promptY + 13 / sc);
-    }
-    ctx.textBaseline = 'alphabetic';
+    Game.drawResultsSheet(ctx);
   }
 }
 

@@ -2170,7 +2170,7 @@ STAGE_CLEAR_DELAY = '''() => {
   ctx.fillText = (text, ...rest) => { texts.push(String(text)); return orig(text, ...rest); };
   Game.draw();
   ctx.fillText = orig;
-  r.overlay = texts.filter(text => text === 'STAGE CLEAR' || text.startsWith('Next stage in '));
+  r.overlay = texts.filter(text => text === 'STAGE 2 CLEAR' || text === 'NEXT STAGE IN' || text === '5');
   let early = null;
   for (let i = 1; i <= frames - 1; i++) {
     simStep();
@@ -2196,7 +2196,7 @@ STAGE_CLEAR_DELAY = '''() => {
     && r.retry.stage === 4 && r.retry.left === 0 && r.retry.over === 0 && r.retry.phase === 'intro'
     && r.armed.stage === 2 && r.armed.over === 1 && r.armed.left === frames && r.armed.leftArmed === frames && r.armed.next === 3
     && r.armed.phase === 'matchEnd' && r.armed.stop === 0 && r.armed.t === 5 && r.armed.duration === delay && r.mash
-    && r.overlay.indexOf('STAGE CLEAR') >= 0 && r.overlay.indexOf('Next stage in 5') >= 0
+    && r.overlay.indexOf('STAGE 2 CLEAR') >= 0 && r.overlay.indexOf('NEXT STAGE IN') >= 0 && r.overlay.indexOf('5') >= 0
     && !r.early && r.beforeLast.stage === 2 && r.beforeLast.left === 1 && r.beforeLast.seconds === 1 && r.beforeLast.timer === timer0 && r.beforeLast.hp === hp0
     && r.updateFrozen
     && r.after.stage === 3 && r.after.left === 0 && r.after.t === 0 && r.after.phase === 'intro' && r.after.fighting === 0 && r.after.living === 0 && r.after.over === 0
@@ -2420,115 +2420,234 @@ SPECIAL_GAIN = r"""() => {
   return r;
 }"""
 
-TITLE_ART = r'''() => {
-  const classes = [['freehand', 'karate'], ['staff', 'staff'], ['blade', 'blade']];
-  // Idle crop boxes, weapon included. Staff's baseline is the tallest title crop.
-  const CROP = {
-    freehand: { w: 154, h: 220, baseline: 204 },
-    staff: { w: 170, h: 228, baseline: 212 },
-    blade: { w: 156, h: 224, baseline: 208 },
-    brawler: { w: 152, h: 224, baseline: 208 },
+TITLE_UI = r'''() => {
+  const problems = [];
+  const overlaps = (a, b) => a && b && a.w > 0 && b.w > 0 && a.h > 0 && b.h > 0
+    && a.x < b.x + b.w - 0.6 && a.x + a.w > b.x + 0.6
+    && a.y < b.y + b.h - 0.6 && a.y + a.h > b.y + 0.6;
+  const cssOf = (r) => {
+    const sc = Game.scale || 1;
+    return { x: r.x * sc, y: r.y * sc, w: r.w * sc, h: r.h * sc };
   };
-  const TALLEST = 212;
-  const scene = Game.phaserScene;
-  const near = (a, b) => Math.abs(a - b) < 0.05;
-  const nearScale = (a, b) => Math.abs(a - b) < 1e-3;
-  const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  const names = ['karate', 'staff', 'blade'];
-  const source = (folder, frame) => scene.textures.get(folder + '-idle-' + frame).getSourceImage();
+  const onScreen = (r, name) => {
+    const sl = Game.safeL || 0, st = Game.safeTop || 0, sr = Game.safeR || 0, sb = Game.safeB || 0;
+    if (r.x < sl - 0.6 || r.y < st - 0.6 || r.x + r.w > innerWidth - sr + 0.6 || r.y + r.h > innerHeight - sb + 0.6)
+      problems.push(name + ' offscreen');
+  };
+  const checkSet = (name, entries) => {
+    entries.forEach((e) => onScreen(e.r, name + ':' + e.name));
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        if (overlaps(entries[i].r, entries[j].r)) problems.push(name + ' ' + entries[i].name + ' overlaps ' + entries[j].name);
+      }
+    }
+  };
+  const tap = (r) => {
+    const c = cssOf(r);
+    Game.titlePointer({ clientX: c.x + c.w / 2, clientY: c.y + c.h / 2 });
+  };
+  const out = { pass: true, viewport: [innerWidth, innerHeight], problems: problems };
   const drawn = [];
-  const orig = CanvasRenderingContext2D.prototype.drawImage;
+  const texts = [];
+  const origDraw = CanvasRenderingContext2D.prototype.drawImage;
+  const origText = CanvasRenderingContext2D.prototype.fillText;
   CanvasRenderingContext2D.prototype.drawImage = function(img) {
-    drawn.push({ img: img, alpha: this.globalAlpha, smooth: this.imageSmoothingEnabled });
-    return orig.apply(this, arguments);
+    drawn.push(img);
+    return origDraw.apply(this, arguments);
   };
-  const boxOf = (image) => {
-    const b = image.getBounds();
-    return { x: b.x, y: b.y, w: b.width, h: b.height };
+  CanvasRenderingContext2D.prototype.fillText = function(text) {
+    texts.push(String(text));
+    return origText.apply(this, arguments);
   };
-  const out = { pass: true, viewport: [innerWidth, innerHeight], classes: {} };
   try {
-    if (!Game.paintPhaser) { out.pass = false; out.error = 'paint missing'; return out; }
+    if (!Game.paintPhaser) { problems.push('paint missing'); return out; }
     Game.fit();
     Game.goTitle();
-    const sc = Game.scale || 1;
-    const dpr = Game.fitDpr || 1;
-    const screen = sc * dpr;
+    Game.selectMode('beatemup');
+    Game.selectArcadeLevel('normal');
+    Game.selectClass('freehand');
     const layout = Game.titleLayout();
-    const cards = layout.classes.map(c => ({ id: c.id, x: c.x * screen, y: c.y * screen, w: c.w * screen, h: c.h * screen }));
-    const cardBottom = Math.max(...layout.classes.map(c => c.y + c.h));
-    const ground = fighters[0].groundY();
-    const menu = ((ground - cardBottom) * sc - 8) / TALLEST * dpr;
-    const limit = cardBottom * screen + 8 * dpr;
-    for (const pair of classes) {
-      const id = pair[0], folder = pair[1];
-      const card = layout.classes.find(c => c.id === id);
-      Game.titlePointer({ clientX: (card.x + card.w / 2) * sc, clientY: (card.y + card.h / 2) * sc });
-      const tapped = Game.selectedClass === id && fighters[0].classId === id;
-      fighters[0].state = 'idle'; fighters[1].state = 'idle';
-      fighters[0].atk = null; fighters[1].atk = null;
-      fighters[0].face = 1; fighters[1].face = -1;
-      fighters[0].animT = 0.25; fighters[1].animT = 0.25;
+    const titleEntries = [
+      { name: 'hero', r: cssOf(layout.hero) },
+      { name: 'logo', r: cssOf(layout.logo) },
+    ];
+    layout.classes.forEach((c, i) => titleEntries.push({ name: 'card' + i, r: cssOf(c) }));
+    layout.levels.forEach((c, i) => titleEntries.push({ name: 'seg' + i, r: cssOf(c) }));
+    titleEntries.push({ name: 'practice', r: cssOf(layout.practice) });
+    titleEntries.push({ name: 'start', r: cssOf(layout.start) });
+    titleEntries.push({ name: 'gear', r: cssOf(layout.gear) });
+    const startShadow = cssOf(layout.start);
+    startShadow.h += (layout.start.shadow || 0) * (Game.scale || 1);
+    onScreen(startShadow, 'title:start-shadow');
+    checkSet('title', titleEntries);
+    layout.classes.forEach((c) => {
+      const sprite = cssOf(c.sprite);
+      const name = cssOf(c.nameBox);
+      if (!c.sprite || !c.nameBox) { problems.push('card parts ' + c.id); return; }
+      if (overlaps(sprite, name)) problems.push('label overlaps ' + c.id);
+      const clearance = name.y - (sprite.y + sprite.h);
+      if (clearance < 3.9) problems.push('label clearance ' + c.id + ' ' + clearance.toFixed(2));
+    });
+    const cardsBottom = Math.max.apply(null, layout.classes.map((c) => { const r = cssOf(c); return r.y + r.h; }));
+    const diff = cssOf(layout.labels.difficulty);
+    const segTop = cssOf(layout.segment).y;
+    if (diff.h < 10 || cssOf(layout.labels.fighter).h < 10) problems.push('section label short');
+    if (diff.y - cardsBottom < 11.5) problems.push('difficulty above ' + (diff.y - cardsBottom).toFixed(1));
+    if (segTop - (diff.y + diff.h) < 5.5) problems.push('difficulty below ' + (segTop - diff.y - diff.h).toFixed(1));
+    const taps = []
+      .concat(layout.classes, layout.levels, [layout.practice, layout.start, layout.gear]);
+    taps.forEach((r, i) => { if (cssOf(r).h < 43.5) problems.push('title tap ' + i + ' short ' + cssOf(r).h.toFixed(1)); });
+    const heroH = cssOf(layout.hero).h;
+    if (heroH < innerHeight * 0.72 - 1) problems.push('hero height ' + heroH.toFixed(1));
+    const scene = Game.phaserScene;
+    for (const card of Game.titleLayout().classes) {
+      tap(card);
+      if (Game.selectedClass !== card.id || fighters[0].classId !== card.id) problems.push('class tap ' + card.id);
+      fighters[0].animT = 0.25;
+      fighters[0].state = 'idle';
       drawn.length = 0;
+      texts.length = 0;
       Game.paintPhaser();
-      const images = scene.children.list.filter(o => o.visible && o.type === 'Image' && o.texture);
-      const left = images.find(o => String(o.texture.key).indexOf(folder + '-idle-') === 0);
-      const right = images.find(o => String(o.texture.key).indexOf('brawler-idle-') === 0);
-      const plate = images.some(o => String(o.texture.key).indexOf('body-') === 0);
-      const other = images.some(o => names.some(n => n !== folder && String(o.texture.key).indexOf(n + '-idle-') === 0));
-      const playerFrame = Math.floor(fighters[0].animT * PACE.spriteFps) % 6;
-      const brawlerFrame = Math.floor(fighters[1].animT * 12) % 6;
-      const hits = (name, frame) => drawn.filter(d => d.img === source(name, frame));
-      const selected = hits(folder, playerFrame);
-      const othersOk = names.filter(n => n !== folder).every(n => {
-        const row = hits(n, 0);
-        return row.length === 1 && row[0].smooth === false && Math.abs(row[0].alpha - 0.6) < 1e-6;
-      });
-      const idleCount = drawn.filter(d => names.some(n => {
-        for (let f = 0; f < 6; f++) if (d.img === source(n, f)) return true;
-        return false;
-      })).length;
-      const cardsOk = selected.length === 1 && selected[0].smooth === false && selected[0].alpha === 1 && othersOk && idleCount === 3;
-      const leftBox = left ? boxOf(left) : null;
-      const rightBox = right ? boxOf(right) : null;
-      const cropOk = !!(leftBox && rightBox
-        && near(leftBox.w, CROP[id].w * Math.abs(left.scaleX)) && near(leftBox.h, CROP[id].h * Math.abs(left.scaleY))
-        && near(rightBox.w, CROP.brawler.w * Math.abs(right.scaleX)) && near(rightBox.h, CROP.brawler.h * Math.abs(right.scaleY)));
-      const clearOk = !!(leftBox && rightBox && cropOk
-        && cards.every(c => !overlaps(leftBox, c) && !overlaps(rightBox, c))
-        && leftBox.y + 0.05 >= limit && rightBox.y + 0.05 >= limit);
-      const staffTop = ground * screen - TALLEST * menu;
-      const scaleOk = !!(left && right && nearScale(Math.abs(left.scaleX), menu) && nearScale(Math.abs(left.scaleY), menu)
-        && nearScale(Math.abs(right.scaleX), menu) && nearScale(Math.abs(right.scaleY), menu)
-        && nearScale(Math.abs(left.scaleX), Math.abs(right.scaleX)) && near(staffTop, limit));
-      const fightersOk = !!(tapped && left && right && !plate && !other
-        && left.texture.key === folder + '-idle-' + playerFrame && left.flipX === false
-        && right.texture.key === 'brawler-idle-' + brawlerFrame && right.flipX === true
-        && scaleOk && clearOk);
-      const hitsCard = [];
-      if (leftBox) cards.forEach(c => { if (overlaps(leftBox, c)) hitsCard.push('L:' + c.id); });
-      if (rightBox) cards.forEach(c => { if (overlaps(rightBox, c)) hitsCard.push('R:' + c.id); });
-      out.classes[id] = {
-        cardsOk: cardsOk, fightersOk: fightersOk, tapped: tapped, clearOk: clearOk, scaleOk: scaleOk, cropOk: cropOk,
-        left: left && left.texture.key, right: right && right.texture.key, flip: right && right.flipX,
-        leftScale: left && +left.scaleX.toFixed(4), rightScale: right && +right.scaleX.toFixed(4),
-        menu: +menu.toFixed(4),
-        leftTop: leftBox && +((leftBox.y - limit) / dpr).toFixed(2),
-        rightTop: rightBox && +((rightBox.y - limit) / dpr).toFixed(2),
-        hitsCard: hitsCard, idleCount: idleCount, plate: plate, other: other,
-      };
-      if (!cardsOk || !fightersOk) out.pass = false;
+      const folder = card.id === 'staff' ? 'staff' : card.id === 'blade' ? 'blade' : 'karate';
+      const frame = Math.floor(fighters[0].animT * PACE.spriteFps) % 6;
+      const src = scene.textures.get(folder + '-idle-' + frame).getSourceImage();
+      const special = 'SPECIAL · ' + FighterClasses[card.id].super;
+      const brawler = scene.children.list.some(o => o.visible && o.texture && String(o.texture.key).indexOf('brawler-idle-') === 0);
+      if (drawn.filter(img => img === src).length < 2) problems.push('hero sprite ' + folder);
+      if (texts.indexOf(special) < 0) problems.push('special ' + special);
+      const heroCss = cssOf(Game.titleLayout().hero);
+      if (heroCss.h < innerHeight * 0.72 - 1) problems.push('hero ' + card.id + ' ' + heroCss.h.toFixed(1));
+      if (brawler) problems.push('brawler still drawn');
+      const cardSrc = scene.textures.get(folder + '-idle-' + frame).getSourceImage();
+      if (drawn.filter(img => img === cardSrc).length < 1) problems.push('card sprite ' + folder);
     }
+    const hard = Game.titleLayout().levels.find(l => l.id === 'hard');
+    tap(hard);
+    if (Game.arcadeLevel !== 'hard') problems.push('difficulty tap ' + Game.arcadeLevel);
+    Game.tryTitleKey('ArrowLeft');
+    if (Game.arcadeLevel !== 'normal') problems.push('key left ' + Game.arcadeLevel);
+    Game.tryTitleKey('ArrowUp');
+    Game.tryTitleKey('Tab');
+    if (Game.mode !== 'practice') problems.push('tab mode ' + Game.mode);
+    const before = Game.selectedClass;
+    Game.tryTitleKey('ArrowRight');
+    if (Game.selectedClass === before) problems.push('practice keys did not change class');
+    Game.tryTitleKey('Tab');
+    if (Game.mode !== 'beatemup') problems.push('tab back ' + Game.mode);
+    let fs = 0;
+    const root = document.documentElement;
+    const prevFs = root.requestFullscreen;
+    root.requestFullscreen = () => { fs++; return Promise.resolve(); };
+    tap(Game.titleLayout().gear);
+    root.requestFullscreen = prevFs;
+    if (!fs) problems.push('gear did not toggle fullscreen');
+    tap(Game.titleLayout().practice);
+    if (Game.mode !== 'practice' || Game.phase !== 'intro') problems.push('practice start ' + Game.mode + '/' + Game.phase);
+    Game.goTitle();
+    Game.selectMode('practice');
+    tap(Game.titleLayout().start);
+    if (Game.mode !== 'beatemup' || Game.phase === 'title') problems.push('start ' + Game.mode + '/' + Game.phase);
+    Game.goTitle();
+
+    const overlay = (name, layout, buttons) => {
+      if (!layout) { problems.push(name + ' missing'); return; }
+      if (layout.sheet) onScreen(cssOf(layout.sheet), name + ':sheet');
+      const entries = [];
+      const add = (label, r) => { if (!r) return; entries.push({ name: label, r: cssOf(r) }); };
+      add('title', layout.title);
+      add('sub', layout.sub);
+      add('sub2', layout.sub2);
+      add('number', layout.number);
+      (layout.stats || []).forEach((s, i) => add('stat' + i, s));
+      buttons.forEach((key) => add(key, layout[key]));
+      checkSet(name, entries);
+      buttons.forEach((key) => {
+        const r = layout[key];
+        if (!r) { problems.push(name + ' missing ' + key); return; }
+        const h = cssOf(r).h;
+        if (h < 47.5) problems.push(name + ' ' + key + ' short ' + h.toFixed(1));
+        if (r.shadow) {
+          const face = cssOf(r);
+          face.h += r.shadow * (Game.scale || 1);
+          onScreen(face, name + ':' + key + '-shadow');
+        }
+      });
+    };
+    Game.mode = 'beatemup';
+    Game.phase = 'fight';
+    Game.paused = false;
+    BeatEmUp.stage = 1;
+    BeatEmUp.wave = 2;
+    BeatEmUp.stageOver = 0;
+    BeatEmUp.stageTransitionLeft = 0;
+    const burger = document.getElementById('main-menu-button');
+    const burgerDead = (where) => {
+      Game.syncControls();
+      const cs = getComputedStyle(burger);
+      const hit = document.elementFromPoint(39, 39);
+      if (cs.display !== 'none' || cs.pointerEvents !== 'none' || hit === burger || (burger && burger.contains(hit))) problems.push(where + ' hamburger shown');
+      burger.click();
+      if (Game.actionMenuOpen) problems.push(where + ' hamburger opened');
+    };
+    Game.syncControls();
+    const openCs = getComputedStyle(burger);
+    const openHit = document.elementFromPoint(39, 39);
+    if (openCs.display === 'none' || openCs.pointerEvents === 'none' || (openHit !== burger && !(burger && burger.contains(openHit)))) problems.push('fight hamburger hidden');
+    burger.click();
+    if (!Game.actionMenuOpen) problems.push('fight hamburger dead');
+    Game.closeActionMenu();
+    Game.paused = true;
+    const pause = Game.pauseLayout();
+    overlay('pause', pause, ['resume', 'fullscreen', 'menu']);
+    if (!pause || pause.sub.text !== 'STAGE 1 · WAVE 2' || pause.resume.text !== '▶ RESUME') problems.push('pause copy');
+    burgerDead('pause');
+    Game.paused = false;
+    BeatEmUp.stageOver = 1;
+    BeatEmUp.stage = 2;
+    BeatEmUp.stageTransitionLeft = 300;
+    BeatEmUp.stageTransitionT = 5;
+    const count = Game.countdownLayout();
+    overlay('countdown', count, []);
+    if (!count || count.title.text !== 'STAGE 2 CLEAR' || count.sub.text !== 'NEXT STAGE IN' || count.number.text !== '5') problems.push('countdown copy');
+    burgerDead('countdown');
+    BeatEmUp.stageTransitionLeft = 0;
+    BeatEmUp.stage = 1;
+    BeatEmUp.score = 1200;
+    BeatEmUp.bestScore = 3400;
+    Game.timer = 95;
+    BeatEmUp.lives = 2;
+    const cleared = Game.resultsLayout();
+    overlay('cleared', cleared, ['home', 'primary']);
+    if (!cleared || cleared.primary.text !== 'NEXT STAGE ▶' || cleared.sub.text.indexOf('DEFEATED · ') !== 0 || !cleared.sub2 || cleared.sub2.text.indexOf('NEXT · ') !== 0) problems.push('cleared copy');
+    if (cleared && (cleared.stats[0].value !== '1200' || cleared.stats[2].value !== BeatEmUp.formatTime(95) || cleared.stats[3].value !== '2')) problems.push('cleared stats');
+    if (cleared && cleared.home.text !== '⌂ MENU') problems.push('cleared home ' + (cleared && cleared.home.text));
+    burgerDead('cleared');
+    BeatEmUp.stageOver = -1;
+    const failed = Game.resultsLayout();
+    overlay('failed', failed, ['home', 'primary']);
+    if (!failed || failed.title.text !== 'STAGE 1 FAILED' || failed.primary.text !== '↻ RETRY STAGE') problems.push('failed copy');
+    if (failed && (failed.sub.text !== 'Regroup and retry Backstreet Awakening.' || (failed.sub.lines || []).length !== 1)) problems.push('failed flavor ' + (failed && failed.sub.text));
+    if (failed && failed.home.text !== '⌂ MENU') problems.push('failed home ' + (failed && failed.home.text));
+    burgerDead('failed');
+    Game.paused = false;
+    BeatEmUp.stageOver = 0;
+    BeatEmUp.stageTransitionLeft = 0;
+    Game.goTitle();
+    Game.selectClass('freehand');
+    Game.selectArcadeLevel('normal');
+    Game.selectMode('beatemup');
   } catch (err) {
-    out.pass = false; out.error = String(err && err.stack || err);
+    problems.push(String(err && err.stack || err));
   } finally {
-    CanvasRenderingContext2D.prototype.drawImage = orig;
+    CanvasRenderingContext2D.prototype.drawImage = origDraw;
+    CanvasRenderingContext2D.prototype.fillText = origText;
     try { localStorage.setItem('stickman-beatemup-class', 'freehand'); } catch (e) {}
-    if (Game.selectClass) Game.selectClass('freehand');
-    if (Game.goTitle) Game.goTitle();
+    try { localStorage.setItem('stickman-beatemup-level', 'normal'); } catch (e) {}
   }
+  out.pass = problems.length === 0;
   return out;
-}'''
+}
+'''
 
 BODY_SCALE = r'''() => {
   const BODY = 188;
@@ -2680,12 +2799,12 @@ def main():
                 title_art = {'pass': True, 'views': {}}
                 for vw, vh in ((667, 375), (844, 390)):
                     load_page.set_viewport_size({'width': vw, 'height': vh})
-                    view = load_page.evaluate(TITLE_ART)
+                    view = load_page.evaluate(TITLE_UI)
                     title_art['views'][f'{vw}x{vh}'] = {k: v for k, v in view.items() if k != 'pass'}
                     if not view.get('pass'): title_art['pass'] = False
                 print('title sprites', json.dumps(title_art['views']))
                 if not title_art.get('pass'):
-                    failures.append('Title sprites failed: class cards and both title fighters must draw idle sprite textures via a real title tap (selected class on the left, mirrored Brawler idle on the right, other cards held on frame 00 at 60% opacity), sharing one menu scale whose full crops stay 8px under the cards at 667x375 and 844x390: '
+                    failures.append('Title menu failed: at 667x375 and 844x390 the hero, logo, class cards, difficulty segments, Practice, START and fullscreen gear must stay on screen inside the safe area without overlapping, every title tap target must be at least 44px, and pause/countdown/cleared/failed sheets must do the same with buttons at least 48px: '
                                     + json.dumps(title_art['views']))
                 load_page.set_viewport_size({'width': 844, 'height': 390})
                 body_scale = load_page.evaluate(BODY_SCALE)
@@ -2805,7 +2924,7 @@ def main():
             stage_clear = page.evaluate(STAGE_CLEAR_DELAY)
             print('stage clear delay', json.dumps({k: v for k, v in stage_clear.items() if k != 'pass'}))
             if not stage_clear['pass']:
-                failures.append('Stage clear delay failed: expected STAGE_TRANSITION_DELAY = 5s (300 fixed steps) between a boss clear and the next stage, STAGE CLEAR / Next stage in N on screen, no timer drain, damage, or spawns during the wait, one-shot (repeat clear/next does not skip or restart), and the final stage plus game-over/retry unchanged')
+                failures.append('Stage clear delay failed: expected STAGE_TRANSITION_DELAY = 5s (300 fixed steps) between a boss clear and the next stage, STAGE 2 CLEAR / NEXT STAGE IN / 5 on screen, no timer drain, damage, or spawns during the wait, one-shot (repeat clear/next does not skip or restart), and the final stage plus game-over/retry unchanged')
             special_gain = page.evaluate(SPECIAL_GAIN)
             print('special gain', json.dumps({k: v for k, v in special_gain.items() if k != 'sequence'}))
             print('special gain sequence', json.dumps(special_gain.get('sequence')))
