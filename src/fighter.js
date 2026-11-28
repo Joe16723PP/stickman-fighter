@@ -376,7 +376,7 @@ export class Fighter {
     } else if (kind === 'kick') Sfx.play('kick', this.classProfile);
     else Sfx.play('punch', this.classProfile);
   }
-  /** Player Attack chain: hits 1–2 share punch timing, hit 3 is the kick-clip finisher. */
+  /** Player Attack chain: hits 1–2 share punch timing and the punch clip, hit 3 is the kick-clip finisher. */
   beginPlayerChain(kind) {
     const finisher = kind === 'kick';
     if (finisher) { this.chain = 2; this.chainArmed = 0; }
@@ -385,7 +385,7 @@ export class Fighter {
     const idx = finisher ? 2 : this.chain;
     const timing = finisher ? PACE.finisher : PACE.punch;
     const staff = this.classProfile?.weapon === 'staff';
-    const clip = finisher ? 'kick' : (this.classId === 'freehand' && idx === 1 ? 'combo' : 'punch');
+    const clip = finisher ? 'kick' : 'punch';
     this.atk = {
       su: timing.su, ac: timing.ac, re: timing.re,
       dmg: PACE.punch.dmg[idx], kb: PACE.punch.kb[idx], stun: PACE.punch.stun[idx], chip: 0,

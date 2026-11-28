@@ -10,14 +10,8 @@
     "punch": 6,
     "kick": 12,
     "fall": 8,
-    "combo": 18,
     "roll": 8,
     "special": 24
-  },
-  "combo": {
-    "frameW": 148,
-    "frameH": 222,
-    "baseline": 206
   },
   "roll": {
     "frameW": 172,

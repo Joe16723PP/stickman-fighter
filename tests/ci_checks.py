@@ -1853,10 +1853,66 @@ CHAIN = r"""
     return h.length === 3 && h.map(x => x.base).join() === '5,7,9' && h.map(x => x.clip).join() === clips && h[2].kd === true && h[0].kd === false && h[1].kd === false;
   };
   const b = out.blade, s = out.staff, k = out.freehand;
-  out.pass = row('blade', 'punch,punch,kick') && row('freehand', 'punch,combo,kick') && row('staff', 'punch,punch,kick')
+  // Full Karate chain plus a special, in Practice as well as the chain above.
+  // Hits 1 and 2 each play punch 0–5, with frame 3 (the extended arm) only while active.
+  // A CPU Karate punch with chain 1 stays on punch too. No combo clip is ever drawn.
+  const filmHit = (which) => {
+    f.setClass('freehand'); f.reset(300, 1); f.playerControlled = true; f.depth = .5; f.hp = 500; f.attackBoostT = 0; f.chain = 0; f.chainArmed = 0; f.meter = 100;
+    foe.setClass(null); foe.reset(348, -1); foe.playerControlled = false; foe.depth = .5; foe.hp = 500;
+    foe.ragdollActive = false; foe.damageBurst = 0; foe.damageBurstT = 0; foe.stun = 0; foe.y = 0; foe.grounded = true; foe.invincibleT = 0;
+    if (which === 1) { f.chain = 0; f.chainArmed = 1; }
+    if (which === 'special') f.startAtk('special');
+    else f.startAtk(which === 2 ? 'kick' : 'punch');
+    const a = f.atk, rows = [], total = a.su + a.ac + a.re;
+    for (let i = 0; i < total + 2 && f.atk === a; i++) {
+      f.update(Game.STEP, foe, 0); f.x = 300;
+      if (f.atk === a && f.atkT > 0 && f.atkT <= total) {
+        const shown = attackClip(f);
+        const phase = f.atkT <= a.su ? 'su' : f.atkT <= a.su + a.ac ? 'ac' : 're';
+        rows.push({ clip: shown.clip, frame: shown.frame, phase });
+      }
+      foe.x = 348; foe.stun = 0; foe.invincibleT = 0; foe.vx = 0;
+      if (!foe.ragdollActive) { foe.state = 'idle'; foe.y = 0; foe.grounded = true; }
+    }
+    return rows;
+  };
+  const film = [filmHit(0), filmHit(1), filmHit(2), filmHit('special')];
+  const used = (rows) => [...new Set(rows.map(r => r.frame))].sort((x, y) => x - y).join(',');
+  const punchSpan = (rows) => rows.length > 0 && rows.every(r => r.clip === 'punch' && r.frame >= 0 && r.frame <= 5);
+  const activeIsExtend = (rows) => {
+    const active = rows.filter(r => r.phase === 'ac');
+    return active.length > 0 && active.every(r => r.clip === 'punch' && r.frame === 3)
+      && rows.filter(r => r.phase !== 'ac').every(r => r.frame !== 3);
+  };
+  const modes = ['beatemup', 'practice'];
+  const modeClips = [];
+  for (const mode of modes) {
+    Game.mode = mode;
+    for (const rows of [filmHit(0), filmHit(1), filmHit(2), filmHit('special')]) modeClips.push(...rows.map(r => r.clip));
+  }
+  Game.mode = 'beatemup';
+  f.setClass('freehand'); f.playerControlled = false; f.state = 'punch'; f.atk = { chain: 1, su: 12, ac: 4, re: 19 }; f.atkT = 8; f.hp = 500;
+  const cpu = attackClip(f);
+  f.playerControlled = true; f.atk = null; f.state = 'idle';
+  const noCombo = film.every(rows => rows.every(r => r.clip !== 'combo')) && modeClips.every(c => c !== 'combo') && cpu.clip !== 'combo';
+  out.karateFilm = {
+    h1: film[0].map(r => r.frame).join(','), h2: film[1].map(r => r.frame).join(','), kick: film[2].map(r => r.frame).join(','),
+    special: [...new Set(film[3].map(r => r.clip))].join(','),
+    active: film[0].filter(r => r.phase === 'ac').map(r => r.frame).join(',') + '/' + film[1].filter(r => r.phase === 'ac').map(r => r.frame).join(','),
+    cpu: cpu.clip + ':' + cpu.frame, modes: modeClips.filter((c, i) => modeClips.indexOf(c) === i).join(','), noCombo,
+  };
+  const karateClip = punchSpan(film[0]) && punchSpan(film[1]) && used(film[0]) === '0,1,2,3,4,5' && used(film[1]) === '0,1,2,3,4,5'
+    && activeIsExtend(film[0]) && activeIsExtend(film[1])
+    && film[2].length > 0 && film[2].every(r => r.clip === 'kick')
+    && film[3].length > 0 && film[3].every(r => r.clip === 'special')
+    && noCombo;
+  out.pass = row('blade', 'punch,punch,kick') && row('freehand', 'punch,punch,kick') && row('staff', 'punch,punch,kick')
     && inRange(b[0].frames, 0, 2) && inRange(b[1].frames, 3, 5) && b[2].frames.every(x => x.startsWith('kick:'))
     && inRange(s[0].frames, 0, 2) && inRange(s[1].frames, 3, 5) && s[2].frames.every(x => x.startsWith('kick:'))
-    && k[0].frames.every(x => x.startsWith('punch:')) && k[1].frames.every(x => x.startsWith('combo:')) && inRange(k[1].frames, 5, 8) && k[2].frames.every(x => x.startsWith('kick:'));
+    && k[0].frames.every(x => x.startsWith('punch:')) && inRange(k[0].frames, 0, 5) && k[0].frames.includes('punch:3')
+    && k[1].frames.every(x => x.startsWith('punch:')) && inRange(k[1].frames, 0, 5) && k[1].frames.includes('punch:3')
+    && k[2].frames.every(x => x.startsWith('kick:'))
+    && karateClip;
   Game.mode = prev.mode; Game.phase = prev.phase; Math.random = prev.random;
   return out;
 }
@@ -2262,10 +2318,62 @@ def main():
     time.sleep(0.7)
     url = f'http://127.0.0.1:{port}/index.html'
     failures = []
+    texture_problems = []
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
+            # Real preload (the harness below freezes the boot frame before Phaser creates the scene).
+            load_page = browser.new_page(viewport={'width': 844, 'height': 390})
+            load_problems = []
+            def note_load_response(response):
+                if response.status < 400: return
+                if '/characters/' in response.url or '/frames/' in response.url:
+                    load_problems.append(f'{response.status} {response.url}')
+            def note_load_console(msg):
+                text = msg.text or ''
+                low = text.lower()
+                if 'failed to load' in low or 'file load error' in low or 'missing texture' in low:
+                    load_problems.append(text)
+            load_page.on('response', note_load_response)
+            load_page.on('console', note_load_console)
+            load_page.goto(url, wait_until='load')
+            loaded = {'pass': False, 'error': 'preload did not finish'}
+            try:
+                load_page.wait_for_function(
+                    "() => !!(Game.phaserScene && Game.phaserScene.textures.exists('karate-punch-5') && Game.phaserScene.textures.exists('karate-special-23'))",
+                    timeout=20000)
+                loaded = load_page.evaluate('''() => {
+                  const scene = Game.phaserScene;
+                  const need = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, roll: 8, special: 24 };
+                  const missing = [];
+                  for (const [name, count] of Object.entries(need)) {
+                    for (let i = 0; i < count; i++) if (!scene.textures.exists('karate-' + name + '-' + i)) missing.push(name + ':' + i);
+                  }
+                  const combo = [];
+                  for (let i = 0; i < 18; i++) if (scene.textures.exists('karate-combo-' + i)) combo.push(i);
+                  const keys = scene.textures.getTextureKeys().filter(k => String(k).indexOf('karate-combo') === 0);
+                  return { missing, combo, keys, pass: missing.length === 0 && combo.length === 0 && keys.length === 0 };
+                }''')
+            except Exception as exc:
+                loaded = {'pass': False, 'error': str(exc)}
+            print('karate texture load', json.dumps({k: v for k, v in loaded.items() if k != 'pass'}))
+            if not loaded.get('pass') or load_problems:
+                failures.append('Texture load failed: game preload left Karate frames missing, loaded a combo texture, or reported a missing file: '
+                                + json.dumps({'loaded': {k: v for k, v in loaded.items() if k != 'pass'}, 'http': load_problems[:8]}))
+            load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
+            def note_response(response):
+                url = response.url
+                if response.status < 400: return
+                if '/characters/' in url or '/frames/' in url:
+                    texture_problems.append(f'{response.status} {url}')
+            def note_console(msg):
+                text = msg.text or ''
+                low = text.lower()
+                if 'failed to load' in low or 'file load error' in low or 'missing texture' in low:
+                    texture_problems.append(text)
+            page.on('response', note_response)
+            page.on('console', note_console)
             page.add_init_script(INIT_SCRIPT)
             page.goto(url, wait_until='load')
             page.wait_for_function("typeof Game !== 'undefined' && Game.canvas")
@@ -2334,7 +2442,9 @@ def main():
             chain = page.evaluate(CHAIN)
             print('attack chain', json.dumps({k: v for k, v in chain.items() if k != 'pass'}))
             if not chain['pass']:
-                failures.append('Attack chain failed: expected Blade, Karate and Staff to deal 5/7/9 base damage across punch, the class second clip, and the kick finisher, with hit 3 knocking the target down and Karate hit 2 staying on combo frames 5-8')
+                failures.append('Attack chain failed: expected Blade, Karate and Staff to deal 5/7/9 base damage across two punches and the kick finisher, with hit 3 knocking the target down, Karate hits 1 and 2 on punch frames 0-5 with frame 3 only in the active window, and no combo texture drawn or loaded across the chain and special')
+            if texture_problems:
+                failures.append('Texture load failed: ' + ' | '.join(texture_problems[:12]))
             dodge = page.evaluate(DODGE)
             print('dodge', json.dumps(dodge))
             if not dodge['pass']:
