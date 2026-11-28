@@ -398,6 +398,19 @@ function enemyBodyScale(entry) {
   return (96 * s) / BODY;
 }
 
+// Same body scale as a scaleMul-1 enemy in this fighter's lane. Beat 'em up paint is outside
+// withDepth, so drawS() is full Fighter.S at depth scale 1 and reads about 35% large.
+// Practice keeps drawS(), which already includes the 1v1 depth scale. No per-class factor.
+function playerBodyScale(fighter) {
+  if (Game.mode === 'beatemup' && Game.phase !== 'title') {
+    const entry = BeatEmUp.entryFor(fighter);
+    const depth = entry ? entry.depth : fighter.depth;
+    const s = (BeatEmUp.baseS || 1) * BeatEmUp.depthToScale(depth);
+    return (96 * s) / BODY;
+  }
+  return (96 * fighter.drawS()) / BODY;
+}
+
 // Tallest idle crop on the title (Staff's staff). Both fighters share one scale so a
 // class swap cannot poke a weapon through the cards, and neither uses in-game scale.
 function titleTallestBaseline() {
@@ -436,7 +449,7 @@ function titleBodyScale(entry, fighter, screen) {
     if (menu > 0) return menu;
   }
   if (entry) return enemyBodyScale(entry) * screen;
-  return ((96 * fighter.drawS()) / BODY) * screen;
+  return playerBodyScale(fighter) * screen;
 }
 
 // KO corpses dissolve over the last 0.6s of the 2s window instead of popping off.
