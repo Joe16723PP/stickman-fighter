@@ -7,7 +7,7 @@ import { Fx } from './fx.js';
 import { Input } from './input.js';
 import { Pose } from './pose.js';
 import { startPhaser } from './phaser-host.js';
-import { classIdleSource } from './phaser-actors.js';
+import { classIdleSource, titleIdleSpec, titleMenuCanvasScale } from './phaser-actors.js';
 
 export let fighters = [new Fighter(0, PlayerCoolColor, 1, 'YOU'), new Fighter(0, CpuHotColors['1v1'], -1, 'CPU')];
 
@@ -106,6 +106,7 @@ export class Game {
     fighters[0].setClass(id);
     document.documentElement.style.setProperty('--class-accent', FighterClasses[id].accent);
     try { localStorage.setItem('stickman-beatemup-class', id); } catch (e) {}
+    if (Game.phase === 'title') Game.syncTitleFighters();
   }
   static selectArcadeLevel(id) {
     if (!ArcadeDiff[id]) return;
@@ -154,16 +155,51 @@ export class Game {
   }
   /** Title-only: idle fighters at ~10% / 90% width, facing in. Match spawn unchanged. */
   static placeTitleFighters() {
+    const placed = Game.titleFighterPositions();
+    fighters[0].reset(placed[0], 1); fighters[1].reset(placed[1], -1);
+  }
+  /** Keep title x in sync after a class change without resetting the idle loop. */
+  static syncTitleFighters() {
+    const placed = Game.titleFighterPositions();
+    fighters[0].face = 1; fighters[1].face = -1;
+    fighters[0].x = placed[0]; fighters[1].x = placed[1];
+  }
+  // Default 10%/90% spots, then a horizontal nudge only when a full idle crop
+  // (weapon included) still crosses a class card. Feet stay on the ground line.
+  static titleFighterPositions() {
     const sc = Game.scale || 1;
-    const safeL = Game.safeL;
-    const safeR = Game.safeR;
-    const inset = (16 + Math.max(safeL, safeR)) / sc;
-    // Approximate full limb reach from body center (idle pose + stroke)
+    const inset = (16 + Math.max(Game.safeL, Game.safeR)) / sc;
     const reach = 48;
     let x0 = Game.W * .10, x1 = Game.W * .90;
     x0 = Math.max(inset + reach, Math.min(Game.W / 2 - 80, x0));
     x1 = Math.min(Game.W - inset - reach, Math.max(Game.W / 2 + 80, x1));
-    fighters[0].reset(x0, 1); fighters[1].reset(x1, -1);
+    const layout = Game.titleLayout();
+    const cards = layout && layout.classes;
+    const dpr = Game.fitDpr || 1;
+    const canvasScale = titleMenuCanvasScale();
+    const scaleGame = canvasScale > 0 ? canvasScale / (dpr * sc) : 0;
+    if (cards && cards.length && scaleGame > 0) {
+      x0 = Game.clearTitleSpriteX(x0, 1, titleIdleSpec(fighters[0].classId || Game.selectedClass), cards, scaleGame);
+      x1 = Game.clearTitleSpriteX(x1, -1, titleIdleSpec('brawler'), cards, scaleGame);
+    }
+    return [x0, x1];
+  }
+  static clearTitleSpriteX(x, face, spec, cards, scaleGame) {
+    if (!spec) return x;
+    const box = spec.box, anchor = spec.anchor;
+    const rear = (face > 0 ? anchor : box.w - anchor) * scaleGame;
+    const fore = (face > 0 ? box.w - anchor : anchor) * scaleGame;
+    const ground = fighters[0].groundY() + (fighters[0].y || 0);
+    const top = ground - box.baseline * scaleGame;
+    const bot = ground + (box.h - box.baseline) * scaleGame;
+    const hit = (px) => cards.some(c => px - rear < c.x + c.w && px + fore > c.x && top < c.y + c.h && bot > c.y);
+    if (!hit(x)) return x;
+    const left = Math.min(...cards.map(c => c.x)) - fore;
+    const right = Math.max(...cards.map(c => c.x + c.w)) + rear;
+    const choices = [left, right].filter(px => !hit(px));
+    if (!choices.length) return x;
+    choices.sort((a, b) => Math.abs(a - x) - Math.abs(b - x));
+    return choices[0];
   }
   static startMatch() {
     Game.paused = false; Game.actionMenuOpen = false;
@@ -602,6 +638,7 @@ export class Game {
       }
       if (Game.phase === 'title') {
         fighters[0].face = 1; fighters[1].face = -1;
+        Game.syncTitleFighters();
         fighters[0].state = 'idle'; fighters[1].state = 'idle';
         fighters[0].atk = null; fighters[1].atk = null;
         fighters[0].animT += step; fighters[1].animT += step;
