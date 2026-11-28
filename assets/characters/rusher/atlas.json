@@ -1,0 +1,615 @@
+{
+  "frames": {
+    "rusher-fall-0": {
+      "frame": {
+        "x": 370,
+        "y": 374,
+        "w": 151,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 70,
+        "y": 16,
+        "w": 151,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-1": {
+      "frame": {
+        "x": 361,
+        "y": 2,
+        "w": 182,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 48,
+        "y": 17,
+        "w": 182,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-2": {
+      "frame": {
+        "x": 282,
+        "y": 893,
+        "w": 182,
+        "h": 137
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 67,
+        "w": 182,
+        "h": 137
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-3": {
+      "frame": {
+        "x": 331,
+        "y": 564,
+        "w": 189,
+        "h": 137
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 79,
+        "y": 67,
+        "w": 189,
+        "h": 137
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-4": {
+      "frame": {
+        "x": 115,
+        "y": 1357,
+        "w": 197,
+        "h": 79
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 84,
+        "y": 125,
+        "w": 197,
+        "h": 79
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-5": {
+      "frame": {
+        "x": 361,
+        "y": 1355,
+        "w": 176,
+        "h": 86
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 88,
+        "y": 118,
+        "w": 176,
+        "h": 86
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-6": {
+      "frame": {
+        "x": 115,
+        "y": 1438,
+        "w": 197,
+        "h": 61
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 94,
+        "y": 143,
+        "w": 197,
+        "h": 61
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-fall-7": {
+      "frame": {
+        "x": 314,
+        "y": 1443,
+        "w": 196,
+        "h": 61
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 93,
+        "y": 143,
+        "w": 196,
+        "h": 61
+      },
+      "sourceSize": {
+        "w": 308,
+        "h": 220
+      }
+    },
+    "rusher-idle-0": {
+      "frame": {
+        "x": 2,
+        "y": 1155,
+        "w": 115,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 20,
+        "w": 115,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 152,
+        "h": 222
+      }
+    },
+    "rusher-idle-1": {
+      "frame": {
+        "x": 2,
+        "y": 1343,
+        "w": 111,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 18,
+        "w": 111,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 152,
+        "h": 222
+      }
+    },
+    "rusher-idle-2": {
+      "frame": {
+        "x": 367,
+        "y": 1165,
+        "w": 111,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 18,
+        "w": 111,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 152,
+        "h": 222
+      }
+    },
+    "rusher-idle-3": {
+      "frame": {
+        "x": 119,
+        "y": 1160,
+        "w": 112,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 17,
+        "w": 112,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 152,
+        "h": 222
+      }
+    },
+    "rusher-idle-4": {
+      "frame": {
+        "x": 252,
+        "y": 1032,
+        "w": 113,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 17,
+        "w": 113,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 152,
+        "h": 222
+      }
+    },
+    "rusher-idle-5": {
+      "frame": {
+        "x": 423,
+        "y": 703,
+        "w": 115,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 18,
+        "w": 115,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 152,
+        "h": 222
+      }
+    },
+    "rusher-rush-0": {
+      "frame": {
+        "x": 367,
+        "y": 1032,
+        "w": 163,
+        "h": 131
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 78,
+        "y": 101,
+        "w": 163,
+        "h": 131
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-1": {
+      "frame": {
+        "x": 233,
+        "y": 1223,
+        "w": 126,
+        "h": 132
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 91,
+        "y": 100,
+        "w": 126,
+        "h": 132
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-2": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 175,
+        "h": 216
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 130,
+        "y": 16,
+        "w": 175,
+        "h": 216
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-3": {
+      "frame": {
+        "x": 179,
+        "y": 2,
+        "w": 180,
+        "h": 205
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 130,
+        "y": 27,
+        "w": 180,
+        "h": 205
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-4": {
+      "frame": {
+        "x": 2,
+        "y": 220,
+        "w": 169,
+        "h": 177
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 88,
+        "y": 55,
+        "w": 169,
+        "h": 177
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-5": {
+      "frame": {
+        "x": 370,
+        "y": 191,
+        "w": 162,
+        "h": 181
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 91,
+        "y": 51,
+        "w": 162,
+        "h": 181
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-6": {
+      "frame": {
+        "x": 2,
+        "y": 399,
+        "w": 179,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 44,
+        "w": 179,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-rush-7": {
+      "frame": {
+        "x": 179,
+        "y": 209,
+        "w": 189,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 44,
+        "w": 189,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 326,
+        "h": 248
+      }
+    },
+    "rusher-walk-0": {
+      "frame": {
+        "x": 2,
+        "y": 589,
+        "w": 144,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 22,
+        "y": 16,
+        "w": 144,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-1": {
+      "frame": {
+        "x": 287,
+        "y": 703,
+        "w": 134,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 42,
+        "y": 18,
+        "w": 134,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-2": {
+      "frame": {
+        "x": 2,
+        "y": 781,
+        "w": 139,
+        "h": 180
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 36,
+        "y": 26,
+        "w": 139,
+        "h": 180
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-3": {
+      "frame": {
+        "x": 127,
+        "y": 971,
+        "w": 123,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 48,
+        "y": 19,
+        "w": 123,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-4": {
+      "frame": {
+        "x": 183,
+        "y": 399,
+        "w": 146,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 17,
+        "w": 146,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-5": {
+      "frame": {
+        "x": 2,
+        "y": 963,
+        "w": 123,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 52,
+        "y": 16,
+        "w": 123,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-6": {
+      "frame": {
+        "x": 148,
+        "y": 780,
+        "w": 132,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 50,
+        "y": 17,
+        "w": 132,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    },
+    "rusher-walk-7": {
+      "frame": {
+        "x": 148,
+        "y": 590,
+        "w": 137,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 27,
+        "y": 18,
+        "w": 137,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 198,
+        "h": 222
+      }
+    }
+  },
+  "meta": {
+    "app": "stickman-fighter-atlas-packer",
+    "version": "1.0",
+    "image": "atlas.webp",
+    "format": "RGBA8888",
+    "size": {
+      "w": 545,
+      "h": 1533
+    },
+    "scale": "1"
+  }
+}

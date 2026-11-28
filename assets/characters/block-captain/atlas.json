@@ -1,0 +1,855 @@
+{
+  "frames": {
+    "block-captain-fall-0": {
+      "frame": {
+        "x": 669,
+        "y": 790,
+        "w": 127,
+        "h": 191
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 77,
+        "y": 17,
+        "w": 127,
+        "h": 191
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-1": {
+      "frame": {
+        "x": 165,
+        "y": 748,
+        "w": 139,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 64,
+        "y": 22,
+        "w": 139,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-2": {
+      "frame": {
+        "x": 617,
+        "y": 215,
+        "w": 179,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 21,
+        "w": 179,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-3": {
+      "frame": {
+        "x": 494,
+        "y": 790,
+        "w": 173,
+        "h": 141
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 56,
+        "y": 67,
+        "w": 173,
+        "h": 141
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-4": {
+      "frame": {
+        "x": 366,
+        "y": 1122,
+        "w": 175,
+        "h": 117
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 52,
+        "y": 91,
+        "w": 175,
+        "h": 117
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-5": {
+      "frame": {
+        "x": 449,
+        "y": 1313,
+        "w": 171,
+        "h": 99
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 55,
+        "y": 109,
+        "w": 171,
+        "h": 99
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-6": {
+      "frame": {
+        "x": 2,
+        "y": 1528,
+        "w": 190,
+        "h": 80
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 49,
+        "y": 128,
+        "w": 190,
+        "h": 80
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-fall-7": {
+      "frame": {
+        "x": 449,
+        "y": 1414,
+        "w": 186,
+        "h": 74
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 58,
+        "y": 134,
+        "w": 186,
+        "h": 74
+      },
+      "sourceSize": {
+        "w": 260,
+        "h": 224
+      }
+    },
+    "block-captain-idle-0": {
+      "frame": {
+        "x": 236,
+        "y": 1203,
+        "w": 105,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 16,
+        "w": 105,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 138,
+        "h": 220
+      }
+    },
+    "block-captain-idle-1": {
+      "frame": {
+        "x": 2,
+        "y": 1338,
+        "w": 104,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 16,
+        "w": 104,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 138,
+        "h": 220
+      }
+    },
+    "block-captain-idle-2": {
+      "frame": {
+        "x": 118,
+        "y": 1319,
+        "w": 105,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 16,
+        "w": 105,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 138,
+        "h": 220
+      }
+    },
+    "block-captain-idle-3": {
+      "frame": {
+        "x": 653,
+        "y": 1173,
+        "w": 104,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 16,
+        "w": 104,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 138,
+        "h": 220
+      }
+    },
+    "block-captain-idle-4": {
+      "frame": {
+        "x": 225,
+        "y": 1393,
+        "w": 103,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 19,
+        "y": 16,
+        "w": 103,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 138,
+        "h": 220
+      }
+    },
+    "block-captain-idle-5": {
+      "frame": {
+        "x": 343,
+        "y": 1241,
+        "w": 104,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 16,
+        "w": 104,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 138,
+        "h": 220
+      }
+    },
+    "block-captain-jab-hook-0": {
+      "frame": {
+        "x": 306,
+        "y": 820,
+        "w": 120,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 16,
+        "w": 120,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-1": {
+      "frame": {
+        "x": 2,
+        "y": 768,
+        "w": 124,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 43,
+        "y": 16,
+        "w": 124,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-2": {
+      "frame": {
+        "x": 182,
+        "y": 556,
+        "w": 163,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 16,
+        "w": 163,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-3": {
+      "frame": {
+        "x": 128,
+        "y": 936,
+        "w": 120,
+        "h": 190
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 24,
+        "y": 16,
+        "w": 120,
+        "h": 190
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-4": {
+      "frame": {
+        "x": 208,
+        "y": 369,
+        "w": 172,
+        "h": 185
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 44,
+        "y": 21,
+        "w": 172,
+        "h": 185
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-5": {
+      "frame": {
+        "x": 431,
+        "y": 215,
+        "w": 184,
+        "h": 182
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 43,
+        "y": 24,
+        "w": 184,
+        "h": 182
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-6": {
+      "frame": {
+        "x": 347,
+        "y": 634,
+        "w": 145,
+        "h": 184
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 42,
+        "y": 22,
+        "w": 145,
+        "h": 184
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-jab-hook-7": {
+      "frame": {
+        "x": 677,
+        "y": 404,
+        "w": 120,
+        "h": 185
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 21,
+        "y": 21,
+        "w": 120,
+        "h": 185
+      },
+      "sourceSize": {
+        "w": 244,
+        "h": 222
+      }
+    },
+    "block-captain-special-0": {
+      "frame": {
+        "x": 518,
+        "y": 404,
+        "w": 157,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 73,
+        "y": 62,
+        "w": 157,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-1": {
+      "frame": {
+        "x": 2,
+        "y": 580,
+        "w": 161,
+        "h": 186
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 77,
+        "y": 64,
+        "w": 161,
+        "h": 186
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-10": {
+      "frame": {
+        "x": 225,
+        "y": 182,
+        "w": 204,
+        "h": 185
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 49,
+        "y": 65,
+        "w": 204,
+        "h": 185
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-11": {
+      "frame": {
+        "x": 667,
+        "y": 594,
+        "w": 128,
+        "h": 194
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 54,
+        "y": 56,
+        "w": 128,
+        "h": 194
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-2": {
+      "frame": {
+        "x": 518,
+        "y": 594,
+        "w": 147,
+        "h": 185
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 75,
+        "y": 65,
+        "w": 147,
+        "h": 185
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-3": {
+      "frame": {
+        "x": 463,
+        "y": 2,
+        "w": 190,
+        "h": 211
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 42,
+        "y": 39,
+        "w": 190,
+        "h": 211
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-4": {
+      "frame": {
+        "x": 2,
+        "y": 2,
+        "w": 221,
+        "h": 219
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 31,
+        "y": 31,
+        "w": 221,
+        "h": 219
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-5": {
+      "frame": {
+        "x": 2,
+        "y": 401,
+        "w": 178,
+        "h": 177
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 77,
+        "y": 73,
+        "w": 178,
+        "h": 177
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-6": {
+      "frame": {
+        "x": 2,
+        "y": 223,
+        "w": 204,
+        "h": 176
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 74,
+        "y": 74,
+        "w": 204,
+        "h": 176
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-7": {
+      "frame": {
+        "x": 382,
+        "y": 399,
+        "w": 134,
+        "h": 233
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 60,
+        "y": 17,
+        "w": 134,
+        "h": 233
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-8": {
+      "frame": {
+        "x": 655,
+        "y": 2,
+        "w": 141,
+        "h": 193
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 56,
+        "y": 57,
+        "w": 141,
+        "h": 193
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-special-9": {
+      "frame": {
+        "x": 225,
+        "y": 2,
+        "w": 236,
+        "h": 178
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 72,
+        "w": 236,
+        "h": 178
+      },
+      "sourceSize": {
+        "w": 294,
+        "h": 266
+      }
+    },
+    "block-captain-walk-0": {
+      "frame": {
+        "x": 543,
+        "y": 1124,
+        "w": 108,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 19,
+        "w": 108,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-1": {
+      "frame": {
+        "x": 2,
+        "y": 960,
+        "w": 117,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 19,
+        "w": 117,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-2": {
+      "frame": {
+        "x": 428,
+        "y": 933,
+        "w": 117,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 16,
+        "y": 19,
+        "w": 117,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-3": {
+      "frame": {
+        "x": 2,
+        "y": 1149,
+        "w": 114,
+        "h": 187
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 19,
+        "w": 114,
+        "h": 187
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-4": {
+      "frame": {
+        "x": 664,
+        "y": 983,
+        "w": 115,
+        "h": 188
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 18,
+        "w": 115,
+        "h": 188
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-5": {
+      "frame": {
+        "x": 547,
+        "y": 933,
+        "w": 115,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 17,
+        "y": 17,
+        "w": 115,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-6": {
+      "frame": {
+        "x": 250,
+        "y": 1012,
+        "w": 114,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 18,
+        "y": 17,
+        "w": 114,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    },
+    "block-captain-walk-7": {
+      "frame": {
+        "x": 121,
+        "y": 1128,
+        "w": 113,
+        "h": 189
+      },
+      "rotated": false,
+      "trimmed": true,
+      "spriteSourceSize": {
+        "x": 20,
+        "y": 17,
+        "w": 113,
+        "h": 189
+      },
+      "sourceSize": {
+        "w": 150,
+        "h": 222
+      }
+    }
+  },
+  "meta": {
+    "app": "stickman-fighter-atlas-packer",
+    "version": "1.0",
+    "image": "atlas.webp",
+    "format": "RGBA8888",
+    "size": {
+      "w": 799,
+      "h": 1610
+    },
+    "scale": "1"
+  }
+}
