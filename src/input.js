@@ -9,7 +9,7 @@ export class Input {
   static was = [{}, {}];
   /** Touch presses seen since the last sim step, so a tap shorter than one frame still fires. */
   static tapped = [{}, {}];
-  // acts list byte-identical to main (AC2). Depth keys read via depthHeld() in beat/1v1/practice.
+  // acts list byte-identical to main (AC2). Depth keys read via depthHeld() in beat 'em up and practice.
   static acts = ['left','right','jump','punch','kick','roll','special'];
   static keyMap = [
     {left:['a','A','ArrowLeft'], right:['d','D','ArrowRight'], jump:[], punch:['j','J'], kick:['k','K'], roll:['Shift'], special:['i','I']},
@@ -145,7 +145,7 @@ export class Input {
   }
   static held(p, a) { return Input.keyMap[p][a].some(k => Input.keys.has(k)) || !!Input.pad[p][a]; }
   static depthHeld(dir, slot = 0) {
-    if (Game.mode !== 'beatemup' && Game.mode !== '1v1' && Game.mode !== 'practice') return false;
+    if (Game.mode !== 'beatemup' && Game.mode !== 'practice') return false;
     const padKey = dir === 'up' ? 'depthUp' : 'depthDown';
     const keys = slot === 0 ? Input.depthKeys[dir] : Input.p2DepthKeys[dir];
     return (keys || []).some(k => Input.keys.has(k)) || !!(slot === 0 && Input.pad[0][padKey]);

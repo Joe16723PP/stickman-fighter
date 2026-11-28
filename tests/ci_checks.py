@@ -1,30 +1,21 @@
 #!/usr/bin/env python3
 """CI checks for Stickman Fighter (run on every pull_request).
 
-1. Seeded 1v1 parity: seed 0xC0FFEE42, 100 rounds per level (easy/normal/hard),
-   a scripted random-input player vs the CPU Bot, simulated headlessly at a fixed
-   1/60 step. The sha256 digest of every round result must equal
-   tests/parity-baseline.json. If a PR changes 1v1 on purpose, update the baseline
-   in the same PR and explain why in the PR body.
-2. Edge clearance (1v1) at 667x375 and 844x390: fighters parked on the lane
-   edges must not overlap any touch control that shares their vertical span.
-   Beat 'em up: fighters must stay inside the 2%..98% screen band.
+Beat 'em up and Practice harnesses, plus edge clearance at 667x375 and 844x390:
+Beat 'em up fighters must stay inside the 2%..98% screen band.
 
-Usage: python3 tests/ci_checks.py [--update-baseline]
+The seeded 1v1 parity digest was retired with 1v1 mode.
+
+Usage: python3 tests/ci_checks.py
 """
-import json, hashlib, subprocess, sys, time, socket
+import json, subprocess, sys, time, socket
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-BASELINE = ROOT / 'tests' / 'parity-baseline.json'
 SEED = 0xC0FFEE42
-ROUNDS = 100
-LEVELS = ['easy', 'normal', 'hard']
-CLEAR_PX = 4
 
 INIT_SCRIPT = '''
-window.__SEED = %d; 
 (function(){
   const _raf = window.requestAnimationFrame.bind(window);
   let frozen = false;
@@ -36,11 +27,11 @@ window.__SEED = %d;
         Game.frame = function(){};
         window.requestAnimationFrame = function(){ return 0; };
       }
-      // Do NOT run the boot frame — drop it so Bot never ticks before our seed.
+      // Do NOT run the boot frame — tests step the sim themselves.
     });
   };
 })();
-''' % SEED
+'''
 
 SEED_RNG = '''(seed) => {
   let s = seed >>> 0;
@@ -61,86 +52,9 @@ FREEZE = '''() => {
   window.requestAnimationFrame = function(){ return 0; };
 }'''
 
-SETUP = '''() => {
-  Game.frame = function(){};
-  window.requestAnimationFrame = function(){ return 0; };
-  if ('mode' in Game) Game.mode = '1v1';
-  if (typeof Input !== 'undefined' && Input.syncMode) Input.syncMode();
-  Game.level='normal';
-  Game.phase='fight'; Game.fighting=1; Game.banner=''; Game.matchOver=0;
-  Bot.reset(); if (Fx.clear) Fx.clear(); Game.shake=0; Game.stop=0;
-  fighters[0].reset(Game.W*.35,1); fighters[1].reset(Game.W*.65,-1);
-  fighters[0].meter=0; fighters[1].meter=0;
-  fighters[0].color='#3B82F6'; fighters[1].color='#EF4444';
-  fighters[0].tag='YOU'; fighters[1].tag='CPU';
-  Game.timer=45; Game.wins=[0,0];
-  Game.syncControls(); Game.fit(); Game.syncSpecialBtn();
-  const el=document.getElementById('controls'); if(el) el.style.display='';
-  Game.btns=[...document.querySelectorAll('#controls button')].map(el=>{
-    const r=el.getBoundingClientRect(); return {x:r.left,y:r.top,w:r.width,h:r.height};
-  });
-  Game.frame = function(){};
-}'''
-
-SIM = '''(level) => {
-  if ('mode' in Game) Game.mode = '1v1';
-  if (typeof Input !== 'undefined' && Input.syncMode) Input.syncMode();
-  Game.level = level;
-  fighters[0].meter=0; fighters[1].meter=0;
-  fighters[0].reset(Game.W*.35,1); fighters[1].reset(Game.W*.65,-1);
-  Bot.reset();
-  Game.timer=45; Game.phase='fight'; Game.fighting=1; Game.banner='';
-  Game.matchOver=0; Game.stop=0; Game.shake=0; Game.wins=[0,0];
-  if (typeof Fx !== 'undefined' && Fx.clear) Fx.clear();
-  let t=0, nextAct=0, cur='';
-  const acts=['left','right','punch','kick','block','jump'];
-  for (let i=0;i<60*50;i++){
-    if (Game.phase!=='fight') break;
-    const step=Game.STEP; t+=step;
-    if (t>=nextAct){
-      Input.acts.forEach(a=>{Input.pad[0][a]=0;Input.was[0][a]=0;});
-      cur=acts[(Math.random()*acts.length)|0];
-      nextAct=t+0.08+Math.random()*0.22+0.05+Math.random()*0.2;
-    }
-    if (t<nextAct-0.05) Input.pad[0][cur]=1; else Input.pad[0][cur]=0;
-    if (Game.stop>0){Game.stop-=step;continue;}
-    Game.timer-=step;
-    if (Game.timer<=0){Game.timer=0;Game.checkTimeout();break;}
-    Bot.update(step,fighters[1],fighters[0]);
-    ['punch','kick','special','jump'].forEach(a=>{if(Input.pad[1][a])Input.was[1][a]=0;});
-    fighters[0].update(step,fighters[1],0);
-    fighters[1].update(step,fighters[0],1);
-    Game.resolve();
-    if (Game.phase!=='fight') break;
-  }
-  if (Game.phase==='fight') Game.checkTimeout();
-  let winner = Game.wins[1]>Game.wins[0]?1:Game.wins[0]>Game.wins[1]?0:(fighters[0].hp>=fighters[1].hp?0:1);
-  Input.acts.forEach(a=>{Input.pad[0][a]=0;Input.was[0][a]=0;});
-  return {winner, hp:[fighters[0].hp,fighters[1].hp], rng: window.__rngS ? window.__rngS() : -1};
-}'''
-
 CLEARANCE = '''() => {
   const out = {};
-  // 1v1: park fighters on the lane edges at rest.
-  Game.mode = '1v1'; if (Input.syncMode) Input.syncMode();
-  Game.startMatch(); Game.phase = 'fight'; Game.fit();
-  fighters[0].reset(Game.minX, 1); fighters[1].reset(Game.maxX, -1);
-  const sc = Game.scale, ox = Game.ox, oy = Game.oy;
-  const worst = [];
-  fighters.forEach((f, i) => {
-    const b = f.bones(), n = f.drawNudgeX();
-    const x0 = ox + b.x0 * sc + n, x1 = ox + b.x1 * sc + n, y0 = oy + b.y0 * sc, y1 = oy + b.y1 * sc;
-    let gap = Infinity;
-    for (const r of Game.btns) {
-      if (y0 >= r.y + r.h || y1 <= r.y) continue;
-      const leftSide = r.x + r.w / 2 < innerWidth / 2;
-      if ((i === 0) !== leftSide) continue;
-      gap = Math.min(gap, i === 0 ? x0 - (r.x + r.w) : r.x - x1);
-    }
-    worst.push(gap);
-  });
-  out.gap1v1 = worst;
-  // Beat 'em up: band check.
+  Game.fit();
   BeatEmUp.begin(); Game.phase = 'fight';
   const band = BeatEmUp.horizontalScreenBounds ? BeatEmUp.horizontalScreenBounds() : null;
   out.band = band; out.viewport = [innerWidth, innerHeight];
@@ -148,9 +62,10 @@ CLEARANCE = '''() => {
 }'''
 
 BLADE_SUPER = '''() => {
-  // IAI Crescent Storm: single slash + travelling Blade Wave, 60 frames. Scripted frame by frame (1v1, fixed step), no sims.
-  Game.mode = '1v1'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
-  Game.minX = 0; Game.maxX = Game.W; Game.wins = [0,0];
+  // IAI Crescent Storm: single slash + travelling Blade Wave, 60 frames. Scripted frame by frame (practice lane, fixed step), no sims.
+  const prevRandom = Math.random; Math.random = () => 0.999; // keep the 74-damage assertion off a crit roll
+  Game.mode = 'practice'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0;
+  Game.minX = 0; Game.maxX = Game.W;
   BladeSuper.clear(); if (Fx.clear) Fx.clear();
   if (Input.syncMode) Input.syncMode();
   const pads0 = () => Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
@@ -158,7 +73,9 @@ BLADE_SUPER = '''() => {
   const setup = dx => {
     BladeSuper.clear(); pads0(); Game.stop = 0;
     owner.setClass('blade'); owner.reset(Game.W * .35, 1); owner.playerControlled = true;
-    target.setClass(null); target.reset(Game.W * .35 + dx, -1); target.playerControlled = false;
+    target.setClass(null); target.reset(Game.W * .35 + dx, -1);
+    // Practice dummies skip ragdoll. This target is a fighter so the knockdown timer still asserts.
+    target.playerControlled = true;
     owner.depth = target.depth = 0; owner.meter = 100; owner.startAtk('special');
   };
   const overlapSlash = () => { // put the hurtbox on the drawn cut (as the old harness did) so the slash connects
@@ -251,6 +168,7 @@ BLADE_SUPER = '''() => {
     && r.secondSuper.hitFrame === 21 && r.secondSuper.knockFrame === 231 && r.secondSuper.hpEvents.length === 2
     && r.secondSuper.hpEvents[1][0] === 110 && r.secondSuper.pending === 1);
   BladeSuper.clear(); owner.setClass(Game.selectedClass || null); owner.reset(Game.W * .3, 1); target.reset(Game.W * .7, -1);
+  Math.random = prevRandom;
   return r;
 }'''
 
@@ -333,12 +251,12 @@ LANE_COVERAGE = r"""
     blade: bladeRow(blade), karate: karateRow(karate),
     cpuStaff: staffRow(cpuStaff, 10), cpuBlade: bladeRow(cpuBlade), cpuTol: Depth.specialLaneTolerance(cpuStaff),
   };
-  Game.mode = '1v1';
-  r.oneVOne = { lanePx: Depth.lanePx(), staff: Depth.specialLaneTolerance(staff), blade: Depth.specialLaneTolerance(blade), karate: Depth.specialLaneTolerance(karate) };
+  Game.mode = 'practice';
+  r.practiceLane = { lanePx: Depth.lanePx(), staff: Depth.specialLaneTolerance(staff), blade: Depth.specialLaneTolerance(blade), karate: Depth.specialLaneTolerance(karate) };
   Game.mode = prevMode;
   r.pass = Math.abs(r.lanePx - 43.2) < 1e-6 && r.staffFullReach === '0111110' && r.staffOutside === '0000000'
     && r.blade === '0011100' && r.karate === '0011100' && r.cpuStaff === '0001000' && r.cpuBlade === '0001000' && r.cpuTol === null
-    && r.oneVOne.lanePx === 36 && r.oneVOne.staff === 90 && r.oneVOne.blade === 54 && r.oneVOne.karate === 54;
+    && r.practiceLane.lanePx === 36 && r.practiceLane.staff === 90 && r.practiceLane.blade === 54 && r.practiceLane.karate === 54;
   return r;
 }
 """
@@ -1016,9 +934,9 @@ RANGED = r"""
 
 PACING = r"""
 () => {
-  // Pacing pass (2026-11-15, Lemar WP5 starting point). 1v1 fighters, 60 fps fixed step, no hits landed.
+  // Pacing pass (2026-11-15, Lemar WP5 starting point). Practice fighters, 60 fps fixed step, no hits landed.
   const prev = { mode: Game.mode, floor: Fighter.BLEND_FLOOR, random: Math.random };
-  Game.mode = '1v1'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0; Game.minX = 0; Game.maxX = Game.W * 4;
+  Game.mode = 'practice'; Game.phase = 'fight'; Game.fighting = 1; Game.stop = 0; Game.shake = 0; Game.minX = 0; Game.maxX = Game.W * 4;
   if (Input.syncMode) Input.syncMode();
   const f = fighters[0], foe = fighters[1];
   Input.acts.forEach(a => { Input.pad[0][a] = 0; Input.pad[1][a] = 0; Input.was[0][a] = 0; Input.was[1][a] = 0; });
@@ -1916,24 +1834,9 @@ def main():
             page.goto(url, wait_until='load')
             page.wait_for_function("typeof Game !== 'undefined' && Game.canvas")
             page.wait_for_timeout(100)
-            for fn in (FREEZE,):
-                page.evaluate(fn)
-            page.evaluate(SEED_RNG, SEED); page.evaluate(SETUP); page.evaluate(FREEZE)
-            results = {}
-            for lv in LEVELS:
-                page.evaluate(SEED_RNG, SEED)
-                results[lv] = [page.evaluate(SIM, lv) for _ in range(ROUNDS)]
-            flat = [[lv, r['winner'], round(r['hp'][0], 6), round(r['hp'][1], 6), r['rng']] for lv in LEVELS for r in results[lv]]
-            digest = hashlib.sha256(json.dumps(flat, separators=(',', ':')).encode()).hexdigest()
-            wins = {lv: {'player': sum(r['winner'] == 0 for r in results[lv]), 'cpu': sum(r['winner'] == 1 for r in results[lv])} for lv in LEVELS}
-            print('parity digest', digest); print('wins', json.dumps(wins))
-            if '--update-baseline' in sys.argv:
-                BASELINE.write_text(json.dumps({'seed': hex(SEED), 'rounds_per_level': ROUNDS, 'digest': digest, 'wins': wins}, indent=2) + '\n')
-                print('baseline updated')
-            else:
-                base = json.loads(BASELINE.read_text())
-                if base['digest'] != digest:
-                    failures.append(f"parity digest {digest} != baseline {base['digest']} (baseline wins {base['wins']}, now {wins})")
+            page.evaluate(FREEZE)
+            page.evaluate(SEED_RNG, SEED)
+            page.evaluate(FREEZE)
             staff_aoe = page.evaluate(STAFF_AOE)
             print('staff AoE harness', json.dumps(staff_aoe))
             if not staff_aoe['pass']:
@@ -1941,7 +1844,7 @@ def main():
             lane_cov = page.evaluate(LANE_COVERAGE)
             print('special lane coverage', json.dumps(lane_cov))
             if not lane_cov['pass']:
-                failures.append('Special lane coverage failed: expected player Staff 5 lanes at full X reach, Blade/Karate 3 lanes, CPU unchanged, 1v1 lane 36px')
+                failures.append('Special lane coverage failed: expected player Staff 5 lanes at full X reach, Blade/Karate 3 lanes, CPU unchanged, practice lane 36px')
             brawler = page.evaluate(BRAWLER)
             print('brawler archetype', json.dumps({k: v for k, v in brawler.items() if k != 'pass'}))
             if not brawler['pass']:
@@ -2010,8 +1913,6 @@ def main():
                 pg.goto(url, wait_until='load'); pg.wait_for_function("typeof Game !== 'undefined' && Game.canvas"); pg.wait_for_timeout(200)
                 r = pg.evaluate(CLEARANCE)
                 print(f'clearance {w}x{h}', json.dumps(r))
-                for i, g in enumerate(r['gap1v1']):
-                    if g < CLEAR_PX: failures.append(f'{w}x{h} 1v1 fighter {i} is {g:.2f}px from a control (min {CLEAR_PX})')
                 if r['band']:
                     if r['band']['left'] < 0 or r['band']['right'] > w: failures.append(f'{w}x{h} beat em up band outside viewport: {r["band"]}')
                 pg.close()

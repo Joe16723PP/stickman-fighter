@@ -337,9 +337,9 @@ export class Fx {
     }
     Fx.list.length = write;
   }
-  /** 1v1/practice: game-space y (in the shaken draw space) above which effects are clipped; null elsewhere. */
+  /** Practice: game-space y (in the shaken draw space) above which effects are clipped; null elsewhere. */
   static hudClipY() {
-    if (Game.mode !== '1v1' && Game.mode !== 'practice') return null;
+    if (Game.mode !== 'practice') return null;
     const sc = Game.scale || 1;
     // Game.bars panel bottom = (12 + safeTop - 2 + 34) CSS px; +1 for its stroke, then the clearance.
     return (12 + Game.safeTop - 2 + 34 + 1 + Depth.HUD_CLEAR_PX) / sc - (Game.drawShakeY || 0);

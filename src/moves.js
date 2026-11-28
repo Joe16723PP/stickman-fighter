@@ -1,4 +1,3 @@
-import { Bot } from './bot.js';
 import { BossHardness } from './config.js';
 import { Fighter } from './fighter.js';
 
@@ -130,7 +129,7 @@ export class Atk {
       reach: m.reach,
     };
   }
-  // Back-compat mirrors for any Atk.punch.su style reads (Bot ranges still use literals via Moves)
+  // Back-compat mirrors for any Atk.punch.su style reads.
   static get punch() { return Atk.of('punch', 0); }
   static get kick() { return Atk.of('kick'); }
   static get special() { return Atk.of('special'); }

@@ -1,8 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { Bot } from './bot.js';
-import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossWeapons, Depth, Diff, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses } from './config.js';
+import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses } from './config.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
 import { Input } from './input.js';
@@ -66,7 +65,7 @@ export class Fighter {
   }
   /* Practice and beat 'em up stand on the same floor. Depth 0 is the back edge, depth 1 is the front. */
   groundY() { return Depth.toY(this.depth, Depth.areaTop(), Depth.areaBot()); }
-  depthScale() { return Game.mode === '1v1' || Game.mode === 'practice' ? Depth.toScale(this.depth, Depth.SCALE_1V1_MIN, Depth.SCALE_1V1_MAX) : 1; }
+  depthScale() { return Game.mode === 'practice' ? Depth.toScale(this.depth, Depth.SCALE_1V1_MIN, Depth.SCALE_1V1_MAX) : 1; }
   drawS() { return Fighter.S * this.depthScale(); }
   gainMeter(n) { this.meter = Math.min(100, this.meter + n * (this.classProfile?.meter || 1) * this.meterGainMultiplier); }
   confirmHit(kind, damage) {
@@ -300,10 +299,7 @@ export class Fighter {
       const multiplier = kind === 'special' ? (this.classProfile?.superPower || 1)
         : kind === 'kick' ? (this.classProfile?.kick || 1)
           : (this.classProfile?.punch || 1);
-      const difficultyDamage = !this.playerControlled && Game.mode === '1v1'
-        ? (Diff[Game.level]?.damage ?? 1) : 1;
-      this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1) * this.damageMultiplier * difficultyDamage;
-      if (difficultyDamage !== 1 && this.atk.chip != null) this.atk.chip *= difficultyDamage;
+      this.atk.dmg *= multiplier * (kind === 'special' ? 3 : 1) * this.damageMultiplier;
       const attackBoost = this.playerControlled && this.attackBoostT > 0 ? BeatEmUp.energyDrinkDamageMultiplier : 1;
       this.atk.dmg *= attackBoost;
       if (this.atk.chip != null) this.atk.chip *= attackBoost;
@@ -875,9 +871,9 @@ export class Fighter {
     this.animT += dt;
     if (this.specialVisual) this.specialVisual.elapsed += dt;
     const staffSuperActive = this.state === 'special' && this.classProfile?.weapon === 'staff' && !!this.atk;
-    // Lane change input for 1v1 / practice (P1 only; dummy and CPU stay or are driven by Bot).
+    // Lane change input for practice (P1 only; the dummy stays put).
     if ((staffSuperActive || (this.state === 'special' && this.classProfile?.weapon === 'blade')) && this.specialOriginDepth != null) this.depth = this.specialOriginDepth;
-    else if (Game.fighting && this.playerControlled && !this.ragdollActive && (Game.mode === '1v1' || Game.mode === 'practice')) {
+    else if (Game.fighting && this.playerControlled && !this.ragdollActive && Game.mode === 'practice') {
       let dy = 0;
       if (Input.depthHeld('up', slot)) dy -= 1;
       if (Input.depthHeld('down', slot)) dy += 1;

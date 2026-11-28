@@ -172,7 +172,6 @@ export class BladeSuper {
       if (hpBefore > 0 && fighter.hp <= 0) BeatEmUp.awardScore(target.kind === 'boss' ? 2500 : 300);
     }
     if (Game.mode === 'practice' && owner === fighters[0] && fighter.hp <= 0) Game.resetPracticeDummy(false);
-    else if (Game.mode !== 'beatemup' && fighter.hp <= 0) Game.endRound(owner === fighters[0] ? 0 : 1);
   }
   /** Knockdown at the end of a target's 210-frame stun. Skipped if it is dead, already ragdolled, or gone from the stage. */
   static finishTarget(sequence, target) {
@@ -257,5 +256,3 @@ export class BladeSuper {
   }
   static clear() { BladeSuper.sequences = []; BladeSuper.waves = []; BladeSuper.inUpdate = false; }
 }
-
-/** Beat 'em up stage — depth band, waves, camera. 1v1 paths never call this. */

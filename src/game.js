@@ -1,8 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { Bot } from './bot.js';
-import { ArcadeDiff, CpuHotColors, Depth, Diff, FighterClasses, PlayerCoolColor } from './config.js';
+import { ArcadeDiff, CpuHotColors, Depth, FighterClasses, PlayerCoolColor } from './config.js';
 import { Fighter } from './fighter.js';
 import { Fx } from './fx.js';
 import { Input } from './input.js';
@@ -19,10 +18,9 @@ export class Game {
   static actionButtons = { special: null, roll: null };
   static stop = 0; static shake = 0; static shMag = 0;
   static canvas; static ctx; static acc = 0; static last = 0;
-  static round = 1; static wins = [0, 0]; static timer = 60;
+  static timer = 60;
   static phase = 'title'; static banner = ''; static bannerT = 0;
   static fighting = 0; static matchOver = 0; static winner = '';
-  static level = 'normal';
   static arcadeLevel = 'normal';
   static levels = ['easy', 'normal', 'hard'];
   static levelLabels = {easy:'Easy', normal:'Normal', hard:'Hard'};
@@ -46,8 +44,6 @@ export class Game {
     Game.canvas = document.getElementById('game');
     if (!startPhaser(Game.canvas)) Game.ctx = Game.canvas.getContext('2d');
     try {
-      const saved = localStorage.getItem('stickman-level');
-      if (saved && Diff[saved]) Game.level = saved;
       const savedArcadeLevel = localStorage.getItem('stickman-beatemup-level');
       if (savedArcadeLevel && ArcadeDiff[savedArcadeLevel]) Game.arcadeLevel = savedArcadeLevel;
       const savedClass = localStorage.getItem('stickman-beatemup-class');
@@ -55,17 +51,37 @@ export class Game {
       if (FighterClasses[savedClass]) Game.selectedClass = savedClass;
       else if (FighterClasses[legacyClass]) Game.selectedClass = legacyClass;
     } catch (e) {}
-    Input.bind(); Game.mode = 'practice'; Input.syncMode(); Game.goTitle(); Game.fit(); addEventListener('resize', () => Game.fit());
+    Input.bind(); Game.mode = Game.bootMode(); Input.syncMode(); Game.goTitle(); Game.fit(); addEventListener('resize', () => Game.fit());
     Game.last = performance.now();
     Game.ready = true;
     if (!Game.usingPhaser) requestAnimationFrame(Game.frame);
   }
-  static mode = 'practice';
+  static mode = 'beatemup';
+  /** Practice stays selectable. A saved or linked 1v1 choice opens Beat 'em up. */
+  static bootMode() {
+    const pick = (value) => {
+      if (value === '1v1') return 'beatemup';
+      if (value === 'practice' || value === 'beatemup') return value;
+      return null;
+    };
+    try {
+      const params = new URLSearchParams(location.search);
+      for (const key of ['mode', 'game']) {
+        const chosen = pick(params.get(key));
+        if (chosen) return chosen;
+      }
+      for (const key of ['stickman-mode', 'stickman-game-mode']) {
+        const chosen = pick(localStorage.getItem(key));
+        if (chosen) return chosen;
+      }
+    } catch (e) {}
+    return 'beatemup';
+  }
   static goTitle() {
     Game.closeActionMenu();
     Game.phase = 'title'; Game.fighting = 0; Game.matchOver = 0; Game.banner = '';
     Game.paused = false;
-    Game.round = 1; Game.wins = [0, 0]; Game.winner = ''; Game.stop = 0; Game.shake = 0;
+    Game.winner = ''; Game.stop = 0; Game.shake = 0;
     fighters[0].meter = 0; fighters[1].meter = 0;
     fighters.forEach(f => { f.ragdollActive = false; f.ragdollKO = false; f.ragdollAngle = 0; f.ragdollElapsed = 0; f.damageBurst = 0; f.damageBurstT = 0; f.y = 0; f.vy = 0; f.state = 'idle'; });
     Input.keys.clear();
@@ -80,7 +96,7 @@ export class Game {
     BeatEmUp.stageOver = 0; BeatEmUp.showGo = 0; BeatEmUp.cast = []; BeatEmUp.boss = null;
     Input.syncMode();
     Game.placeTitleFighters();
-    Fx.clear(); Bot.reset();
+    Fx.clear();
     Game.syncControls();
   }
   static selectClass(id) {
@@ -96,7 +112,7 @@ export class Game {
     try { localStorage.setItem('stickman-beatemup-level', id); } catch (e) {}
   }
   static selectMode(mode) {
-    if (mode !== 'practice' && mode !== 'beatemup') mode = 'practice';
+    if (mode !== 'practice' && mode !== 'beatemup') mode = 'beatemup';
     Game.mode = mode; Input.syncMode();
     fighters[0].setClass(Game.selectedClass);
     fighters[0].color = FighterClasses[Game.selectedClass].color;
@@ -109,7 +125,7 @@ export class Game {
     Game.phase = 'intro'; Game.banner = 'PRACTICE'; Game.bannerT = .9;
     Game.syncControls();
     Game.fit();
-    Game.round = 1; Game.wins = [0, 0]; Game.matchOver = 0; Game.winner = '';
+    Game.matchOver = 0; Game.winner = '';
     const player = fighters[0], dummy = fighters[1];
     player.setClass(Game.selectedClass);
     player.color = FighterClasses[Game.selectedClass].color;
@@ -121,7 +137,7 @@ export class Game {
     Game.timer = Infinity; Game.practiceComboHits = 0; Game.practiceComboDamage = 0; Game.practiceComboT = 0; Game.practiceLastMove = '';
     Game.stop = 0; Game.shake = 0; Game.fighting = 0; Game.matchOver = 0;
     Input.pad[1] = {}; Input.was[1] = {};
-    Fx.clear(); Bot.reset();
+    Fx.clear();
     Game.syncSpecialBtn(); Game.syncControls();
   }
   static resetPracticeDummy(clearCombo = true) {
@@ -150,32 +166,10 @@ export class Game {
   }
   static startMatch() {
     Game.paused = false; Game.actionMenuOpen = false;
-    if (Game.mode === 'beatemup') {
-      BeatEmUp.begin();
-      return;
-    }
     if (Game.mode === 'practice') { Game.startPractice(); return; }
-    try { localStorage.setItem('stickman-level', Game.level); } catch (e) {}
-    Game.round = 1; Game.wins = [0, 0]; Game.matchOver = 0; Game.winner = '';
-    fighters[0].meter = 0; fighters[1].meter = 0;
-    Game.syncControls();
-    Game.startRound();
-  }
-  static startRound() {
-    BladeSuper.clear();
-    Game.stop = 0; Game.shake = 0; Game.timer = 60; Game.fighting = 0; Game.matchOver = 0;
-    fighters.forEach((f, i) => {
-      f.setClass(i === 0 ? Game.selectedClass : null);
-      f.color = i === 0 ? FighterClasses[Game.selectedClass].color : CpuHotColors['1v1'];
-    });
-    fighters[0].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .35)), 1);
-    fighters[1].reset(Math.max(Game.minX, Math.min(Game.maxX, Game.W * .65)), -1);
-    fighters.forEach(f => f.depth = Depth.START);
-    Fx.clear(); Bot.reset();
-    Input.was.forEach(p => Input.acts.forEach(a => p[a] = 0));
-    Input.tapped = [{}, {}];
-    Game.phase = 'intro'; Game.banner = 'Round ' + Game.round; Game.bannerT = 1.2;
-    Game.syncSpecialBtn(); Game.syncControls();
+    Game.mode = 'beatemup';
+    Input.syncMode();
+    BeatEmUp.begin();
   }
   static syncControls() {
     const el = document.getElementById('controls');
@@ -274,11 +268,8 @@ export class Game {
   static titleLayout() {
     const sc = Game.scale;
     const compact = sc < 1.5;
-    const safeL = Game.safeL;
-    const safeR = Game.safeR;
-    const inset = 16 / sc + Math.max(safeL, safeR) / sc;
     const tabs = Game.modeTabs();
-    if (Game.mode === 'beatemup') {
+    if (Game.mode !== 'practice') {
       const classCount = Object.keys(FighterClasses).length;
       const gap = (compact ? 8 : 14) / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - gap * (classCount - 1)) / classCount);
       const cardH = (compact ? 96 : 166) / sc;
@@ -302,25 +293,6 @@ export class Game {
       const bw = 200 / sc, bh = 52 / sc;
       return {tabs, classes, levels:[], start:{id:'start-practice',x:(Game.W-bw)/2,y:Game.H*(compact ? .87 : .87)-bh/2,w:bw,h:bh,label:'START PRACTICE'}};
     }
-    const bw = 140 / sc, bh = Game.difficultyButtonHeight(sc), gap = 8 / sc;
-    const total = 3 * bw + 2 * gap;
-    let x0 = (Game.W - total) / 2;
-    x0 = Math.max(inset, Math.min(Game.W - inset - total, x0));
-    const modeBottom = Math.max(...tabs.map(tab => tab.y + tab.h));
-    const y = compact ? modeBottom + 6 / sc : Game.H * .48 - bh / 2;
-    const startW = (compact ? 190 : 174) / sc, startH = (compact ? 42 : 52) / sc;
-    const classCount = Object.keys(FighterClasses).length;
-    const classGap = (compact ? 8 : 14) / sc, cardW = Math.min(210 / sc, (Game.W - 32 / sc - classGap * (classCount - 1)) / classCount);
-    const cardH = (compact ? 96 : 112) / sc, cardTotal = cardW * classCount + classGap * (classCount - 1);
-    const classY = compact ? y + bh + 6 / sc : Game.H * .66 - cardH / 2;
-    const classes = Object.entries(FighterClasses).map(([id,profile],i) => ({id,profile,menuCompact:true,
-      x:(Game.W-cardTotal)/2 + i*(cardW+classGap),y:classY,w:cardW,h:cardH}));
-    return {
-      tabs,
-      classes,
-      levels: Game.levels.map((id, i) => ({id, x: x0 + i * (bw + gap), y, w: bw, h: bh, label: Game.levelLabels[id]})),
-      start: {id:'start-match',x:(Game.W - startW) / 2,y:Game.H * (compact ? .88 : .87) - startH / 2,w:startW,h:startH,label:'START FIGHT'},
-    };
   }
   static modeTabs() {
     const sc = Game.scale;
@@ -336,6 +308,7 @@ export class Game {
   }
   static difficultyButtonHeight(sc = Game.scale) { return (sc < 1.5 ? 38 : 40) / sc; }
   static titlePointer(e) {
+    if (Game.mode !== 'practice' && Game.mode !== 'beatemup') Game.selectMode('beatemup');
     const sc = Game.scale;
     const gx = e.clientX / sc, gy = e.clientY / sc;
     const layout = Game.titleLayout();
@@ -353,13 +326,12 @@ export class Game {
     if (Game.mode === 'practice') {
       const card = (layout.classes || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
       if (card) { Game.selectClass(card.id); return; }
-      const hit = (layout.levels || []).find(b => gx >= b.x && gx <= b.x + b.w && gy >= b.y && gy <= b.y + b.h);
-      if (hit) { Game.level = hit.id; return; }
       const start = layout.start;
       if (start && gx >= start.x && gx <= start.x + start.w && gy >= start.y && gy <= start.y + start.h) Game.startMatch();
     }
   }
   static tryTitleKey(key) {
+    if (Game.mode !== 'practice' && Game.mode !== 'beatemup') Game.selectMode('beatemup');
     if (key === 'Tab') {
       const modes = ['practice','beatemup'];
       Game.selectMode(modes[(modes.indexOf(Game.mode) + 1) % modes.length]);
@@ -389,7 +361,7 @@ export class Game {
       const i = Game.levels.indexOf(Game.arcadeLevel), step = key === 'ArrowUp' ? -1 : 1;
       Game.selectArcadeLevel(Game.levels[(i + step + Game.levels.length) % Game.levels.length]); return;
     }
-    if ((Game.mode === '1v1' || Game.mode === 'practice') && (key === 'ArrowUp' || key === 'ArrowDown')) {
+    if (Game.mode === 'practice' && (key === 'ArrowUp' || key === 'ArrowDown')) {
       const ids = Object.keys(FighterClasses), i = ids.indexOf(Game.selectedClass);
       const step = key === 'ArrowUp' ? -1 : 1;
       Game.selectClass(ids[(i + step + ids.length) % ids.length]); return;
@@ -416,9 +388,9 @@ export class Game {
     Game.canvas.width = Math.round(innerWidth * dpr); Game.canvas.height = Math.round(innerHeight * dpr);
     Game.ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     // Prefer middle 70% (15%–85%), but end the lane early enough that visual
-    // bones() at the edges stay clear of the 1v1 touch controls (drawNudgeX → 0).
-    // Control rects are measured from the DOM in their 1v1 layout, so CSS changes
-    // to the pads can't silently desync the lane.
+    // bones() at the edges stay clear of the practice touch controls (drawNudgeX → 0).
+    // Control rects are measured from the DOM, so CSS changes to the pads can't
+    // silently desync the lane.
     const CLEAR = 8;
     const REACH = 65; // max observed visual AABB past hip (worst pose)
     const pads = Game.measure1v1Pads();
@@ -448,18 +420,16 @@ export class Game {
       Game.placeTitleFighters();
     } else if (Game.mode === 'beatemup') {
       // BeatEmUp owns lane clamps; refresh btn rects only.
-    } else if (Game.phase !== 'matchEnd') {
+    } else if (Game.mode === 'practice' && Game.phase !== 'matchEnd') {
       fighters[0].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[0].x || Game.W * .35));
-      if (Game.mode === 'practice') {
-        Game.placePracticeFighters();
-      } else fighters[1].x = Math.max(Game.minX, Math.min(Game.maxX, fighters[1].x || Game.W * .65));
+      Game.placePracticeFighters();
     }
     Game.btns = Game.phase === 'title' ? [] : [...document.querySelectorAll('#controls button, #move-stick')].map(el => {
       const r = el.getBoundingClientRect(); return {x:r.left, y:r.top, w:r.width, h:r.height};
     });
     Game.titleBtns = Game.titleLayout().levels;
   }
-  /** Inner edges (CSS px) of the left and right control pads in their 1v1 layout. */
+  /** Inner edges (CSS px) of the left and right control pads. Practice uses these for its lane. */
   static measure1v1Pads() {
     const el = document.getElementById('controls');
     const fallback = { leftEdge: 16 + Game.safeL + 132, rightEdge: innerWidth - 16 - Game.safeR - 200 };
@@ -562,31 +532,8 @@ export class Game {
       if (me.playerControlled && !box.special && kind === 'hit' && damage > 0)
         Sfx.play(me.state === 'kick' ? 'player-heavy-hit' : 'player-normal-hit', me.classProfile);
       if (kind === 'hit') foe.vy = -120;
-      if (kind === 'block' && box.special) Bot.lastBlockKind = 'special';
-      if (foe.hp <= 0) {
-        if (Game.mode === 'practice' && i === 0) Game.resetPracticeDummy(false);
-        else Game.endRound(i);
-      }
+      if (foe.hp <= 0 && Game.mode === 'practice' && i === 0) Game.resetPracticeDummy(false);
     }
-  }
-  static endRound(winnerIdx) {
-    if (Game.phase !== 'fight') return;
-    Game.fighting = 0; Game.phase = 'roundEnd';
-    Game.wins[winnerIdx]++;
-    if (Game.wins[winnerIdx] >= 2) {
-      Game.matchOver = 1; Game.phase = 'matchEnd';
-      Game.winner = winnerIdx === 0 ? 'You win' : 'CPU wins';
-      Game.banner = Game.winner; Game.bannerT = 99;
-    } else {
-      Game.banner = winnerIdx === 0 ? 'You win round' : 'CPU wins round';
-      Game.bannerT = 1.6;
-    }
-  }
-  static checkTimeout() {
-    if (fighters[0].hp === fighters[1].hp) {
-      if (fighters[0].meter !== fighters[1].meter) Game.endRound(fighters[0].meter > fighters[1].meter ? 0 : 1);
-      else Game.endRound(0);
-    } else Game.endRound(fighters[0].hp > fighters[1].hp ? 0 : 1);
   }
   static syncSpecialBtn() {
     const btn = Game.actionButtons.special || document.querySelector('#controls button.special');
@@ -657,22 +604,16 @@ export class Game {
         fighters[0].pose = Pose.idle(fighters[0].classProfile);
         fighters[1].pose = Pose.idle(fighters[1].classProfile);
         fighters[0].y = 0; fighters[1].y = 0;
-      } else if (Game.phase === 'intro' || Game.phase === 'roundEnd') {
+      } else if (Game.phase === 'intro') {
         Game.bannerT -= step;
         if (Game.bannerT <= 0) {
-          if (Game.phase === 'intro') {
-            if (Game.mode === 'beatemup') {
-              if (Game.banner.startsWith('WAVE') || Game.banner === 'BOSS') { Game.banner = 'Fight!'; Game.bannerT = .7; }
-              else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
-            } else if (Game.banner.startsWith('Round')) { Game.banner = 'Fight!'; Game.bannerT = .7; }
+          if (Game.mode === 'beatemup') {
+            if (Game.banner.startsWith('WAVE') || Game.banner === 'BOSS') { Game.banner = 'Fight!'; Game.bannerT = .7; }
             else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
-          } else if (Game.phase === 'roundEnd') {
-            Game.round++; Game.startRound();
-          }
+          } else { Game.phase = 'fight'; Game.fighting = 1; Game.banner = ''; }
         }
         fighters.forEach(f => {
           if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3);
-          if (Game.phase === 'roundEnd' && f.ragdollActive) f.updateRagdoll(step);
         });
         if (Game.mode === 'beatemup') {
           for (const e of BeatEmUp.cast) {
@@ -684,24 +625,17 @@ export class Game {
           Game.timer -= step;
           if (Game.timer < 0) Game.timer = 0;
           BeatEmUp.update(step);
-        } else {
-          if (Game.mode !== 'practice') Game.timer -= step;
-          if (Game.mode !== 'practice' && Game.timer <= 0) { Game.timer = 0; Game.checkTimeout(); }
-          else {
-            if (Game.mode !== 'practice') Bot.update(step, fighters[1], fighters[0]);
-            if (Input.pad[1].punch) Input.was[1].punch = 0;
-            if (Input.pad[1].kick) Input.was[1].kick = 0;
-            if (Input.pad[1].special) Input.was[1].special = 0;
-            fighters[0].update(step, fighters[1], 0);
-            fighters[1].update(step, fighters[0], 1);
-            if (Game.mode === 'practice') {
-              fighters[1].x = Game.practiceDummyX;
-              fighters[1].vx = 0;
-              fighters[1].clamp();
-            }
-            Game.resolve();
-            BladeSuper.update(step);
-          }
+        } else if (Game.mode === 'practice') {
+          if (Input.pad[1].punch) Input.was[1].punch = 0;
+          if (Input.pad[1].kick) Input.was[1].kick = 0;
+          if (Input.pad[1].special) Input.was[1].special = 0;
+          fighters[0].update(step, fighters[1], 0);
+          fighters[1].update(step, fighters[0], 1);
+          fighters[1].x = Game.practiceDummyX;
+          fighters[1].vx = 0;
+          fighters[1].clamp();
+          Game.resolve();
+          BladeSuper.update(step);
         }
       } else if (Game.phase === 'waveTransition') {
         const player = BeatEmUp.playerEntry();
@@ -737,16 +671,11 @@ export class Game {
           if (next === 4) BeatEmUp.startBoss(false, true);
           else BeatEmUp.startWave(next, false, false, true);
         }
-      } else if (Game.phase === 'matchEnd') {
-        if (Game.mode === 'beatemup') {
-          for (const e of BeatEmUp.cast) {
-            if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
-            if (e.f.ragdollActive) BeatEmUp.withDepth(e, () => e.f.updateRagdoll(step));
-          }
-        } else fighters.forEach(f => {
-          if (f.chip > f.hp) f.chip = Math.max(f.hp, f.chip - 100 * step / .3);
-          if (f.ragdollActive) f.updateRagdoll(step);
-        });
+      } else if (Game.phase === 'matchEnd' && Game.mode === 'beatemup') {
+        for (const e of BeatEmUp.cast) {
+          if (e.f.chip > e.f.hp) e.f.chip = Math.max(e.f.hp, e.f.chip - 100 * step / .3);
+          if (e.f.ragdollActive) BeatEmUp.withDepth(e, () => e.f.updateRagdoll(step));
+        }
       }
       Game.acc -= step;
     }
@@ -755,7 +684,7 @@ export class Game {
   }
   static bars(ctx) {
     const sc = Game.scale, safe = Game.safeTop;
-    const top = (12 + safe) / sc, h = 12 / sc, {w,gap,x0,x1} = Game.hudBarLayout();
+    const top = (12 + safe) / sc, {w,x0,x1} = Game.hudBarLayout();
     const panelH = 34 / sc, panelY = top - 2 / sc, hpY = top + 10 / sc, hpH = 8 / sc;
     const drawBar = (x, fighter, color, label, fromLeft) => {
       Game.drawHudPanel(ctx, x, panelY, w, panelH, color);
@@ -777,24 +706,15 @@ export class Game {
       ctx.fillRect(fromLeft ? meterX : meterX + meterW - meterFill, meterY, meterFill, meterH);
     };
     drawBar(x0, fighters[0], '#54D6FF', 'PLAYER 01 · YOU', true);
-    drawBar(x1, fighters[1], '#FF6969', Game.mode === 'practice' ? 'TRAINING DUMMY' : 'CPU FIGHTER', false);
+    drawBar(x1, fighters[1], '#FF6969', 'TRAINING DUMMY', false);
     const timerW = 38 / sc;
     Game.drawHudPanel(ctx, Game.W / 2 - timerW / 2, panelY, timerW, panelH, '#F6C453');
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = 'bold ' + 7 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#AEBBD0';
-    ctx.fillText(Game.mode === 'practice' ? 'TRAIN' : 'RD ' + Game.round, Game.W / 2, top + 4 / sc);
-    const timer = Game.mode === 'practice' ? '∞' : String(Math.ceil(Math.max(0, Game.timer))).padStart(2, '0');
+    ctx.fillText('TRAIN', Game.W / 2, top + 4 / sc);
     ctx.font = 'bold ' + 16 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#FFF0C2';
-    ctx.fillText(timer, Game.W / 2, top + 20 / sc);
+    ctx.fillText('∞', Game.W / 2, top + 20 / sc);
     ctx.textBaseline = 'alphabetic';
-    const dy = top + h / 2, r = 4 / sc, gapD = 12 / sc;
-    for (let i = 0; i < 2; i++) for (let d = 0; d < 2; d++) {
-      const won = d < Game.wins[i];
-      ctx.fillStyle = won ? (i === 0 ? '#54D6FF' : '#FF6969') : '#273247';
-      ctx.fillRect(i === 0 ? x0 - gapD - d * (r * 2 + 3 / sc) - r : x1 + w + gapD + d * (r * 2 + 3 / sc) - r, dy - r, r * 2, r * 2);
-      ctx.strokeStyle = '#72819A'; ctx.lineWidth = 1 / sc;
-      ctx.strokeRect(i === 0 ? x0 - gapD - d * (r * 2 + 3 / sc) - r : x1 + w + gapD + d * (r * 2 + 3 / sc) - r, dy - r, r * 2, r * 2);
-    }
   }
   static drawHudPanel(ctx, x, y, w, h, accent = '#63D9FF') {
     const sc = Game.scale || 1;
@@ -968,7 +888,7 @@ export class Game {
       ctx.fillText(t.label, t.x + t.w / 2, t.y + t.h / 2);
     }
     for (const b of layout.levels) {
-      const sel = Game.mode === 'beatemup' ? b.id === Game.arcadeLevel : b.id === Game.level;
+      const sel = b.id === Game.arcadeLevel;
       const accent = sel ? '#FFC936' : '#3679AE';
       Game.drawHudPanel(ctx, b.x, b.y, b.w, b.h, accent); ctx.shadowBlur = 0;
       if (sel) { ctx.fillStyle = 'rgba(255,201,54,.10)'; ctx.fillRect(b.x + 2 / sc, b.y + 2 / sc, b.w - 4 / sc, b.h - 4 / sc); }
@@ -1132,7 +1052,7 @@ export class Game {
     } else if (Game.spriteBodies && Game.mode === 'beatemup') {
       Fx.draw(ctx, 'front');
     }
-    if (Game.mode !== 'beatemup') Game.bars(ctx);
+    if (Game.mode === 'practice') Game.bars(ctx);
     if (Game.mode === 'practice') Game.drawPracticeHud(ctx);
     const arcadeIntroPanelActive = Game.mode === 'beatemup' && Game.phase === 'intro' && BeatEmUp.eventT > 0;
     if (Game.banner && BeatEmUp.stageTransitionT <= 0 && !arcadeIntroPanelActive) {
@@ -1142,11 +1062,6 @@ export class Game {
       ctx.fillStyle = '#FFF0C2'; ctx.textAlign = 'center';
       ctx.font = 'bold ' + (Game.banner === 'Fight!' ? 28 : 21) / sc + 'px ui-monospace,monospace';
       ctx.fillText(Game.banner, Game.W / 2, Game.H * .42);
-      if (Game.matchOver && Game.mode !== 'beatemup') {
-        const tip = Game.mode === 'beatemup' ? 'Tap to retry' : 'Tap for title';
-        ctx.font = 'bold ' + 9 / sc + 'px ui-monospace,monospace'; ctx.fillStyle = '#6ECFFF';
-        ctx.fillText(tip.toUpperCase(), Game.W / 2, Game.H * .42 + 22 / sc);
-      }
     }
     if (Game.paused) {
       const sc = Game.scale || 1, w = Math.min(Game.W * .76, 300 / sc), h = 106 / sc;
