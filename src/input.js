@@ -12,7 +12,7 @@ export class Input {
   // acts list byte-identical to main (AC2). Depth keys read via depthHeld() in beat 'em up and practice.
   static acts = ['left','right','jump','punch','kick','roll','special'];
   static keyMap = [
-    {left:['a','A','ArrowLeft'], right:['d','D','ArrowRight'], jump:[], punch:['j','J'], kick:['k','K'], roll:['Shift'], special:['i','I']},
+    {left:['a','A','ArrowLeft'], right:['d','D','ArrowRight'], jump:[], punch:['j','J'], kick:[], roll:['Shift'], special:['i','I']},
     {left:[], right:[], jump:[], punch:[], kick:[], roll:[], special:[]},
   ];
   static depthKeys = { up:['w','W','ArrowUp'], down:['s','S','ArrowDown'] };
@@ -139,16 +139,37 @@ export class Input {
       stick.addEventListener('lostpointercapture', resetStick);
     }
   }
+  static gp = {};
   static syncMode() {
-    // Jump is removed; W/↑ in beat 'em up still changes lanes via depth keys.
+    // Players have no jump, kick, or block. W/↑ and S/↓ change lanes.
     Input.keyMap[0].jump = [];
+    Input.keyMap[0].kick = [];
   }
-  static held(p, a) { return Input.keyMap[p][a].some(k => Input.keys.has(k)) || !!Input.pad[p][a]; }
+  /** Stick and d-pad move. Face buttons are Attack, Dodge, Special. Jump, kick, and block are never bound. */
+  static pollGamepad() {
+    const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : [];
+    const g = pads && pads[0];
+    const gp = Input.gp = {};
+    if (!g) return;
+    const ax = g.axes[0] || 0, ay = g.axes[1] || 0, dead = 0.35;
+    const b = i => !!(g.buttons[i] && (g.buttons[i].pressed || g.buttons[i].value > 0.5));
+    gp.left = ax < -dead || b(14);
+    gp.right = ax > dead || b(15);
+    gp.depthUp = ay < -dead || b(12);
+    gp.depthDown = ay > dead || b(13);
+    gp.punch = b(0);
+    gp.roll = b(1);
+    gp.special = b(2);
+  }
+  static held(p, a) {
+    if (p === 0 && (a === 'jump' || a === 'kick')) return false;
+    return Input.keyMap[p][a].some(k => Input.keys.has(k)) || !!Input.pad[p][a] || (p === 0 && !!Input.gp[a]);
+  }
   static depthHeld(dir, slot = 0) {
     if (Game.mode !== 'beatemup' && Game.mode !== 'practice') return false;
     const padKey = dir === 'up' ? 'depthUp' : 'depthDown';
     const keys = slot === 0 ? Input.depthKeys[dir] : Input.p2DepthKeys[dir];
-    return (keys || []).some(k => Input.keys.has(k)) || !!(slot === 0 && Input.pad[0][padKey]);
+    return (keys || []).some(k => Input.keys.has(k)) || !!(slot === 0 && (Input.pad[0][padKey] || Input.gp[padKey]));
   }
   static edge(p, a) {
     const tap = Input.tapped[p][a]; Input.tapped[p][a] = 0;

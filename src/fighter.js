@@ -1,7 +1,7 @@
 import { Sfx } from './audio.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses } from './config.js';
+import { ArchetypeEquipment, ArchetypeSkeleton, BossCounter, BossCounters, BossPhases, BossReplay, BossSignature, BossSignatures, BossWeapons, Depth, EnemyBash, EnemyBashes, EnemyCombo, EnemyCombos, EnemyDeploy, EnemyDeploys, EnemyGrab, EnemyGrabs, EnemyGuard, EnemyProjectile, EnemyRush, EnemyRushes, EnemySlam, EnemySlams, FighterClasses, PACE, paceEnemy } from './config.js';
 import { Fx } from './fx.js';
 import { Game, fighters } from './game.js';
 import { Input } from './input.js';
@@ -46,7 +46,7 @@ export class Fighter {
     this.bladeSuper = null;
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0; this.wardShieldT = 0;
     this.hitConfirmed = 0;
-    this.dodgeT = 0; this.dodgeCooldown = 0; this.rollVx = 0;
+    this.dodgeT = 0; this.dodgeCooldown = 0; this.dodgeReadyFlash = 0; this.rollVx = 0;
     this.chain = 0; this.chainArmed = 0;
     this.heavyFollow = 0; this.heavyQueued = false;
     this.hitbox = {x:0,y:0,w:42,h:135}; this.blockFlash = 0;
@@ -218,7 +218,7 @@ export class Fighter {
       const m = Moves[key];
       if (!m) return;
       this.atk = {
-        su: m.su, ac: m.ac, re: m.re,
+        su: paceEnemy(m.su), ac: paceEnemy(m.ac), re: paceEnemy(m.re),
         dmg: m.dmg, kb: m.kb, stun: m.stun, chip: m.chip || 0,
         kind, reach: m.reach, armored: !!m.armored, hitCount: m.hitCount == null ? 1 : m.hitCount,
       };
@@ -235,6 +235,7 @@ export class Fighter {
       }
       return;
     }
+    if (this.playerControlled && kind !== 'special') { this.beginPlayerChain(kind); return; }
     if (kind === 'punch' && this.enemyCombo && EnemyCombos[this.enemyCombo]) { this.startEnemyCombo(EnemyCombos[this.enemyCombo]); return; }
     if (kind === 'punch' && this.enemyRush && EnemyRushes[this.enemyRush]) { this.startEnemyRush(EnemyRushes[this.enemyRush]); return; }
     if (kind === 'punch' && this.enemySlam && EnemySlams[this.enemySlam]) { this.startEnemySlam(EnemySlams[this.enemySlam]); return; }
@@ -342,6 +343,11 @@ export class Fighter {
         }
       }
     }
+    if (!this.playerControlled && this.atk && !this.bossProfile) {
+      this.atk.su = paceEnemy(this.atk.su);
+      this.atk.ac = paceEnemy(this.atk.ac);
+      this.atk.re = paceEnemy(this.atk.re);
+    }
     this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = kind; this.blocking = 0;
     this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
     this.atkPhase = '';
@@ -362,6 +368,42 @@ export class Fighter {
       Sfx.play('super-charge', this.classProfile);
     } else if (kind === 'kick') Sfx.play('kick', this.classProfile);
     else Sfx.play('punch', this.classProfile);
+  }
+  /** Player Attack chain: hits 1–2 share punch timing, hit 3 is the kick-clip finisher. */
+  beginPlayerChain(kind) {
+    const finisher = kind === 'kick';
+    if (finisher) { this.chain = 2; this.chainArmed = 0; }
+    else if (this.chainArmed) { this.chain = Math.min((this.chain || 0) + 1, 1); this.chainArmed = 0; }
+    else { this.chain = 0; this.chainArmed = 0; }
+    const idx = finisher ? 2 : this.chain;
+    const timing = finisher ? PACE.finisher : PACE.punch;
+    const staff = this.classProfile?.weapon === 'staff';
+    const clip = finisher ? 'kick' : (this.classId === 'freehand' && idx === 1 ? 'combo' : 'punch');
+    this.atk = {
+      su: timing.su, ac: timing.ac, re: timing.re,
+      dmg: PACE.punch.dmg[idx], kb: PACE.punch.kb[idx], stun: PACE.punch.stun[idx], chip: 0,
+      kind: finisher ? 'kick' : 'punch', chain: idx, chainMax: 3, chainWindow: PACE.punch.chainWindow,
+      reach: finisher ? (staff ? 210 : 175) : (staff ? 130 : 95),
+      knockdown: finisher, baseDmg: PACE.punch.dmg[idx], clip, linked: false,
+    };
+    const mul = (this.classProfile?.punch || 1) * this.damageMultiplier;
+    const boost = this.attackBoostT > 0 ? BeatEmUp.energyDrinkDamageMultiplier : 1;
+    this.atk.dmg *= mul * boost;
+    if (Math.random() < (this.classProfile?.criticalChance ?? .1)) {
+      this.atk.critical = true;
+      this.atk.dmg *= this.classProfile?.criticalDamage ?? 1.6;
+      this.atk.kb *= 1.2;
+    }
+    this.atkT = 0; this.hitDone = 0; this.hitConfirmed = 0; this.state = finisher ? 'kick' : 'punch'; this.blocking = 0;
+    this.hitTargets = new Map(); this.specialMeterTargets = new Set(); this.specialEffectDone = 0; this.specialChargeFxT = 0;
+    this.atkPhase = ''; this.specialVisual = null; this.dashLeft = 0;
+    Sfx.play(finisher ? 'kick' : 'punch', this.classProfile);
+  }
+  /** True during the opening i-frames of a roll. The rest of the roll can be hit, supers included. */
+  inDodgeIFrames() {
+    if (!(this.dodgeT > 0)) return false;
+    const elapsed = Math.max(0, PACE.dodgeDuration - this.dodgeT);
+    return elapsed < PACE.dodgeIFrames + 1e-9;
   }
   /** Archetype multi-hit punch (e.g. Brawler jab-cross) on the shared 'punch' state. */
   startEnemyCombo(spec) {
@@ -541,8 +583,15 @@ export class Fighter {
     }
   }
   canChainPunch() {
-    if (!this.atk || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab || this.atk.deploy) return false;
+    if (!this.atk || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab || this.atk.deploy) return false;
     const a = this.atk;
+    if (this.playerControlled) {
+      if (this.state !== 'punch' || (this.chain || 0) >= 1) return false;
+      if (this.atkT <= a.su + a.ac) return false;
+      const intoRe = this.atkT - (a.su + a.ac);
+      return intoRe <= (a.chainWindow || PACE.punch.chainWindow) && this.atkT < a.su + a.ac + a.re;
+    }
+    if (!this.hitConfirmed) return false;
     if (this.state === 'kick') {
       const total = a.su + a.ac + a.re;
       const intoRecovery = this.atkT - (a.su + a.ac);
@@ -552,6 +601,12 @@ export class Fighter {
     if (this.atkT <= a.su + a.ac) return false;
     const intoRe = this.atkT - (a.su + a.ac);
     return intoRe <= (a.chainWindow || Moves.punch.chainWindow);
+  }
+  canChainFinisher() {
+    if (!this.playerControlled || !this.atk || this.state !== 'punch' || (this.chain || 0) < 1) return false;
+    if (this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab || this.atk.deploy) return false;
+    const a = this.atk, intoRe = this.atkT - (a.su + a.ac);
+    return this.atkT > a.su + a.ac && this.atkT < a.su + a.ac + a.re && intoRe <= (a.chainWindow || PACE.punch.chainWindow);
   }
   canChainHeavy() {
     if (!this.atk || this.state !== 'punch' || !this.hitConfirmed || this.atk.rush || this.atk.slam || this.atk.bash || this.atk.grab || this.atk.deploy) return false;
@@ -601,6 +656,15 @@ export class Fighter {
         if (off >= a.hitDelays[i] && off < a.hitDelays[i] + a.hitDurations[i]) return i;
       }
       return -1;
+    }
+    if (this.bossProfile && this.sigKey && BossSignatures[this.sigKey]?.slot) {
+      const sig = BossSignatures[this.sigKey];
+      const off = this.atkT - a.su;
+      if (off <= 0 || off > a.ac) return -1;
+      const slot = Math.floor((off - 1) / sig.slot);
+      if (slot >= (sig.hits?.length || sig.hitCount || 1)) return -1;
+      if (sig.live && (off - 1) - slot * sig.slot >= sig.live[slot]) return -1;
+      return slot;
     }
     const hitCount = a.hitCount || 1;
     return Math.min(hitCount - 1, Math.floor((this.atkT - a.su - 1) / Math.max(1, a.ac / hitCount)));
@@ -831,7 +895,7 @@ export class Fighter {
     this.atk = null; this.atkT = 0; this.atkPhase = ''; this.dashLeft = 0;
     this.chain = 0; this.chainArmed = 0; this.blocking = 0;
     this.heavyFollow = 0; this.heavyQueued = false;
-    this.dodgeT = .48; this.dodgeCooldown = 1.05; this.rollVx = direction * 460;
+    this.dodgeT = PACE.dodgeDuration; this.dodgeCooldown = PACE.dodgeCooldown; this.rollVx = direction * 460;
     this.state = 'roll'; this.aim('roll', Pose.roll(this.classProfile), .045);
     const cameraX = Game.mode === 'beatemup' ? BeatEmUp.cameraX : 0;
     Fx.dodge(this.x - cameraX, this.groundY() + this.y - 34 * this.drawS(), this.classProfile);
@@ -862,7 +926,14 @@ export class Fighter {
     this.attackBoostT = Math.max(0, this.attackBoostT - dt);
     this.wardShieldT = Math.max(0, this.wardShieldT - dt);
     this.invincibleT = Math.max(0, this.invincibleT - dt);
+    const dodgeCd = this.dodgeCooldown;
     this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
+    if (this.playerControlled && dodgeCd > 0 && this.dodgeCooldown === 0) {
+      this.dodgeReadyFlash = 0.28;
+      Sfx.play('dodge-ready', this.classProfile);
+    }
+    if (this.dodgeReadyFlash > 0) this.dodgeReadyFlash = Math.max(0, this.dodgeReadyFlash - dt);
+    if (this.playerControlled) this.blocking = 0;
     this.damageBurstT = Math.max(0, this.damageBurstT - dt);
     if (this.damageBurstT <= 0) this.damageBurst = 0;
     if (this.flash > 0) this.flash -= dt;
@@ -904,7 +975,6 @@ export class Fighter {
     const rollPressed = Input.edge(slot, 'roll');
     if (this.dodgeT > 0) {
       this.dodgeT = Math.max(0, this.dodgeT - dt);
-      this.invincibleT = Math.max(this.invincibleT, this.dodgeT);
       this.x += this.rollVx * dt;
       this.vx = this.rollVx;
       this.aim('roll', Pose.roll(this.classProfile), .04); this.tickPose(dt);
@@ -914,7 +984,6 @@ export class Fighter {
     if (rollPressed && Game.fighting && this.grounded && this.dodgeCooldown <= 0 && this.state !== 'special' && !(this.classProfile?.weapon === 'staff' && this.atk)) {
       this.startRoll(slot, other);
       this.dodgeT = Math.max(0, this.dodgeT - dt);
-      this.invincibleT = Math.max(this.invincibleT, this.dodgeT);
       this.x += this.rollVx * dt; this.vx = this.rollVx;
       this.aim('roll', Pose.roll(this.classProfile), .04); this.tickPose(dt);
       this.clamp(other); return;
@@ -922,14 +991,23 @@ export class Fighter {
     if (this.atk) {
       // Confirmed Normal links into Heavy; landed Heavy links into a fresh Normal string.
       if (this.grounded && Input.edge(slot, 'punch')) {
+        if (this.playerControlled && this.canChainFinisher()) {
+          this.chainArmed = 1;
+          this.startAtk('kick');
+          this.driveAtkPose(dt);
+          this.tickPose(dt);
+          this.clamp(other); return;
+        }
         if (this.canChainPunch()) {
+          if (this.playerControlled) this.chainArmed = 1;
           this.startAtk('punch');
           this.driveAtkPose(dt);
           this.tickPose(dt);
           this.clamp(other); return;
         }
       }
-      if (this.grounded && Input.edge(slot, 'kick')) {
+      const kickEdge = Input.edge(slot, 'kick');
+      if (!this.playerControlled && this.grounded && kickEdge) {
         if (this.canChainHeavy()) {
           this.heavyFollow = 0; this.heavyQueued = false;
           this.startAtk('kick');
@@ -1079,7 +1157,7 @@ export class Fighter {
     const kickPressed = Input.edge(slot, 'kick');
     if (this.grounded && specialPressed) this.startAtk('special');
     else if (this.grounded && punchPressed) this.startAtk('punch');
-    else if (this.grounded && kickPressed) { this.heavyFollow = 0; this.heavyQueued = false; this.startAtk('kick'); }
+    else if (!this.playerControlled && this.grounded && kickPressed) { this.heavyFollow = 0; this.heavyQueued = false; this.startAtk('kick'); }
     if (this.atk) { this.driveAtkPose(dt); this.tickPose(dt); this.clamp(other); return; }
     const wasAir = this.y < 0 || !this.grounded;
     this.vy += 1600 * dt; this.y += this.vy * dt;
@@ -1215,11 +1293,11 @@ export class Fighter {
     const r = (this.state === 'special' ? 22 : 18) * this.depthScale();
     const heavyLead = this.state === 'kick' ? 30 * this.drawS() : 0;
     const endX = tip.x + this.face * heavyLead;
-    return {x:Math.min(tip.x, endX) - r, y:tip.y - r, w:Math.abs(endX - tip.x) + r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical, comboFinisher:!!a.comboFinisher, comboLink:!!a.linked, chain:a.chain || 0};
+    return {x:Math.min(tip.x, endX) - r, y:tip.y - r, w:Math.abs(endX - tip.x) + r * 2, h:r * 2, dmg:a.dmg, kb:a.kb, stun:a.stun, chip:a.chip || 0, special:this.state === 'special', critical:!!a.critical, comboFinisher:!!a.comboFinisher, comboLink:!!a.linked, chain:a.chain || 0, knockdown:!!a.knockdown};
   }
   takeHit(atk, from) {
     if (this.heldBy && from !== this.heldBy) return 'held'; // only the holder's headbutt reaches a held player
-    if (this.dodgeT > 0) return 'evade';
+    if (this.inDodgeIFrames()) return 'evade';
     if (this.playerControlled && this.invincibleT > 0) return 'invulnerable';
     if (BossCounter.parries(this, from)) return BossCounter.parry(this, atk, from); // Kage counter stance: no damage, riposte
     if (atk.special && !this.grounded) return 'evade';
@@ -1325,7 +1403,8 @@ export class Fighter {
       if (this.y >= 0) { this.y = 0; this.vy = 0; this.grounded = true; Fx.land(this.x, this.groundY()); }
     }
     const fall = Pose.easeOut(Math.min(1, this.ragdollElapsed / .28));
-    const getUp = this.ragdollKO ? 0 : Pose.easeOut(Math.max(0, Math.min(1, (this.ragdollElapsed - .68) / .3)));
+    const getUpAt = PACE.getUp;
+    const getUp = this.ragdollKO ? 0 : Pose.easeOut(Math.max(0, Math.min(1, (this.ragdollElapsed - (getUpAt - .3)) / .3)));
     this.ragdollAngle = this.ragdollDirection * Math.PI * .5 * fall * (1 - getUp);
     const flop = Math.exp(-this.ragdollElapsed * 1.7) * (1 - getUp);
     const prone = Pose.lerp(this.ragdollFrom || Pose.hit(this.classProfile), Pose.ragdoll(this.classProfile), fall);
@@ -1336,7 +1415,7 @@ export class Fighter {
     this.pose = Pose.lerp(prone, Pose.idle(this.classProfile), getUp);
     this.poseFrom = Pose.copy(this.pose); this.poseTo = Pose.copy(this.pose); this.poseKey = 'ragdoll';
     if (this.ragdollKO) { this.state = 'ko'; return; }
-    if (this.ragdollElapsed >= .98) {
+    if (this.ragdollElapsed >= PACE.getUp) {
       this.ragdollActive = false; this.ragdollAngle = 0; this.ragdollElapsed = 0;
       this.y = 0; this.vy = 0; this.grounded = true; this.state = 'idle';
       if (this.playerControlled) this.invincibleT = 1.5;

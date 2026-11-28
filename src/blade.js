@@ -128,7 +128,7 @@ export class BladeSuper {
   static hit(sequence, target, wave) {
     const owner = sequence.owner, fighter = BladeSuper.fighter(target);
     if (fighter.hp <= 0 || (fighter.playerControlled && fighter.invincibleT > 0)
-      || !fighter.grounded || fighter.dodgeT > 0 || !BladeSuper.laneMatches(sequence, target)) return;
+      || !fighter.grounded || fighter.inDodgeIFrames() || !BladeSuper.laneMatches(sequence, target)) return;
     const pulse = 0;
     // Slash and Wave share one hit per target (a blocked slash also consumes it).
     if (sequence.hits.has(target) || (owner.bladeSuper === sequence && owner.hitTargets?.get(target) === pulse)) return;

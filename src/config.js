@@ -6,6 +6,25 @@ import { Game, fighters } from './game.js';
 import { Moves } from './moves.js';
 import { Pose } from './pose.js';
 
+/** LF2 pacing. Every approved timing reads this block so it can be tuned in one place. */
+export const PACE = {
+  enemy: 1.3,
+  hitstop: { chain: 4, finisher: 8 },
+  dodgeDuration: 0.60,
+  dodgeIFrames: 0.36,
+  dodgeCooldown: 1.6,
+  move: 0.55,
+  getUp: 0.8,
+  spriteFps: 10,
+  punch: { su: 12, ac: 4, re: 19, chainWindow: 14, dmg: [5, 7, 9], kb: [160, 220, 380], stun: [10, 15, 24] },
+  finisher: { su: 19, ac: 7, re: 31 },
+  projectileSpeed: 250,
+};
+/** Extra ×PACE.enemy on enemy and boss startup, active, and recovery frames. Distances stay put. */
+export function paceEnemy(n) {
+  return Math.max(1, Math.round(n * PACE.enemy));
+}
+
 export const ArcadeDiff = {
   easy:   { damage: .7, health: .8, extraEnemies: -1, attackers: 2, details: 'DAMAGE 70% · ENEMY HP 80% · 4 PER WAVE' },
   normal: { damage: 1, health: 1, extraEnemies: 0, attackers: 3, details: 'DAMAGE 100% · ENEMY HP 100% · 6 PER WAVE' },
@@ -166,8 +185,8 @@ export const BossCounters = {
 };
 export class BossCounter {
   static start(f, spec) {
-    f.atk = { su: spec.stance, ac: spec.riposteActive, re: spec.recovery, dmg: spec.dmg * f.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
-      kind: 'punch', reach: f.bossProfile.reach, armored: false, hitCount: 1, counter: true, parried: false, stanceEnd: spec.stance, parryFrame: 0 };
+    f.atk = { su: paceEnemy(spec.stance), ac: paceEnemy(spec.riposteActive), re: paceEnemy(spec.recovery), dmg: spec.dmg * f.damageMultiplier, kb: spec.kb, stun: spec.stun, chip: 0,
+      kind: 'punch', reach: f.bossProfile.reach, armored: false, hitCount: 1, counter: true, parried: false, stanceEnd: paceEnemy(spec.stance), parryFrame: 0 };
   }
   /** Called after atkT++: an unused stance ends exactly at stanceEnd (no riposte). */
   static tick(f) {
@@ -214,7 +233,7 @@ export class BossSignature {
       const phase3 = entry?.ai?.phase === 3;
       const depths = phase3 ? sig.phase3Depths.slice() : [player ? player.depth : (entry?.depth ?? f.depth)];
       if (phase3) for (let i = depths.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [depths[i], depths[j]] = [depths[j], depths[i]]; }
-      a.su = sig.lockFrames; a.ac = 1 + (depths.length - 1) * sig.gapFrames;
+      a.su = paceEnemy(sig.lockFrames); a.ac = paceEnemy(1 + (depths.length - 1) * sig.gapFrames);
       depths.forEach((d, i) => BossFields.add({ kind: 'laser', owner: f, atk: a, depth: d, fireAt: a.su + 1 + i * sig.gapFrames, order: i, fired: false, flash: 0 }));
     }
     if (key === 'bossShadowStep') f.sigLaneDepth = player ? player.depth : (entry?.depth ?? f.depth);
@@ -277,9 +296,11 @@ export class BossSignature {
         sig.spotOffsets.forEach((off, i) => BossFields.add({ kind: 'spot', owner: f, atk: a, x: Math.max(BeatEmUp.lockL + 20, Math.min(BeatEmUp.lockR - 20, px + off)),
           depth, markedAt: t, fireAt: t + sig.markDelay, order: i, fired: false, flash: 0 }));
       }
-      if (key === 'bossDockHaulIn') {
+        if (key === 'bossDockHaulIn') {
         const player = BeatEmUp.playerEntry();
-        if (player && !f.sigHooked && activeFrame <= sig.hookFrames) {
+        // I-frames turn the hook into a dodgeable grab. A grab already on the player lets go.
+        if (player && player.f.inDodgeIFrames()) { f.sigHooked = false; f.sigTarget = null; }
+        else if (player && !f.sigHooked && activeFrame <= sig.hookFrames) {
           const dx = Math.abs(f.x - player.f.x);
           if (dx <= sig.reach && BeatEmUp.depthClose(this.entryFor(f)?.depth ?? f.depth, player.depth)) {
             f.sigHooked = true;
@@ -562,7 +583,7 @@ export class BossFields {
 }
 
 export class EnemyProjectile {
-  static speed = 315;
+  static get speed() { return PACE.projectileSpeed; }
   static range = 560;
   static tell = .5;
   static recovery = .9;
@@ -693,13 +714,14 @@ export const EnemyCombo = {
   timeline(spec) {
     let t = 0;
     const hits = spec.hits.map(h => {
-      const w = { windStart: t, activeStart: t + h.windup + 1, activeEnd: t + h.windup + h.active };
-      t += h.windup + h.active + h.recovery;
+      const windup = paceEnemy(h.windup), active = paceEnemy(h.active), recovery = paceEnemy(h.recovery);
+      const w = { windStart: t, activeStart: t + windup + 1, activeEnd: t + windup + active };
+      t += windup + active + recovery;
       return w;
     });
     const last = spec.hits[spec.hits.length - 1];
-    const su = spec.hits[0].windup;
-    return { hits, su, ac: hits[hits.length - 1].activeEnd - su, re: last.recovery, total: t };
+    const su = paceEnemy(spec.hits[0].windup);
+    return { hits, su, ac: hits[hits.length - 1].activeEnd - su, re: paceEnemy(last.recovery), total: t };
   },
   pulseAt(atk, t) {
     const w = atk?.comboWindows;
@@ -732,8 +754,9 @@ export const EnemyRushes = {
 export const EnemyRush = {
   /** Shared-attack timing: su = crouch + approach part of the dash, ac = live dash frames. */
   timeline(spec) {
-    return { su: spec.crouch + spec.dash - spec.active, ac: spec.active, re: spec.whiffRecovery,
-      dashStart: spec.crouch + 1, dashEnd: spec.crouch + spec.dash, total: spec.crouch + spec.dash + spec.whiffRecovery };
+    const crouch = paceEnemy(spec.crouch), dash = paceEnemy(spec.dash), active = paceEnemy(spec.active), whiff = paceEnemy(spec.whiffRecovery);
+    return { su: crouch + dash - active, ac: active, re: whiff,
+      dashStart: crouch + 1, dashEnd: crouch + dash, total: crouch + dash + whiff };
   },
   /** One sim step of rush movement (call after atkT++). Returns px moved along rushDir. */
   tick(f) {
@@ -741,16 +764,16 @@ export const EnemyRush = {
     if (f.hitDone && !a.rushHit) {
       // Connected: stop the dash at once and recover in hitRecovery frames from the hit.
       a.rushHit = true; a.rushLeft = 0; a.brakeLeft = 0;
-      a.re = Math.max(0, (t - 1) + sp.hitRecovery - (a.su + a.ac)); // the hit resolved after the previous step
+      a.re = Math.max(0, (t - 1) + paceEnemy(sp.hitRecovery) - (a.su + a.ac)); // the hit resolved after the previous step
     }
     let move = 0;
     if (t >= tl.dashStart && t <= tl.dashEnd && a.rushLeft > 0) {
       if (t === tl.dashStart) Sfx.play('dodge', null);
-      move = t === tl.dashEnd ? a.rushLeft : Math.min(a.rushLeft, sp.distance / sp.dash);
+      move = t === tl.dashEnd ? a.rushLeft : Math.min(a.rushLeft, sp.distance / paceEnemy(sp.dash));
       a.rushLeft -= move;
     } else if (t > tl.dashEnd && !a.rushHit && a.brakeLeft > 0) {
       // Braking skid after a miss: linearly decaying steps that sum to exactly `brake` px.
-      const n = sp.brakeFrames, i = t - tl.dashEnd; // 1..n
+      const n = paceEnemy(sp.brakeFrames), i = t - tl.dashEnd; // 1..n
       move = i >= n ? a.brakeLeft : Math.min(a.brakeLeft, sp.brake * 2 * (n - i + 1) / (n * (n + 1)));
       a.brakeLeft -= move;
     }
@@ -780,7 +803,7 @@ export const EnemySlams = {
   },
 };
 export const EnemySlam = {
-  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.recovery, total: spec.windup + spec.active + spec.recovery }; },
+  timeline(spec) { const su = paceEnemy(spec.windup), ac = paceEnemy(spec.active), re = paceEnemy(spec.recovery); return { su, ac, re, total: su + ac + re }; },
   /** Hammer angle in degrees at attack frame t. */
   angle(spec, t) {
     const su = spec.windup, ac = spec.active;
@@ -876,12 +899,12 @@ export const EnemyBashes = {
   },
 };
 export const EnemyBash = {
-  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.whiffRecovery, total: spec.windup + spec.active + spec.whiffRecovery }; },
+  timeline(spec) { const su = paceEnemy(spec.windup), ac = paceEnemy(spec.active), re = paceEnemy(spec.whiffRecovery); return { su, ac, re, total: su + ac + re }; },
   tick(f) {
     const a = f.atk, sp = a.bash, t = f.atkT;
-    if (f.hitDone && !a.bashHit) { a.bashHit = true; a.stepLeft = 0; a.re = Math.max(0, (t - 1) + sp.hitRecovery - (a.su + a.ac)); }
+    if (f.hitDone && !a.bashHit) { a.bashHit = true; a.stepLeft = 0; a.re = Math.max(0, (t - 1) + paceEnemy(sp.hitRecovery) - (a.su + a.ac)); }
     let move = 0;
-    if (t > a.su && t <= a.su + a.ac && a.stepLeft > 0) { move = t === a.su + a.ac ? a.stepLeft : Math.min(a.stepLeft, sp.step / sp.active); a.stepLeft -= move; }
+    if (t > a.su && t <= a.su + a.ac && a.stepLeft > 0) { move = t === a.su + a.ac ? a.stepLeft : Math.min(a.stepLeft, sp.step / paceEnemy(sp.active)); a.stepLeft -= move; }
     f.x += a.bashDir * move; f.vx = 0;
   },
   box(f) {
@@ -925,7 +948,7 @@ export const EnemyGrabs = {
 };
 export const EnemyGrab = {
   spec(f) { return f.enemyGrab ? EnemyGrabs[f.enemyGrab] : null; },
-  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.whiffRecovery, total: spec.windup + spec.active + spec.whiffRecovery }; },
+  timeline(spec) { const su = paceEnemy(spec.windup), ac = paceEnemy(spec.active), re = paceEnemy(spec.whiffRecovery); return { su, ac, re, total: su + ac + re }; },
   /** '' when the grappler can catch `target` this frame, else the reason it cannot. Gameplay state only. */
   canCatch(g, target) {
     const a = g.atk, sp = a?.grab;
@@ -935,7 +958,7 @@ export const EnemyGrab = {
     if (target.hp <= 0 || target.ragdollActive) return 'dead';
     if (target.heldBy) return 'held';
     if (target.noRegrabT > 0) return 'no-regrab';
-    if (target.invincibleT > 0 || target.dodgeT > 0) return 'invulnerable';
+    if (target.invincibleT > 0 || target.inDodgeIFrames()) return 'invulnerable';
     if (!target.grounded || target.y < 0) return 'airborne';
     if (target.stun > 0) return 'stunned';
     if (target.state === 'special' || target.bladeSuper || target.specialVisual) return 'special';
@@ -952,7 +975,7 @@ export const EnemyGrab = {
     const a = f.atk, sp = a.grab, t = f.atkT;
     let move = 0;
     if (t > a.su && t <= a.su + a.ac && !a.grabHit) {
-      if (a.stepLeft > 0) { move = t === a.su + a.ac ? a.stepLeft : Math.min(a.stepLeft, sp.reachStep / sp.active); a.stepLeft -= move; }
+      if (a.stepLeft > 0) { move = t === a.su + a.ac ? a.stepLeft : Math.min(a.stepLeft, sp.reachStep / paceEnemy(sp.active)); a.stepLeft -= move; }
       f.x += a.grabDir * move;
       a.lastCheck = EnemyGrab.canCatch(f, other);
       if (!a.lastCheck) EnemyGrab.catch(f, other, t);
@@ -970,7 +993,7 @@ export const EnemyGrab = {
   catch(g, target, t) {
     const a = g.atk, sp = a.grab;
     a.grabHit = true; a.grabVictim = target; a.holdStart = t; a.stepLeft = 0; a.overLeft = 0; a.holdOffset = sp.holdGap * g.drawS();
-    a.re = Math.max(0, t + sp.headbuttAt + sp.hitRecovery - (a.su + a.ac));
+    a.re = Math.max(0, t + sp.headbuttAt + paceEnemy(sp.hitRecovery) - (a.su + a.ac));
     g.grabVictim = target; g.grabCoolT = sp.cooldown; g.hitDone = 1;
     target.heldBy = g; target.heldT = 0; target.grabRelease = '';
     target.atk = null; target.atkT = 0; target.atkPhase = ''; target.chain = 0; target.chainArmed = 0; target.blocking = 0;
@@ -1061,7 +1084,7 @@ export const EnemyDeploys = {
   },
 };
 export const EnemyDeploy = {
-  timeline(spec) { return { su: spec.windup, ac: spec.active, re: spec.recovery, total: spec.windup + spec.active + spec.recovery }; },
+  timeline(spec) { const su = paceEnemy(spec.windup), ac = paceEnemy(spec.active), re = paceEnemy(spec.recovery); return { su, ac, re, total: su + ac + re }; },
   /** One sim step of the deploying Disruptor (call after atkT++). */
   tick(f, other) {
     const a = f.atk, sp = a.deploy, t = f.atkT;
@@ -1103,7 +1126,7 @@ export const ShockZones = {
       if (z.t > z.warn + z.live) { list.splice(i, 1); continue; }
       if (z.t <= z.warn || z.hit || !player) continue;
       const pf = player.f;
-      if (pf.hp <= 0 || pf.ragdollActive || !pf.grounded || pf.y < 0 || pf.dodgeT > 0 || !ShockZones.inside(z, player)) continue;
+      if (pf.hp <= 0 || pf.ragdollActive || !pf.grounded || pf.y < 0 || pf.inDodgeIFrames() || !ShockZones.inside(z, player)) continue;
       const hit = { dmg: z.dmg, kb: z.kb, stun: z.stun, chip: 0, special: false, critical: false, comboFinisher: false, comboLink: false, chain: 0, zone: true };
       const wasBlocking = pf.blocking; pf.blocking = 0; // a floor hazard is not blockable
       const hpBefore = pf.hp;
