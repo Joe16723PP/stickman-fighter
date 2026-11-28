@@ -21,7 +21,7 @@ html,body{--sai-t:env(safe-area-inset-top,0px);--sai-l:env(safe-area-inset-left,
 .pad.left{left:calc(40px + env(safe-area-inset-left,0px))}
 .pad.right{right:calc(40px + env(safe-area-inset-right,0px))}
 .move-stick{position:relative;width:152px;height:152px;pointer-events:auto;touch-action:none;display:grid;place-items:center;-webkit-tap-highlight-color:transparent}
-.move-stick::after{content:'MOVE ← →  /  LANE ↑ ↓';position:absolute;left:50%;top:-14px;transform:translateX(-50%);color:rgba(235,240,255,.72);font:700 9px/1 system-ui,sans-serif;letter-spacing:.08em;white-space:nowrap;text-shadow:0 1px 3px #111;pointer-events:none}
+.move-stick::after{content:'MOVE ← →  /  LANE ↑ ↓';position:absolute;left:50%;top:-14px;transform:translateX(-50%);color:#FFF6E4;opacity:.85;font:700 9px/1 system-ui,sans-serif;letter-spacing:.08em;white-space:nowrap;-webkit-text-stroke:2px #1A1210;paint-order:stroke fill;pointer-events:none}
 .stick-ring{width:134px;height:134px;border:2px solid rgba(220,228,255,.7);border-radius:50%;background:radial-gradient(circle,rgba(83,94,125,.72) 0 42%,rgba(35,40,56,.88) 43% 100%);box-shadow:inset 0 0 0 8px rgba(255,255,255,.07),0 4px 18px rgba(0,0,0,.35);display:grid;place-items:center}
 .stick-knob{width:62px;height:62px;border:2px solid rgba(255,255,255,.95);border-radius:50%;background:linear-gradient(145deg,rgba(119,137,183,.98),rgba(55,64,89,.98));box-shadow:0 3px 10px rgba(0,0,0,.48);transform:translate(0,0);will-change:transform}
 .actions{position:relative;width:230px;height:230px;pointer-events:none;--action-gap:var(--ui-control-gap)}
