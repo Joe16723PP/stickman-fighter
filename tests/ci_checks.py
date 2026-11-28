@@ -10,6 +10,8 @@ hold the last frame. Walk clips must show at least two frames and loop (repeat -
 
 The seeded 1v1 parity digest was retired with 1v1 mode.
 Damage popups show a whole number and stack per target inside 0.25s.
+The YOU tag keeps a white fill, a 2px #1A1210 stroke, and weight 700.
+The MOVE / LANE hint uses fill #FFF6E4, that same stroke, and 85% opacity.
 
 Usage: python3 tests/ci_checks.py
 """
@@ -3105,6 +3107,107 @@ WALK_CYCLE = r'''() => {
   return out;
 }'''
 
+HUD_LABELS = r'''() => {
+  // YOU tag (canvas stroke) and the MOVE / LANE hint (CSS). Styles only.
+  const rgb = (s) => {
+    const text = String(s || '').trim().toLowerCase();
+    const m = text.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+    if (m) return [+m[1], +m[2], +m[3]];
+    let hex = text.replace('#', '');
+    if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('');
+    if (/^[0-9a-f]{6}/.test(hex)) return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+    return null;
+  };
+  const same = (a, b) => !!(a && b && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);
+  const out = { problems: [] };
+  const fail = (msg) => { out.problems.push(msg); };
+  const INK = [26, 18, 16], CREAM = [255, 246, 228], WHITE = [255, 255, 255];
+  try {
+    const hintEl = document.querySelector('.move-stick');
+    if (!hintEl) fail('move stick missing');
+    else {
+      const cs = getComputedStyle(hintEl, '::after');
+      const strokeW = cs.webkitTextStrokeWidth || cs.getPropertyValue('-webkit-text-stroke-width');
+      const strokeC = cs.webkitTextStrokeColor || cs.getPropertyValue('-webkit-text-stroke-color');
+      const content = String(cs.content || '').replace(/^["']|["']$/g, '');
+      out.hint = { content, color: cs.color, opacity: cs.opacity, weight: cs.fontWeight, strokeW, strokeC, size: cs.fontSize, top: cs.top };
+      if (content.indexOf('MOVE') < 0 || content.indexOf('LANE') < 0) fail('hint text ' + cs.content);
+      if (!same(rgb(cs.color), CREAM)) fail('hint fill ' + cs.color);
+      if (Math.abs(parseFloat(cs.opacity) - 0.85) > 0.001) fail('hint opacity ' + cs.opacity);
+      if (String(cs.fontWeight) !== '700') fail('hint weight ' + cs.fontWeight);
+      if (strokeW !== '2px') fail('hint stroke width ' + strokeW);
+      if (!same(rgb(strokeC), INK)) fail('hint stroke ' + strokeC);
+      if (cs.fontSize !== '9px') fail('hint size ' + cs.fontSize);
+      if (cs.top !== '-14px') fail('hint top ' + cs.top);
+    }
+    if (!Game.paintPhaser) fail('paint missing');
+    else {
+      Game.frame = function(){};
+      Game.fit();
+      Game.selectClass('freehand');
+      BeatEmUp.begin();
+      Game.frame = function(){};
+      Game.phase = 'fight';
+      Game.fighting = 1;
+      Game.banner = '';
+      Game.bannerT = 0;
+      BeatEmUp.eventT = 0;
+      BeatEmUp.stageIntroT = 0;
+      BeatEmUp.cast = BeatEmUp.cast.filter(e => e.role === 'player');
+      const player = BeatEmUp.playerEntry();
+      player.f.tag = 'YOU';
+      player.f.ragdollActive = false;
+      const seen = [];
+      const proto = CanvasRenderingContext2D.prototype;
+      const origS = proto.strokeText, origF = proto.fillText;
+      proto.strokeText = function(text) {
+        if (text === 'YOU') seen.push({ op: 'stroke', stroke: this.strokeStyle, w: this.lineWidth, font: this.font, ox: this.shadowOffsetX, oy: this.shadowOffsetY, blur: this.shadowBlur });
+        return origS.apply(this, arguments);
+      };
+      proto.fillText = function(text) {
+        if (text === 'YOU') seen.push({ op: 'fill', fill: this.fillStyle, font: this.font, a: this.globalAlpha });
+        return origF.apply(this, arguments);
+      };
+      try { Game.paintPhaser(); }
+      finally { proto.strokeText = origS; proto.fillText = origF; }
+      const stroke = seen.filter(s => s.op === 'stroke');
+      const fill = seen.filter(s => s.op === 'fill');
+      out.you = { strokes: stroke.length, fills: fill.length, stroke: stroke[0] || null, fill: fill[0] || null };
+      if (stroke.length !== 1 || fill.length !== 1) fail('YOU draw count stroke ' + stroke.length + ' fill ' + fill.length);
+      const s0 = stroke[0], f0 = fill[0];
+      const weight700 = (font) => /^(?:700|bold)\b/.test(String(font || ''));
+      if (!s0 || !same(rgb(s0.stroke), INK)) fail('YOU stroke ' + (s0 && s0.stroke));
+      if (!s0 || s0.w !== 2) fail('YOU stroke width ' + (s0 && s0.w));
+      if (!s0 || !weight700(s0.font) || !/12px/.test(String(s0.font))) fail('YOU font ' + (s0 && s0.font));
+      if (Fighter.prototype.drawHeadTag.toString().indexOf('700 12px') < 0) fail('YOU weight is not 700');
+      if (!s0 || s0.ox !== 0 || s0.oy !== 0 || s0.blur !== 0) fail('YOU shadow ' + (s0 && [s0.ox, s0.oy, s0.blur].join(',')));
+      if (!f0 || !same(rgb(f0.fill), WHITE)) fail('YOU fill ' + (f0 && f0.fill));
+      if (!f0 || !weight700(f0.font)) fail('YOU fill weight ' + (f0 && f0.font));
+      if (!f0 || f0.a !== 1) fail('YOU alpha ' + (f0 && f0.a));
+    }
+    const other = [];
+    const probe = document.createElement('canvas').getContext('2d');
+    const probeS = probe.strokeText.bind(probe), probeF = probe.fillText.bind(probe);
+    probe.strokeText = function(text) { other.push({ op: 'stroke', text, stroke: this.strokeStyle, w: this.lineWidth, font: this.font }); return probeS.apply(probe, arguments); };
+    probe.fillText = function(text) { other.push({ op: 'fill', text, fill: this.fillStyle, font: this.font }); return probeF.apply(probe, arguments); };
+    const cpu = fighters[1];
+    const saved = { tag: cpu.tag, rag: cpu.ragdollActive, banner: Game.banner, phase: Game.phase };
+    cpu.tag = 'CPU'; cpu.ragdollActive = false; Game.banner = ''; Game.phase = 'fight';
+    cpu.drawHeadTag(probe);
+    cpu.tag = saved.tag; cpu.ragdollActive = saved.rag; Game.banner = saved.banner; Game.phase = saved.phase;
+    const cpuStroke = other.filter(e => e.op === 'stroke' && e.text === 'CPU');
+    const cpuFill = other.filter(e => e.op === 'fill' && e.text === 'CPU');
+    out.cpu = { strokes: cpuStroke.length, fill: cpuFill[0] || null };
+    if (cpuStroke.length) fail('CPU tag gained a stroke');
+    if (cpuFill.length !== 1 || String(cpuFill[0].font).indexOf('12px') < 0 || /700|bold/i.test(cpuFill[0].font)) fail('CPU font ' + (cpuFill[0] && cpuFill[0].font));
+    if (!cpuFill.length || !same(rgb(cpuFill[0].fill), WHITE)) fail('CPU fill ' + (cpuFill[0] && cpuFill[0].fill));
+  } catch (err) {
+    fail(String(err && err.stack || err));
+  }
+  out.pass = out.problems.length === 0;
+  return out;
+}'''
+
 PLAYER_DEFENSE_SIM = r'''() => {
   // Player-received hits read PLAYER_DEFENSE. Enemy burst stays on enemyBurstKO / enemyBurstWindow.
   const D = PLAYER_DEFENSE, STEP = Game.STEP, r = {};
@@ -3418,6 +3521,11 @@ def main():
                 if not walk_cycle.get('pass'):
                     failures.append('Walk cycle failed: every posed walk clip must paint at least 2 distinct frames in order and loop (repeat -1) instead of restarting or clamping: '
                                     + json.dumps({k: v for k, v in walk_cycle.items() if k != 'pass'}))
+                hud_labels = load_page.evaluate(HUD_LABELS)
+                print('hud labels', json.dumps({k: v for k, v in hud_labels.items() if k != 'pass'}))
+                if not hud_labels.get('pass'):
+                    failures.append('HUD label contrast failed: the YOU tag must keep a white fill, a 2px #1A1210 stroke, shadow offset 0,0 blur 0, and font weight 700 at 12px; the MOVE/LANE hint must use fill #FFF6E4, a 2px #1A1210 stroke, font weight 700, and 85% opacity. Other head tags stay plain: '
+                                    + json.dumps({k: v for k, v in hud_labels.items() if k != 'pass'}))
             load_page.close()
             page = browser.new_page(viewport={'width': 844, 'height': 390})
             def note_response(response):
