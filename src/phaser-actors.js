@@ -1,7 +1,7 @@
 import { Game, fighters } from './game.js';
 import { BeatEmUp } from './beatemup.js';
 import { BladeSuper } from './blade.js';
-import { BossSignatures, PACE } from './config.js';
+import { BossSignatures, PACE, paceEnemy } from './config.js';
 
 // Karate has no combo sheet. Both Attack punches play `punch` (one jab).
 const CLIPS = { idle: 6, walk: 8, punch: 6, kick: 12, fall: 8, roll: 8, special: 24 };
@@ -96,7 +96,24 @@ const DOCKMASTER = {
   special: { count: 6, box: { w: 254, h: 212, baseline: 196 }, anchor: 106 },
   fall: { count: 6, box: { w: 208, h: 200, baseline: 184 }, anchor: 98 },
 };
-const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, grappler: GRAPPLER, 'block-captain': BLOCK_CAPTAIN, dockmaster: DOCKMASTER };
+// Per-clip boxes from assets/characters/heavy/frames/clips.json. Body height stays 188.
+// His larger size is the existing archetype scale (1.12), the same scale the vector body uses.
+// slam.timing is authored holds at 60 fps (30 wind-up, 4 swing, 48 recovery). slam.phases
+// names which of those frames belong to each existing Heavy slam phase.
+const HEAVY = {
+  idle: { count: 6, box: { w: 146, h: 222, baseline: 206 }, anchor: 77 },
+  walk: { count: 8, box: { w: 160, h: 220, baseline: 204 }, anchor: 79 },
+  slam: {
+    count: 9,
+    box: { w: 230, h: 230, baseline: 214 },
+    anchor: 106,
+    timing: [10, 10, 10, 4, 14, 12, 10, 8, 4],
+    phases: { windup: [0, 2], swing: [3, 3], recovery: [4, 8] },
+  },
+  hit: { count: 4, box: { w: 200, h: 208, baseline: 192 }, anchor: 109 },
+  fall: { count: 6, box: { w: 254, h: 228, baseline: 212 }, anchor: 125 },
+};
+const ENEMY_CLIPS = { brawler: BRAWLER, rusher: RUSHER, grappler: GRAPPLER, 'block-captain': BLOCK_CAPTAIN, dockmaster: DOCKMASTER, heavy: HEAVY };
 const STICK_W = 300;
 const STICK_H = 340;
 const STICK_FOOT = 310;
@@ -358,7 +375,7 @@ export function attackClip(fighter) {
   return { clip, frame: frameOf(fighter, clip) };
 }
 
-// Posed-sprite id for a cast entry. Brawler, Rusher, and Grappler use their archetype kind.
+// Posed-sprite id for a cast entry. Brawler, Rusher, Grappler, and Heavy use their archetype kind.
 // Block Captain and Dockmaster are kind 'boss' (every stage boss is); the signature key picks them out.
 // Other bosses stay on the vector plate.
 function posedKind(entry) {
@@ -369,7 +386,7 @@ function posedKind(entry) {
   return null;
 }
 
-// Brawler, Rusher, Grappler, Block Captain, and Dockmaster. Kind lives on the beat 'em up entry, not classId.
+// Brawler, Rusher, Grappler, Heavy, Block Captain, and Dockmaster. Kind lives on the beat 'em up entry, not classId.
 function stageEnemy(fighter) {
   if (Game.mode !== 'beatemup' || Game.phase === 'title' || !BeatEmUp.cast?.length) return null;
   const entry = BeatEmUp.entryFor(fighter);
@@ -649,12 +666,62 @@ function dockmasterSpecialFrame(fighter) {
   return 1;
 }
 
-// Standing hitstun uses the fall clip's on-feet recoil (flinch). A missing texture falls back to the vector plate.
+// How many gameplay frames each authored hold fills inside one paced phase.
+// Longer holds get the extra frames (largest remainder) so the counts sum to phaseLen.
+function holdCounts(phaseLen, holds) {
+  const art = holds.reduce((sum, n) => sum + n, 0) || 1;
+  const len = Math.max(1, phaseLen | 0);
+  const counts = holds.map((hold) => Math.floor(hold * len / art));
+  let extra = len - counts.reduce((sum, n) => sum + n, 0);
+  const order = holds.map((hold, i) => ({ i, rem: (hold * len) % art }));
+  order.sort((a, b) => b.rem - a.rem || a.i - b.i);
+  for (let k = 0; k < extra && k < order.length; k++) counts[order[k].i]++;
+  return counts;
+}
+
+function frameFromCounts(offset, counts, first) {
+  const at = Math.max(0, offset);
+  let acc = 0;
+  for (let i = 0; i < counts.length; i++) {
+    acc += counts[i];
+    if (at < acc) return first + i;
+  }
+  return first + counts.length - 1;
+}
+
+// Slam clip index. timing holds stay the authored 30/4/48; they are spread across the
+// attack's existing wind-up, swing, and recovery (atk.su / ac / re) so the swing frame
+// lands on the swing and the last frame (idle stance) is up when the slam ends.
+function heavySlamFrame(fighter) {
+  const timing = HEAVY.slam.timing;
+  const phases = HEAVY.slam.phases;
+  const attack = fighter.atk;
+  const slice = (range) => timing.slice(range[0], range[1] + 1);
+  const sum = (holds) => holds.reduce((s, n) => s + n, 0);
+  const su = attack ? attack.su : paceEnemy(sum(slice(phases.windup)));
+  const ac = attack ? attack.ac : paceEnemy(sum(slice(phases.swing)));
+  const re = attack ? attack.re : paceEnemy(sum(slice(phases.recovery)));
+  const t = fighter.atkT || 0;
+  const pick = (offset, len, range) => frameFromCounts(offset, holdCounts(len, slice(range)), range[0]);
+  if (t <= su) return pick(Math.max(0, t - 1), su, phases.windup);
+  if (t <= su + ac) return pick(t - su - 1, ac, phases.swing);
+  return pick(t - su - ac - 1, re, phases.recovery);
+}
+
+// Standing hitstun uses the fall clip's on-feet recoil (flinch), except Heavy, who has a hit clip.
+// A missing texture falls back to the vector plate.
 // Dockmaster has no separate flinch: a hit plays the fall clip, same as a KO.
 function enemyClip(entry, fighter) {
   const down = fighter.ragdollActive || fighter.hp <= 0 || fighter.state === 'ko' || fighter.state === 'knockdown';
   if (down) return 'fall';
   const kind = posedKind(entry);
+  // Heavy: idle, walk, the overhead slam, the hit reaction, and fall (handled above).
+  if (kind === 'heavy') {
+    if (fighter.state === 'hit') return 'hit';
+    if (fighter.atk?.slam) return 'slam';
+    if (fighter.state === 'walk') return 'walk';
+    return 'idle';
+  }
   if (kind === 'dockmaster') {
     if (fighter.state === 'hit') return 'fall';
     if (fighter.state === 'special') return 'special';
@@ -686,14 +753,18 @@ function enemyClip(entry, fighter) {
 }
 
 function enemyFrame(fighter, name, count, kind) {
+  const prev = fighter._posedClip;
   if (fighter._posedClip !== name) {
+    // Slam frame 8 is the idle stance. Start idle at frame 0 so the cut back does not pop.
+    if (kind === 'heavy' && name === 'idle' && prev === 'slam') fighter._heavyIdleEpoch = fighter.animT || 0;
     fighter._posedClip = name;
     fighter._posedClipStart = fighter.animT || 0;
   }
   if (name === 'flinch') return Math.floor((fighter.animT || 0) * 12) % 2;
-  if (name === 'fall') {
+  if (name === 'fall' || name === 'hit') {
     return Math.max(0, Math.min(count - 1, Math.floor(((fighter.animT || 0) - fighter._posedClipStart) * 12)));
   }
+  if (name === 'slam') return heavySlamFrame(fighter);
   if (name === 'jab-cross') return brawlerAttackFrame(fighter);
   if (name === 'rush') return rusherAttackFrame(fighter);
   if (name === 'grab') return grapplerAttackFrame(fighter);
@@ -702,6 +773,10 @@ function enemyFrame(fighter, name, count, kind) {
   if (name === 'special') return kind === 'dockmaster' ? dockmasterSpecialFrame(fighter) : blockCaptainSpecialFrame(fighter);
   if (name === 'walk') {
     return Math.floor((fighter.walkPx || 0) / (148 / count)) % count;
+  }
+  if (name === 'idle' && kind === 'heavy') {
+    const elapsed = Math.max(0, (fighter.animT || 0) - (fighter._heavyIdleEpoch || 0));
+    return Math.floor(elapsed * 12) % count;
   }
   return Math.floor((fighter.animT || 0) * 12) % count;
 }
